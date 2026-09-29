@@ -11,9 +11,12 @@ alongside the randomizer mod.
 
 ## Install
 
-You need a Dusklight build with mod support and your own game disc image, like for playing alone.
+You need your own game disc image, like for playing alone, and a Dusklight build from
+[the fork with the host services Twili-Together uses](https://github.com/Ori-Jakob/dusklight/tree/twili-together-dusk-mod)
+(until upstream Dusklight has them).
 
-1. Get `twili_together.dusk` (a release, or build it: see [Building](#building)).
+1. Get `twili_together.dusk` (a [release](https://github.com/Ori-Jakob/dusklight-twili-together/releases),
+   or build it: see [Building](#building)).
 2. Copy it into your mods folder:
    - Windows: `%APPDATA%\TwilitRealm\Dusklight\mods`
    - Linux: `~/.local/share/TwilitRealm/Dusklight/mods`
@@ -195,11 +198,26 @@ Two rare crashes come from races in Dusklight itself, not in the mod:
 
 ## Building
 
-The mod builds with the rest of Dusklight (it is listed in the root `CMakeLists.txt`), using the
-`windows-clang-relwithdebinfo` preset or any preset with mod support. The build puts
-`twili_together.dusk` into `build/<preset>/mods/`, where the game finds it next to the exe.
-Its `CMakeLists.txt` also has the standalone configure the other mods in `mods/` use (not tested
-yet for this mod).
+```sh
+git clone https://github.com/Ori-Jakob/dusklight-twili-together
+cd dusklight-twili-together
+cmake -B build
+cmake --build build --parallel
+```
+
+The build fetches the Dusklight tree it compiles against into `dusklight/`, pinned by
+`DUSKLIGHT_VERSION` in `CMakeLists.txt` (from the fork above), and writes
+`build/mods/twili_together.dusk`. To build against an existing Dusklight checkout instead:
+
+```sh
+cmake -B build -DDUSKLIGHT_DIR=~/path/to/dusklight
+```
+
+The mod also builds inside a Dusklight tree as `mods/twili_together`, listed in the root
+`CMakeLists.txt`; the build then puts `twili_together.dusk` into `build/<preset>/mods/`.
+
+CI builds every platform on each push and merges them into one `.dusk`; pushing a tag attaches it
+to a release.
 
 `TWILI_ENABLE_AUTOTEST` (on by default) compiles in the scripted test driver. It stays dormant
 unless the `autotest_script` setting is given, so the tested binary is the shipped one.

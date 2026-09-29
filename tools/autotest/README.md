@@ -5,14 +5,17 @@ server) and checks what each instance reports, its log, and that nobody crashes.
 a PASS/FAIL per instance, the game logs, the server log, and the crash report if an instance
 crashed.
 
+From the mod's folder (this repository, or `mods/twili_together` in a Dusklight tree):
+
 ```
-node mods/twili_together/tools/autotest/run.js                  # every scenario
-node mods/twili_together/tools/autotest/run.js smoke            # one scenario
-node mods/twili_together/tools/autotest/run.js --list           # what exists
-node mods/twili_together/tools/autotest/run.js smoke --repeat 5 # soak
+node tools/autotest/run.js --exe <dusklight.exe>                  # every scenario
+node tools/autotest/run.js --exe <dusklight.exe> smoke            # one scenario
+node tools/autotest/run.js --list                                 # what exists
+node tools/autotest/run.js --exe <dusklight.exe> smoke --repeat 5 # soak
 ```
 
-Options: `--exe <dusklight.exe>` (default `build/windows-clang-relwithdebinfo/dusklight.exe`),
+Options: `--exe <dusklight.exe>` (a Dusklight build from the fork with Twili-Together in its
+`mods/` folder; inside a Dusklight tree the default is `build/windows-clang-relwithdebinfo/`),
 `--work <dir>` (slot directories, default `work/`), `--out <dir>` (reports, default `out/`),
 `--timeout <sec>`, `--repeat <n>`, `--no-kill`.
 
@@ -20,7 +23,7 @@ Test from a copy of the build output (the exe, its DLLs and PDB, `res/` and `mod
 directory can relink while tests run, and give concurrent runs their own `--work`:
 
 ```
-node mods/twili_together/tools/autotest/run.js smoke --exe <copy>/dusklight.exe --work <dir>
+node tools/autotest/run.js smoke --exe <copy>/dusklight.exe --work <dir>
 ```
 
 Needs a GPU (there is no headless mode) and a user config with a valid disc image path: each run

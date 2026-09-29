@@ -3,13 +3,17 @@ project(twili_together CXX)
 set(CMAKE_CXX_STANDARD 20)
 
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    set(DUSK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "Path to dusk source root")
+    # Standalone: fetch the Dusklight tree with the host services this mod needs.
+    if (NOT DUSKLIGHT_VERSION)
+        set(DUSKLIGHT_VERSION "e71bd2e7b09177c596ef142eb27b98a50bafeaa6")
+    endif ()
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchDusklight.cmake")
     option(DUSK_MOD_USE_FULL_TREE "Use full build instead of the minimal mod SDK" OFF)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     if (DUSK_MOD_USE_FULL_TREE)
-        add_subdirectory("${DUSK_DIR}" dusk EXCLUDE_FROM_ALL)
+        add_subdirectory("${DUSKLIGHT_DIR}" dusk EXCLUDE_FROM_ALL)
     else ()
-        add_subdirectory("${DUSK_DIR}/sdk" dusk-sdk EXCLUDE_FROM_ALL)
+        add_subdirectory("${DUSKLIGHT_DIR}/sdk" dusk-sdk EXCLUDE_FROM_ALL)
     endif ()
 endif ()
 
@@ -154,3 +158,7 @@ target_include_directories(twili_together PRIVATE src)
 target_link_libraries(twili_together PRIVATE nlohmann_json::nlohmann_json)
 target_compile_definitions(twili_together PRIVATE
     TWILI_ENABLE_AUTOTEST=$<BOOL:${TWILI_ENABLE_AUTOTEST}>)
+# The game headers pick C++11 features by __cplusplus, which MSVC only reports right with this.
+if (MSVC)
+    target_compile_options(twili_together PRIVATE /Zc:__cplusplus)
+endif ()

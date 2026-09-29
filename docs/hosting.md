@@ -8,8 +8,10 @@ the cheapest VPS is plenty for a few rooms.
 
 You need Node.js 18 or newer (tested with 24).
 
+From the mod's folder (this repository, or `mods/twili_together` in a Dusklight tree):
+
 ```
-cd mods/twili_together/tools/server
+cd tools/server
 npm install
 node server.js
 ```
