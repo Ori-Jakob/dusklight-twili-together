@@ -97,6 +97,7 @@ set(TWILI_SOURCES
     src/story/StorySegments.cpp
     src/story/StoryTracker.cpp
     src/story/StoryUi.cpp
+    src/sync/Chests.cpp
     src/sync/DungeonItems.cpp
     src/sync/Flags.cpp
     src/sync/GiveItem.cpp
