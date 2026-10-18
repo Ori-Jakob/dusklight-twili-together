@@ -11,9 +11,10 @@ alongside the randomizer mod.
 
 ## Install
 
-You need your own game disc image, like for playing alone, and a Dusklight build from
+You need Dusklight 2.0.3 or newer (the mod does not start on older versions) and your own game
+disc image, like for playing alone. A Dusklight build from
 [the fork with the host services Twili-Together uses](https://github.com/Ori-Jakob/dusklight/tree/twili-together-dusk-mod)
-(until upstream Dusklight has them).
+adds the players widget; stock 2.0.3 runs the mod without it.
 
 1. Get `twili_together.dusk` (a [release](https://github.com/Ori-Jakob/dusklight-twili-together/releases),
    or build it: see [Building](#building)).
