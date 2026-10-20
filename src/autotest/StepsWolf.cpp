@@ -345,6 +345,35 @@ bool setMidna(StepContext& ctx) {
     return false;
 }
 
+// Z: the talk orderZTalk orders; done once she stands out of Link's shadow as her own.
+bool callMidna(StepContext& ctx) {
+    daAlink_c* link = daAlink_getAlinkActorClass();
+    daMidna_c* midna = daPy_py_c::getMidnaActor();
+    if (link == nullptr || midna == nullptr || !link->checkMidnaRide()) {
+        ctx.fail("callMidna: no Midna with our Link (setMidna ride: true first)");
+        return false;
+    }
+    if (ctx.ticks % 30 == 0 && !dComIfGp_event_runCheck()) {
+        TwiliLog.info("[autotest] callMidna: ordering her talk");
+        fopAcM_orderTalkEvent(link, midna, 0, 0);
+    }
+    RemoteMidnaPose pose;
+    Session::captureLocalMidna(localCutsceneRunning(), pose);
+    const uint16_t appear = daMidna_c::m_anmDataTable[daMidna_c::ANM_S_APPEAR].mResID;
+    const uint16_t appearBl = daMidna_c::m_anmDataTable[daMidna_c::ANM_S_APPEARBL].mResID;
+    if (pose.mode == kMidnaApart && (pose.flags & kMidnaSilhouette) &&
+        pose.bodyBck != appear && pose.bodyBck != appearBl)
+    {
+        TwiliLog.info("[autotest] callMidna: her shadow is out, clip 0x{:X}", pose.bodyBck);
+        return true;
+    }
+    if (ctx.seconds > ctx.timeout(20.0)) {
+        ctx.fail(fmt::format("callMidna: local Midna mode {} flags 0x{:X} clip 0x{:X}", pose.mode,
+            pose.flags, pose.bodyBck));
+    }
+    return false;
+}
+
 bool isMidnaBodyClip(uint16_t id) {
     for (int i = 0; i < daMidna_c::ANM_FTALKA; i++) {
         if (daMidna_c::m_anmDataTable[i].mResID == id) return true;
@@ -366,6 +395,16 @@ std::string midnaMismatch(const nlohmann::json& step, uint8_t want, const Client
         if (!info.midnaReady || !isMidnaBodyClip(info.midnaBodyAnm) || !info.midnaShown) {
             return fmt::format("dummy Midna apart: ready {}, clip 0x{:X}, shown {}",
                 info.midnaReady, info.midnaBodyAnm, info.midnaShown);
+        }
+        // Her shadow form: the gokou and the invisible models, as the sender's draw shows her
+        if (step.contains("silhouette")) {
+            const bool silhouette = step["silhouette"].get<bool>();
+            const bool sent = (c.midna.flags & kMidnaSilhouette) != 0;
+            if (sent != silhouette || info.midnaShadowDrawn != silhouette) {
+                return fmt::format("Midna sent as her shadow {}, dummy drew her shadow {} "
+                                   "(shadow models {}, {} shadow draws)",
+                    sent, info.midnaShadowDrawn, info.midnaShadowReady, info.midnaShadowDraws);
+            }
         }
         return {};
     }
@@ -434,9 +473,10 @@ bool expectRemoteMidna(StepContext& ctx) {
         if (miss.empty()) {
             matching++;
             seen = fmt::format("clip 0x{:X}, upper 0x{:X}, hair hand {}, hands {}/{}, tired {}, "
-                               "{:.1f} from the wolf's back joint, {} refused",
+                               "{:.1f} from the wolf's back joint, {} refused, {} shadow draws",
                 info.midnaBodyAnm, info.midnaUpperAnm, info.midnaHairHand, info.midnaLeftHand,
-                info.midnaRightHand, info.midnaTired, info.midnaBackDist, info.midnaRefused);
+                info.midnaRightHand, info.midnaTired, info.midnaBackDist, info.midnaRefused,
+                info.midnaShadowDraws);
             continue;
         }
         why = fmt::format("client {} ({}): {}", id, c.name, miss);
@@ -984,6 +1024,9 @@ std::optional<bool> wolfRemoteSteps(const std::string& op, StepContext& ctx) {
     }
     if (op == "setMidna") {
         return setMidna(ctx);
+    }
+    if (op == "callMidna") {
+        return callMidna(ctx);
     }
     if (op == "expectRemoteMidna") {
         return expectRemoteMidna(ctx);

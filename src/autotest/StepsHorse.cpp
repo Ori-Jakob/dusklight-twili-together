@@ -692,9 +692,12 @@ bool aimCamera(const json& cam, cXyz& center, cXyz& eye, std::string& why) {
     link->current.angle.y = yaw;
     const cXyz front(cM_ssin(yaw), 0.0f, cM_scos(yaw));
     const cXyz right(front.z, 0.0f, -front.x);
+    // `near`: the eye that far from the target on our side, instead of `back` behind our Link
+    const bool near = cam.contains("near");
+    const cXyz base = near ? center : stand;
     center.y += cam.value("height", 130.0f);
-    eye = stand - front * cam.value("back", 250.0f) + right * cam.value("side", 0.0f) +
-          cXyz(0.0f, cam.value("up", 200.0f), 0.0f);
+    eye = base - front * cam.value(near ? "near" : "back", 250.0f) +
+          right * cam.value("side", 0.0f) + cXyz(0.0f, cam.value("up", 200.0f), 0.0f);
     return true;
 }
 
