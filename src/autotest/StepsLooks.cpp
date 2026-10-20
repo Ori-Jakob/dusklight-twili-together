@@ -3,6 +3,7 @@
 
 #include "autotest/AutoTestSteps.hpp"
 
+#include "actors/PrivateArchives.hpp"
 #include "core/Log.hpp"
 #include "looks/Inventory.hpp"
 
@@ -14,11 +15,13 @@
 #include "d/d_com_inf_game.h"
 #include "res/Object/AlAnm.h"
 
+#include <dolphin/dvd.h>
 #include <dolphin/gx.h>
 #include <fmt/format.h>
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -60,18 +63,77 @@ std::string shaOf(const std::string& modId, const looks::OverrideEntry& o) {
     return sha ? looks::hex(*sha) : "none";
 }
 
-// 4x4 RGBA8: a runtime POINTER replacement keys on sTexels; nothing keys on sOtherTexels.
+uint8_t* align32(uint8_t* data) {
+    return reinterpret_cast<uint8_t*>((reinterpret_cast<uintptr_t>(data) + 31) & ~uintptr_t{31});
+}
+
+// Finds file `index` (or the first file for kAnyFile, setting index) and its in-archive path,
+// "<root>/<dirs>/<name>", as entry overlays use it.
+constexpr uint32_t kAnyFile = UINT32_MAX;
+bool arcEntryPath(const JKRArchive& arc, uint32_t dirIndex, const std::string& prefix,
+    uint32_t& index, std::string& out) {
+    const auto& dir = arc.mNodes[dirIndex];
+    for (uint32_t i = 0; i < dir.num_entries; i++) {
+        const auto& entry = arc.mFiles[dir.first_file_index + i];
+        const std::string name = &arc.mStringTable[entry.getNameOffset()];
+        if (name == "." || name == "..") {
+            continue;
+        }
+        if (entry.isDirectory()) {
+            if (arcEntryPath(arc, entry.data_offset, prefix + name + "/", index, out)) {
+                return true;
+            }
+        } else if (index == kAnyFile || entry.index == index) {
+            index = entry.index;
+            out = prefix + name;
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string arcRoot(const JKRArchive& arc) {
+    return std::string(&arc.mStringTable[arc.mNodes[0].name_offset]) + "/";
+}
+
+// A copy-style read of one archive file, as Link's and the puppets' loads do.
+std::vector<uint8_t> readArcFile(JKRArchive& arc, uint32_t index) {
+    constexpr uint32_t kMaxSize = 1u << 20;
+    const auto storage = std::make_unique<uint8_t[]>(kMaxSize + 32);
+    uint8_t* buffer = align32(storage.get());
+    const uint32_t size = std::min(arc.readIdxResource(buffer, kMaxSize, index), kMaxSize);
+    return {buffer, buffer + size};
+}
+
+// XXH64 (seed 0) of 64 bytes of 0x3C, the content key Aurora computes for sSourceTexels.
+constexpr uint64_t kSourceTexelsHash = 0xF2FA84DAA598697Aull;
+
+// 4x4 RGBA8: a runtime POINTER replacement keys on sTexels and a SOURCE one on the content of
+// sSourceTexels; nothing keys on sOtherTexels.
 alignas(32) uint8_t sTexels[64];
 alignas(32) uint8_t sOtherTexels[64];
+alignas(32) uint8_t sSourceTexels[64];
 
 struct InventoryRun {
     std::vector<OverlayHandle> overlays;
     TextureReplacementHandle texture = 0;
+    TextureReplacementHandle sourceTexture = 0;
     uint64_t watch = 0;
     int watchCalls = 0;
     std::vector<uint8_t> vanilla;
     std::vector<uint8_t> runtimeBytes;
+    std::string discOverlayFile;
+    std::vector<uint8_t> discOverlayVanilla;
     std::vector<uint8_t> discOverlayBytes;
+    Problems problems;
+    int phase = 0;
+    // The alias and its base file, mounted the way puppets mount theirs.
+    std::string mountPaths[2];
+    PrivateArchives archives;
+    uint32_t entryIndex = kAnyFile;
+    std::vector<uint8_t> baseEntry;
+    std::vector<uint8_t> entryOverlayBytes;
+    int overlayTick = 0;
 };
 InventoryRun sInventory;
 
@@ -81,17 +143,20 @@ void cleanupInventory() {
             svc_overlay->remove(mod_ctx, handle);
         }
     }
-    if (sInventory.texture != 0) {
-        svc_texture->unregister(mod_ctx, sInventory.texture);
+    for (const TextureReplacementHandle handle : {sInventory.texture, sInventory.sourceTexture}) {
+        if (handle != 0) {
+            svc_texture->unregister(mod_ctx, handle);
+        }
     }
     if (sInventory.watch != 0) {
         svc_mods->unwatch(mod_ctx, sInventory.watch);
     }
+    sInventory.archives.release();
     sInventory = {};
 }
 
 // Registers what the check then expects to see: a runtime buffer, a base alias, an overlay over
-// a disc file and a runtime texture.
+// a disc file and runtime POINTER and SOURCE textures.
 bool beginInventory(StepContext& ctx) {
     const auto& p = ctx.step;
     if (!looks::available() || svc_overlay == nullptr || svc_texture == nullptr) {
@@ -106,6 +171,13 @@ bool beginInventory(StepContext& ctx) {
             std::memcmp(sInventory.vanilla.data(), "Yaz0", 4) != 0))
     {
         ctx.fail(fmt::format("checkLooksInventory: no archive read from {}", baseFile));
+        return false;
+    }
+    sInventory.discOverlayFile = p.value("discOverlayFile", std::string("/res/Object/E_fz.arc"));
+    sInventory.discOverlayVanilla =
+        looks::readBaseDiscFile(sInventory.discOverlayFile.c_str()).value_or(std::vector<uint8_t>{});
+    if (sInventory.discOverlayVanilla.empty()) {
+        ctx.fail(fmt::format("checkLooksInventory: nothing read from {}", sInventory.discOverlayFile));
         return false;
     }
     svc_mods->watch(
@@ -128,11 +200,11 @@ bool beginInventory(StepContext& ctx) {
     }
 #endif
 
-    // Never loaded while the test stands in Link's house; removed right after the check.
+    // Never loaded in Link's house; removed when the step ends.
     sInventory.discOverlayBytes = bytesOf("twili disc overlay\n");
     handle = 0;
-    svc_overlay->add_buffer(mod_ctx, baseFile.c_str(), sInventory.discOverlayBytes.data(),
-        sInventory.discOverlayBytes.size(), &handle);
+    svc_overlay->add_buffer(mod_ctx, sInventory.discOverlayFile.c_str(),
+        sInventory.discOverlayBytes.data(), sInventory.discOverlayBytes.size(), &handle);
     sInventory.overlays.push_back(handle);
 
     std::memset(sTexels, 0x5A, sizeof(sTexels));
@@ -147,6 +219,15 @@ bool beginInventory(StepContext& ctx) {
     data.height = 4;
     data.gx_format = GX_TF_RGBA8;
     svc_texture->register_data(mod_ctx, &key, &data, &sInventory.texture);
+
+    std::memset(sSourceTexels, 0x3C, sizeof(sSourceTexels));
+    TextureKey sourceKey = TEXTURE_KEY_INIT;
+    sourceKey.kind = TEXTURE_KEY_SOURCE;
+    sourceKey.texture_hash = kSourceTexelsHash;
+    sourceKey.width = 4;
+    sourceKey.height = 4;
+    sourceKey.gx_format = GX_TF_RGBA8;
+    svc_texture->register_data(mod_ctx, &sourceKey, &data, &sInventory.sourceTexture);
     return true;
 }
 
@@ -229,6 +310,25 @@ void checkFixtures(const nlohmann::json& p, const std::vector<looks::ModEntry>& 
     }
 }
 
+// The alias as the game opens it, through the file table: the disc file's size and bytes.
+void checkAliasFile(const std::string& aliasPath, Problems& out) {
+    DVDFileInfo info{};
+    if (!DVDOpen(aliasPath.c_str(), &info)) {
+        out.expect(false, fmt::format("DVDOpen {} failed", aliasPath));
+        return;
+    }
+    const uint32_t length = info.length;
+    const uint32_t readSize = (length + 31) & ~31u;
+    std::vector<uint8_t> storage(readSize + 32);
+    uint8_t* buffer = align32(storage.data());
+    const s32 read = readSize != 0 ? DVDReadPrio(&info, buffer, static_cast<s32>(readSize), 0, 2) : 0;
+    DVDClose(&info);
+    out.expect(length == sInventory.vanilla.size() && read == static_cast<s32>(length) &&
+                   std::memcmp(buffer, sInventory.vanilla.data(), length) == 0,
+        fmt::format("DVDOpen {}: {} B, read {}, the disc file has {} B", aliasPath, length, read,
+            sInventory.vanilla.size()));
+}
+
 void checkRuntime(const nlohmann::json& p, Problems& out) {
     const std::string self = svc_host->mod_id(mod_ctx);
     const auto list = looks::listOverrides(self);
@@ -258,22 +358,38 @@ void checkRuntime(const nlohmann::json& p, Problems& out) {
                 o->aliasOf, o->size, bytes ? bytes->size() : 0, sInventory.vanilla.size()));
     }
 
-    if (const auto* o = findPath(list, baseFile); o == nullptr) {
-        out.expect(false, fmt::format("{} overlay not listed", baseFile));
+    checkAliasFile(aliasPath, out);
+
+    const std::string& discFile = sInventory.discOverlayFile;
+    if (const auto* o = findPath(list, discFile); o == nullptr) {
+        out.expect(false, fmt::format("{} overlay not listed", discFile));
     } else {
         out.expect(o->runtime && o->wins && o->size == sInventory.discOverlayBytes.size(),
-            fmt::format("{} overlay: wins {} size {}", baseFile, o->wins, o->size));
+            fmt::format("{} overlay: wins {} size {}", discFile, o->wins, o->size));
     }
-    const auto underOverlay = looks::readBaseDiscFile(baseFile.c_str());
-    out.expect(underOverlay == sInventory.vanilla,
-        fmt::format("{} read {} B under an overlay, want the disc's {} B", baseFile,
-            underOverlay ? underOverlay->size() : 0, sInventory.vanilla.size()));
+    const auto underOverlay = looks::readBaseDiscFile(discFile.c_str());
+    out.expect(underOverlay == sInventory.discOverlayVanilla,
+        fmt::format("{} read {} B under an overlay, want the disc's {} B", discFile,
+            underOverlay ? underOverlay->size() : 0, sInventory.discOverlayVanilla.size()));
 
-    const auto texture = std::ranges::find_if(list, [](const auto& o) {
-        return o.kind == looks::OverrideKind::Texture && o.runtime;
-    });
+    const auto runtimeTexture = [&](int keyKind) {
+        return std::ranges::find_if(list, [&](const auto& o) {
+            return o.kind == looks::OverrideKind::Texture && o.runtime && o.textureKey.kind == keyKind;
+        });
+    };
+    if (const auto source = runtimeTexture(TEXTURE_KEY_SOURCE); source == list.end()) {
+        out.expect(false, "runtime SOURCE texture not listed");
+    } else {
+        out.expect(source->wins && source->textureKey.texture_hash == kSourceTexelsHash &&
+                       source->textureKey.width == 4 && source->textureKey.height == 4 &&
+                       source->textureKey.gx_format == GX_TF_RGBA8,
+            fmt::format("runtime SOURCE texture: wins {} hash {:016x} {}x{} fmt {}", source->wins,
+                source->textureKey.texture_hash, source->textureKey.width, source->textureKey.height,
+                source->textureKey.gx_format));
+    }
+    const auto texture = runtimeTexture(TEXTURE_KEY_POINTER);
     if (texture == list.end()) {
-        out.expect(false, "runtime texture not listed");
+        out.expect(false, "runtime POINTER texture not listed");
     } else {
         out.expect(texture->wins && texture->textureRaw && texture->textureKey.kind == TEXTURE_KEY_POINTER &&
                        texture->textureKey.pointer == sTexels && texture->size == sizeof(sTexels) &&
@@ -285,16 +401,21 @@ void checkRuntime(const nlohmann::json& p, Problems& out) {
     }
 
     GXTexObj mine;
+    GXTexObj byContent;
     GXTexObj other;
     GXInitTexObj(&mine, sTexels, 4, 4, GX_TF_RGBA8, GX_CLAMP, GX_CLAMP, GX_FALSE);
+    GXInitTexObj(&byContent, sSourceTexels, 4, 4, GX_TF_RGBA8, GX_CLAMP, GX_CLAMP, GX_FALSE);
     GXInitTexObj(&other, sOtherTexels, 4, 4, GX_TF_RGBA8, GX_CLAMP, GX_CLAMP, GX_FALSE);
     ModTextureSource mineSource = MOD_TEXTURE_SOURCE_NONE;
+    ModTextureSource contentSource = MOD_TEXTURE_SOURCE_NONE;
     ModTextureSource otherSource = MOD_TEXTURE_SOURCE_POINTER;
     svc_mods->debug_texture_source(mod_ctx, &mine, nullptr, &mineSource);
+    svc_mods->debug_texture_source(mod_ctx, &byContent, nullptr, &contentSource);
     svc_mods->debug_texture_source(mod_ctx, &other, nullptr, &otherSource);
-    out.expect(mineSource == MOD_TEXTURE_SOURCE_POINTER && otherSource == MOD_TEXTURE_SOURCE_NONE,
-        fmt::format("debug_texture_source: mine {} other {}", static_cast<int>(mineSource),
-            static_cast<int>(otherSource)));
+    out.expect(mineSource == MOD_TEXTURE_SOURCE_POINTER && contentSource == MOD_TEXTURE_SOURCE_SOURCE &&
+                   otherSource == MOD_TEXTURE_SOURCE_NONE,
+        fmt::format("debug_texture_source: pointer {} content {} other {}", static_cast<int>(mineSource),
+            static_cast<int>(contentSource), static_cast<int>(otherSource)));
 }
 
 void checkVars(const nlohmann::json& p, Problems& out) {
@@ -335,26 +456,100 @@ void checkVars(const nlohmann::json& p, Problems& out) {
     }
 }
 
+// Once the alias and its base file are mounted: both read the same, then an entry overlay goes
+// under the alias's own directory. False when the step should finish.
+bool overlayAliasEntry(const nlohmann::json& p, int tick) {
+    auto& run = sInventory;
+    JKRArchive* alias = run.archives.get(0);
+    JKRArchive* base = run.archives.get(1);
+    if (alias == nullptr || base == nullptr) {
+        run.problems.expect(false, fmt::format("mounting {} / {} failed", run.mountPaths[0], run.mountPaths[1]));
+        return false;
+    }
+    std::string entryPath;
+    if (!arcEntryPath(*alias, 0, arcRoot(*alias), run.entryIndex, entryPath)) {
+        run.problems.expect(false, fmt::format("{} has no files", run.mountPaths[0]));
+        return false;
+    }
+    const auto aliasEntry = readArcFile(*alias, run.entryIndex);
+    run.baseEntry = readArcFile(*base, run.entryIndex);
+    run.problems.expect(!run.baseEntry.empty() && aliasEntry == run.baseEntry,
+        fmt::format("{} file {}: the alias read {} B, the base file {} B", run.mountPaths[0], entryPath,
+            aliasEntry.size(), run.baseEntry.size()));
+
+    std::string dir = run.mountPaths[0];
+    dir.resize(dir.size() - 4);
+    const std::string discPath = dir + "/" + entryPath;
+    run.entryOverlayBytes = bytesOf(p.value("aliasEntryBytes", std::string("twili alias entry overlay\n")));
+    OverlayHandle handle = 0;
+    if (svc_overlay->add_buffer(mod_ctx, discPath.c_str(), run.entryOverlayBytes.data(),
+            run.entryOverlayBytes.size(), &handle) != MOD_OK)
+    {
+        run.problems.expect(false, "add_buffer failed for " + discPath);
+        return false;
+    }
+    run.overlays.push_back(handle);
+    run.overlayTick = tick;
+    TwiliLog.info("[autotest] looks inventory: entry overlay {} under the alias", discPath);
+    return true;
+}
+
+void checkAliasEntry() {
+    auto& run = sInventory;
+    const auto aliasEntry = readArcFile(*run.archives.get(0), run.entryIndex);
+    const auto baseEntry = readArcFile(*run.archives.get(1), run.entryIndex);
+    run.problems.expect(aliasEntry == run.entryOverlayBytes,
+        fmt::format("the alias read {} B for file {}, want its entry overlay's {} B", aliasEntry.size(),
+            run.entryIndex, run.entryOverlayBytes.size()));
+    run.problems.expect(baseEntry == run.baseEntry,
+        fmt::format("the base file read {} B for file {} under the alias's entry overlay, want {} B",
+            baseEntry.size(), run.entryIndex, run.baseEntry.size()));
+}
+
 bool checkLooksInventory(StepContext& ctx) {
     if (!ctx.begun) {
         return !beginInventory(ctx);
     }
-    // One frame applies the overlays, the next sees the watch callback.
-    if (ctx.ticks < 2) {
+    auto& run = sInventory;
+    const auto& p = ctx.step;
+    if (run.phase == 0) {
+        // One frame applies the overlays, the next sees the watch callback.
+        if (ctx.ticks < 2) {
+            return false;
+        }
+        looks::dump(false);
+        checkFixtures(p, looks::listMods(), run.problems);
+        checkRuntime(p, run.problems);
+        checkVars(p.value("cosmetics", nlohmann::json::object()), run.problems);
+        run.problems.expect(run.watchCalls > 0, "the watch callback never ran");
+
+        ModOverlayStats stats = MOD_OVERLAY_STATS_INIT;
+        run.problems.expect(svc_mods->debug_overlay_stats(mod_ctx, &stats) == MOD_OK && stats.overlay_syncs > 0,
+            fmt::format("debug_overlay_stats: {} syncs", stats.overlay_syncs));
+        run.mountPaths[0] = p.value("aliasPath", std::string("/tt_autotest/alias/Mmdl.arc"));
+        run.mountPaths[1] = p.value("baseFile", std::string("/res/Object/Mmdl.arc"));
+        run.phase = 1;
         return false;
     }
-    const auto& p = ctx.step;
-    Problems problems;
-    looks::dump(false);
-    checkFixtures(p, looks::listMods(), problems);
-    checkRuntime(p, problems);
-    checkVars(p.value("cosmetics", nlohmann::json::object()), problems);
-    problems.expect(sInventory.watchCalls > 0, "the watch callback never ran");
+    if (run.phase == 1) {
+        const char* const paths[2] = {run.mountPaths[0].c_str(), run.mountPaths[1].c_str()};
+        const auto state = run.archives.update(&run, paths, 2, p.value("mountHeapSize", 0x400000u));
+        if (run.archives.failed()) {
+            run.problems.expect(false, "no heap for the alias mount");
+        } else if (state != PrivateArchives::State::Ready) {
+            return false;
+        } else if (overlayAliasEntry(p, ctx.ticks)) {
+            run.phase = 2;
+            return false;
+        }
+    } else if (ctx.ticks <= run.overlayTick) {
+        // The entry overlay reaches the file table at the end of the frame.
+        return false;
+    } else {
+        checkAliasEntry();
+    }
 
-    ModOverlayStats stats = MOD_OVERLAY_STATS_INIT;
-    problems.expect(svc_mods->debug_overlay_stats(mod_ctx, &stats) == MOD_OK && stats.overlay_syncs > 0,
-        fmt::format("debug_overlay_stats: {} syncs", stats.overlay_syncs));
-
+    Problems problems = std::move(run.problems);
     const uint64_t before = svc_mods->generation(mod_ctx);
     cleanupInventory();
     problems.expect(svc_mods->generation(mod_ctx) != before, "removing overrides kept the generation");
@@ -369,28 +564,6 @@ bool checkLooksInventory(StepContext& ctx) {
         ctx.fail("checkLooksInventory: " + all);
     }
     return true;
-}
-
-// The in-archive path entry overlays use: "<root>/<dirs>/<name>".
-bool arcEntryPath(const JKRArchive& arc, uint32_t dirIndex, const std::string& prefix,
-    uint32_t index, std::string& out) {
-    const auto& dir = arc.mNodes[dirIndex];
-    for (uint32_t i = 0; i < dir.num_entries; i++) {
-        const auto& entry = arc.mFiles[dir.first_file_index + i];
-        const std::string name = &arc.mStringTable[entry.getNameOffset()];
-        if (name == "." || name == "..") {
-            continue;
-        }
-        if (entry.isDirectory()) {
-            if (arcEntryPath(arc, entry.data_offset, prefix + name + "/", index, out)) {
-                return true;
-            }
-        } else if (entry.index == index) {
-            out = prefix + name;
-            return true;
-        }
-    }
-    return false;
 }
 
 struct ChurnRun {

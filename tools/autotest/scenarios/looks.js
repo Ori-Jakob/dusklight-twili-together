@@ -15,8 +15,9 @@ module.exports = [
     {
         name: "looks-inventory",
         description: "ModsService lists two fixture mods (one wins their shared path), hashes and reads their files, "
-            + "sees our runtime overlay, base alias and texture, reads the disc under an overlay and gives out only "
-            + "allowlisted cosmetics vars",
+            + "sees our runtime overlay, base alias and POINTER/SOURCE textures, reads the disc under an overlay and "
+            + "gives out only allowlisted cosmetics vars; the alias opens and mounts as the disc file and reads an "
+            + "entry overlay under its own directory that the real file does not",
         timeoutSec: 150,
         cvars: [...COMMON_CVARS, cosmetic("herosTunicCapColor", "C03020"), cosmetic("midnaHairBaseColor", 3)],
         enableMods: [MODS.cosmetics],
@@ -44,6 +45,7 @@ module.exports = [
                     textureFormat: 6,
                     baseFile: "/res/Object/Mmdl.arc",
                     aliasPath: "/tt_autotest/alias/Mmdl.arc",
+                    discOverlayFile: "/res/Object/E_fz.arc",
                     runtimePath: "/tt_autotest/runtime.bin",
                     runtimeBytes: RUNTIME_BYTES,
                     runtimeSha: sha256(Buffer.from(RUNTIME_BYTES)),
