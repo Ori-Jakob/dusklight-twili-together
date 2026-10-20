@@ -17,6 +17,10 @@ const DM_SWITCH = 0x3a;
 // Snowpeak Ruins room 3: an ice block of the courtyard puzzle (saved along path 0).
 const SNOWPEAK = { stage: "D_MN11", room: 3, point: 0 };
 const ICE_BLOCK = [4900, -3100];
+// Arbiter's Grounds room 15: a two-step turning wall (KIND_0) saved in switch 0x8a.
+const AG_TURN_ROOM = { stage: "D_MN10", room: 15, point: 1 };
+const TURN = [4150, -600];
+const TURN_SWITCH = 0x8a;
 // City in the Sky room 13: a nine-link chain switch (switch 0x54) that opens a shutter. Arbiter's
 // Grounds' entrance chain hangs over sand that voids Link out.
 const CITY = { stage: "D_MN09", room: 13, point: 0 };
@@ -182,6 +186,26 @@ module.exports = [
             block(ICE_BLOCK, { kind: "iceblock", minApplied: 1, timeoutSec: 20 }),
             ...samePlace(ICE_BLOCK, "A", "iceblock"),
             block(ICE_BLOCK, { kind: "iceblock", moved: true, matchesRemote: true, tol: 10 }),
+        ]),
+    duo("blocks-turn", "A turns an Arbiter's Grounds turning wall: B's wall turns with it, ends on the same step, and B gets the switch from A's game",
+        AG_TURN_ROOM,
+        [
+            ...meet(AG_TURN_ROOM, "B"),
+            block(TURN, { kind: "swturn", step: 0 }),
+            ...barrier("ready", "B"),
+            { op: "pushBlock", kind: "swturn", near: TURN },
+            ...samePlace(TURN, "B", "swturn"),
+            block(TURN, { kind: "swturn", step: 1 }),
+            { op: "expectSwitch", no: TURN_SWITCH, set: true, timeoutSec: 10 },
+        ],
+        [
+            ...meet(AG_TURN_ROOM, "A"),
+            block(TURN, { kind: "swturn", step: 0 }),
+            ...barrier("ready", "A"),
+            block(TURN, { kind: "swturn", moving: true, minApplied: 1, timeoutSec: 20 }),
+            ...samePlace(TURN, "A", "swturn"),
+            block(TURN, { kind: "swturn", step: 1, matchesRemote: true }),
+            { op: "expectSwitch", no: TURN_SWITCH, set: true, timeoutSec: 10 },
         ]),
     duo("blocks-chain", "A pulls a City in the Sky chain switch: B's chain follows A's puppet, B gets the switch from A's game, and the chain lets go with A",
         CITY,

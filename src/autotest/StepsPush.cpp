@@ -155,12 +155,18 @@ bool expectBlock(StepContext& ctx) {
         why = "no such block here";
     } else {
         const XZ pos = push::detail::blockPos(*r);
-        const XZ home{r->key.home[0], r->key.home[2]};
+        // A turn object's spot is its step (placed on step 0).
+        const bool turn = push::detail::isTurn(r->kind);
+        const XZ home = turn ? push::detail::turnSpot(0) : XZ{r->key.home[0], r->key.home[2]};
         const float tol = step.value("tol", 5.0f);
         const bool walking = r->localWalk || r->remoteWalk;
         XZ at;
         if (readXZ(step, "at", at) && distXZ(pos, at) > tol) {
             why = fmt::format("at {:.0f} {:.0f}, want {:.0f} {:.0f}", pos.x, pos.z, at.x, at.z);
+        } else if (turn && step.contains("step") &&
+                   push::detail::turnStep(*r) != step.value("step", 0))
+        {
+            why = fmt::format("on step {}", push::detail::turnStep(*r));
         } else if (step.contains("moved") &&
                    (distXZ(pos, home) > tol) != step.value("moved", true))
         {
