@@ -202,6 +202,10 @@ older builds go without it or without those clicks.
   those destinations per game for later catch-ups. Cutscenes started by NPCs or objects play only
   for the player who triggers them; teammates in the room get the follow prompt if the scene moves
   them.
+- Sync Blocks and Chains covers push blocks and gravestones, Snowpeak's ice blocks, turning
+  switches, Castle Town's push doors and chain switches. Beamos statues, the walls pulled by a
+  chain, the wolf's ceiling chains and Snowpeak's cannons still move only for whoever moves them;
+  what they save reaches the team as switches.
 - While the game is paused by "Pause on Focus Lost", the mod does not run: a `tcp://`
   connection drops after 30 s and reconnects when you come back.
 - Name tags are drawn under the HUD.
