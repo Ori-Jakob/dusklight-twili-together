@@ -1,0 +1,2905 @@
+[
+ {
+  "file": "d_a_door_shutter.cpp",
+  "class": "daDoor20_c",
+  "profile": "fpcNm_DOOR20_e",
+  "names": [
+   "door",
+   "ndoor",
+   "tadoor",
+   "yodoor",
+   "nadoor",
+   "l9door",
+   "l7door",
+   "bigdoor"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "angleX & 0xFF",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "role": "stop-open-front",
+    "none": 255,
+    "when": "player in front room (stayNo == FRoomNo) and frontOption (params>>8 &3) is 1 or 3 and isMsgDoor (params>>31 &1) == 0"
+   },
+   {
+    "expr": "(angleX >> 8) & 0xFF",
+    "src": "angleX",
+    "shift": 8,
+    "mask": 255,
+    "role": "stop-open-back",
+    "none": 255,
+    "when": "player in back room (stayNo == BRoomNo) and backOption (params>>10 &7) is 1 or 3 and isMsgDoor == 0"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "angleZ",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "when": "front side, frontOption == 1",
+    "notes": "checked in room FRoomNo (params>>13 &0x3F)"
+   },
+   {
+    "role": "set-when-done",
+    "src": "angleZ",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "when": "front side, frontOption == 3",
+    "notes": "set at trigger, when FRoomNo is displayed and has no enemies for 65 frames"
+   },
+   {
+    "role": "required-on",
+    "src": "angleZ",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "when": "back side, backOption == 1",
+    "notes": "checked in room BRoomNo (params>>19 &0x3F)"
+   },
+   {
+    "role": "set-when-done",
+    "src": "angleZ",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "when": "back side, backOption == 3",
+    "notes": "set at trigger, when BRoomNo is displayed and has no enemies for 65 frames"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "stop-open event has no player area; it needs the stopper (bars) on the player's side to be closed: side switch != 0xFF and off at setStop(). Player walk-through event uses checkArea(getSize2X(),110,250) box but always mapToolId 0xFF"
+  },
+  "trigger": "door bars on the player's side open: option 1 = side switch turns on; option 3 = side room has no enemies left (door sets the switch itself)",
+  "requester": "this",
+  "relocates": false,
+  "notes": "orderStopEvent(): field_0x6b8[i] = door_param2_c::getEventNo(this) /*home.angle.x & 0xFF*/ or getEventNo2 /*(home.angle.x>>8)&0xFF*/; fopAcM_orderOtherEventId(this, idx, field_0x6b8[i], ...). When the id is 0xFF or isMsgDoor, orders DEFAULT_STOP_OPEN (no map tool). isMsgDoor doors use full angleX as message number instead. Side = frontCheck(): stayNo==FRoomNo ->front, ==BRoomNo ->back (if FRoomNo==BRoomNo, by player angle vs door angle.y). Normal door-open events (ordered by player via fopAcM_orderDoorEvent with door as actorB) always carry mapToolId 0xFF (makeEventId resets field_0x6b8 to 0xFF). frontOption 2 / backOption 2 = key lock, swbit = unlocked flag (not a map-tool event). Kind = params & 0x1F selects model/event table only."
+ },
+ {
+  "file": "d_a_door_spiral.cpp",
+  "class": "daSpiral_c",
+  "profile": "fpcNm_SPIRAL_DOOR_e",
+  "names": [
+   "sdoor"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "angleX & 0xFF",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "role": "stop-open-front",
+    "none": 255,
+    "when": "player in front room (stayNo == FRoomNo) and frontOption (params>>8 &3) is 1 or 3 and isMsgDoor (params>>31 &1) == 0"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "angleZ",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "when": "frontOption == 1",
+    "notes": "checked in room FRoomNo (params>>13 &0x3F)"
+   },
+   {
+    "role": "set-when-done",
+    "src": "angleZ",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "when": "frontOption == 3",
+    "notes": "set at trigger, when FRoomNo is displayed and has no enemies for 65 frames"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "stop-open event needs the front stopper closed (checkStopF: swbit != 0xFF, option 1/3, switch off); no player area"
+  },
+  "trigger": "spiral door bars open: option 1 = switch turns on; option 3 = front room has no enemies left (door sets the switch itself)",
+  "requester": "this",
+  "relocates": false,
+  "notes": "setStopDemo(): mMapToolIds[6] = door_param2_c::getEventNo(this) /*home.angle.x & 0xFF*/; mEventIds[6] = getEventIdx(this, mMapToolIds[6]); actionWait: fopAcM_orderOtherEventId(this, mEventIds[mDemoMode], mMapToolIds[mDemoMode], ...). If id 0xFF or msg door, orders DEFAULT_STOP_OPEN. Only the front side has a stopper. Regular spiral transit event (setEventPrm) always passes 0xFF."
+ },
+ {
+  "file": "d_a_door_mbossL1.cpp",
+  "class": "daMBdoorL1_c",
+  "profile": "fpcNm_L1MBOSS_DOOR_e",
+  "names": [
+   "L1Mdoor/1",
+   "L2Mdoor/2",
+   "L3Mdoor/3",
+   "L4Mdoor/4",
+   "L5Mdoor/5",
+   "L6Mdoor/6",
+   "L7Mdoor/7",
+   "L8Mdoor/8",
+   "L7door/10",
+   "L5door/11"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "angleX & 0xFF",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "role": "stop-open",
+    "none": 255,
+    "when": "stopper closed (mDoorStop.field_0x8 != 0) and the side switch turns on; same id for both sides"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "angleZ",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "when": "front side (actor room == FRoomNo params>>13 &0x3F)",
+    "notes": "fopAcM_isSwitch(this, sw) in the actor's room"
+   },
+   {
+    "role": "required-on",
+    "src": "angleZ",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "when": "back side (actor room != FRoomNo)",
+    "notes": "fopAcM_isSwitch(this, sw) in the actor's room"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no area; stopper must be closed: actionInit sets mDoorStop.field_0x8=1 when level != 1 and the side switch is off"
+  },
+  "trigger": "mid-boss door bars open when the side switch turns on (set by something else, e.g. the mini-boss)",
+  "requester": "this",
+  "relocates": false,
+  "notes": "actionCloseWait: u8 eventNo = door_param2_c::getEventNo(this) /*home.angle.x & 0xFF*/; idx = eventNo != 0xff ? getEventIdx(this, eventNo) : DEFAULT_STOP_OPEN; fopAcM_orderOtherEventId(this, idx, eventNo, ...). Level = OBJNAME sub-arg (argument). Side: field_0x5df = (fopAcM_GetRoomNo(this) == FRoomNo) ? 0 : 1. Front/back option is not checked on the open path. L1Mdoor/1 (level 1) never sets field_0x8 so likely never orders this (unverified). Door-open event (ordered by player via fopAcM_orderDoorEvent with door as actorB) always uses mapToolId 0xFF; its demo action 13 calls player->onSceneChangeArea(exitNo = params>>25 &0x3F), not part of the map-tool event."
+ },
+ {
+  "file": "d_a_door_knob00.cpp",
+  "class": "daKnob20_c",
+  "profile": "fpcNm_KNOB20_e",
+  "names": [
+   "kdoor"
+  ],
+  "mapToolIds": [],
+  "switches": [],
+  "eventBits": [],
+  "area": {
+   "shape": "box",
+   "notes": "door-open event (no map tool): player in door-local |x|<=80, |z|<=110, dist<=250 and facing the door"
+  },
+  "trigger": "player opens the knob door (A button); no map-tool event",
+  "requester": "this",
+  "relocates": false,
+  "notes": "setEventId(): field_0x5b2[i] = 0xff for all entries; setEventPrm sets eventInfo.setMapToolId(field_0x5b2[...]) = 0xFF always. No placement-derived map-tool id. Ordered by player via fopAcM_orderDoorEvent with door as actorB. Open demo may call player->onSceneChangeArea(exitNo = params>>25 &0x3F). Included for completeness; extractor can ignore."
+ },
+ {
+  "file": "d_a_door_bossL5.cpp",
+  "class": "daBdoorL5_c",
+  "profile": "fpcNm_L5BOSS_DOOR_e",
+  "names": [
+   "L5Bdoor"
+  ],
+  "mapToolIds": [],
+  "switches": [],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "n/a"
+  },
+  "trigger": "player opens the boss door; no map-tool event",
+  "requester": "this",
+  "relocates": false,
+  "notes": "field_0x593 = 0xff is its only assignment; eventInfo.setMapToolId(field_0x593) is always 0xFF. No placement-derived map-tool id. Swbit = angleZ & 0xFF picks open vs locked door event name. Ordered by player via fopAcM_orderDoorEvent with door as actorB; open demo calls player->onSceneChangeArea(exitNo = params>>25 &0x3F). Included for completeness; extractor can ignore."
+ },
+ {
+  "file": "d_a_door_bossL1.cpp",
+  "class": "daBdoorL1_c",
+  "profile": "fpcNm_L1BOSS_DOOR_e",
+  "names": [
+   "L1Bdoor",
+   "L2Bdoor",
+   "L4Bdoor",
+   "L6Bdoor",
+   "L7Bdoor",
+   "L8Bdoor",
+   "L9Bdoor"
+  ],
+  "mapToolIds": [],
+  "switches": [],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "n/a"
+  },
+  "trigger": "player opens the boss door; no map-tool event",
+  "requester": "this",
+  "relocates": false,
+  "notes": "actionCloseWait: eventInfo.setMapToolId(0xff) always; event idx from getDoorEventName()/getDoorEventName2() with 0xff. No placement-derived map-tool id. Ordered by player via fopAcM_orderDoorEvent with door as actorB; open demo calls player->onSceneChangeArea(exitNo = params>>25 &0x3F). Included for completeness; extractor can ignore."
+ },
+ {
+  "file": "d_a_door_push.cpp",
+  "class": "daDoorPush_c",
+  "profile": "fpcNm_PushDoor_e",
+  "names": [
+   "pdoor"
+  ],
+  "mapToolIds": [],
+  "switches": [],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "player pushes either door leaf for 35+ frames (BG push callback)"
+  },
+  "trigger": "player pushes the door; orders PUSH_DOOR_L with mapToolId 0xFF",
+  "requester": "this",
+  "relocates": true,
+  "notes": "field_0x63e[i] = 0xff is the only assignment, so fopAcM_orderOtherEventId(this, field_0x63a[mIndex], field_0x63e[mIndex], ...) never carries a map-tool id. Relocates via event action SCENE_CHG: dStage_changeScene(getSceneNo() /*params>>4 &0x3F*/, 0, 0, roomNo, 0, -1). Included for completeness; no REVT id."
+ },
+ {
+  "file": "d_a_obj_kshutter.cpp",
+  "class": "daObjKshtr_c",
+  "profile": "fpcNm_Obj_Kshutter_e",
+  "names": [
+   "kshtr00",
+   "vshuter",
+   "L3Bdoor"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 16 & 0xFF",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "role": "key-door",
+    "none": 255,
+    "when": "key mode (params bit31 = 1): attached to the door event the player orders; if != 0xFF fopAcM_orderDoorEvent replaces the archive event with the REVT event (getEventIdx(player, NULL, toolid), looked up in the player's room)"
+   },
+   {
+    "expr": "params >> 16 & 0xFF",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "role": "switch-open",
+    "none": 255,
+    "when": "no-key mode (params bit31 = 0) and type != 3 (V_Shutter): fopAcM_orderOtherEventId(this, getEventIdx(this, mEvId), mEvId, ...) once the switch turns on; 0xFF gives event idx -1 (nothing useful ordered)"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "key mode: set at trigger (fopAcM_onSwitch(this, mSwNo) when checkCommandDoor fires)"
+   },
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "no-key mode: turning it on (by something else) makes the shutter order the event"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "both modes: switch already on at create -> mAction = 2 (dead, shutter open), never orders"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "box",
+   "notes": "key mode only (checkArea): player XZ offset from actor pos, rotated by home.angle.y: |along facing| <= 110, |lateral| <= 110, and distXZ <= 250; not scaled. Also needs |current.angle.y - player.angle.y| >= 0x5000 (player facing the door) and a small key (dComIfGs_getKeyNum() > 0), or the dungeon boss key when mType == 3 (type param 2). No-key mode has no area."
+  },
+  "trigger": "key mode: player with a key stands in front of the shutter and presses A (door event ordered by the player); no-key mode: switch params&0xFF turns on at runtime",
+  "requester": "this",
+  "relocates": false,
+  "notes": "u8 checkKey() { return fopAcM_GetParamBit(this, 31, 1); } u8 getEvId() { return fopAcM_GetParamBit(this, 16, 8); } u8 getType() { return fopAcM_GetParamBit(this, 8, 8); } u8 getSwNo() { return fopAcM_GetParamBit(this, 0, 8); }. mType = getType() + 1 (1,2 = S_shut00/Lv3shut00 jail doors, 3 = TYPE_L3BOSS K_l3bdoor, 4 = TYPE_V_SHUTTER). Key mode: ordered by player with door as actorB (d_a_alink fopAcM_orderDoorEvent(this, door, 0, 0)); the door sets eventInfo.setEventId(l_eventName[mType*2 + isWolf]) (archive event, e.g. KEY_JAIL_01 / DEFAULT_BS_SHUTTER_L3_F) and eventInfo.setMapToolId(mEvId); fopAcM_orderDoorEvent special-cases Kshutter: if toolid != 0xFF, evid = getEventIdx(actorA, NULL, toolid). No-key mode with mType == 4 (V_Shutter) just opens with no event. Names carry no sub-arg; type is params only. The REVT entry's switch is checked by dEvt_control_c::order (blocks if on) and set at event start."
+ },
+ {
+  "file": "d_a_obj_smgdoor.cpp",
+  "class": "daObjSmgDoor_c",
+  "profile": "fpcNm_Obj_SmgDoor_e",
+  "names": [
+   "smgdoor",
+   "smkdoor"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params & 0xFF",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "role": "door",
+    "none": 255,
+    "when": "attached to the door event as eventInfo mapToolId; the event script itself is the archive event NOW_DOOR_IN (type 0) / OLD_DOOR_IN (type 1); fopAcM_orderDoorEvent has an empty SmgDoor branch so the REVT event does not replace it"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 20,
+    "mask": 255,
+    "none": 255,
+    "notes": "checkOpen: if (getSwbit() != 0xff && !fopAcM_isSwitch(this, getSwbit())) return 0"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "box",
+   "notes": "checkArea: player XZ offset from actor pos, axis = home.angle.y: distXZ <= 250, |along| <= 300 (redundant), |lateral| <= 110; not scaled. Needs |current.angle.y - player.angle.y| >= 0x5000 and player not wolf."
+  },
+  "trigger": "human Link stands in front of the door (switch on if set) and presses A; door event ordered by the player",
+  "requester": "this",
+  "relocates": true,
+  "notes": "u8 getEvId() { return fopAcM_GetParamBit(this, 0, 8); } u8 getSwbit() { return fopAcM_GetParamBit(this, 20, 8); } u8 getType() { return fopAcM_GetParamBit(this, 8, 4); } u8 getNextSceneID() { return fopAcM_GetParamBit(this, 12, 8); }. Ordered by player with door as actorB (fopAcM_orderDoorEvent). Type 0 = A_SMGDoor/NOW_DOOR_IN, type 1 = A_SMKDoor/OLD_DOOR_IN, from params not from the stage name. Relocates: demo action SCENE_CHG and the skip callback call sceneChange(): player->onSceneChangeArea(getNextSceneID(), 0xff, 0) (exit index params>>12 & 0xFF). No re-order after the event; how the REVT entry is used beyond the order-time switch check and setParam (switch set, camera field) is unverified."
+ },
+ {
+  "file": "d_a_obj_kgate.cpp",
+  "class": "daObjKGate_c",
+  "profile": "fpcNm_Obj_KkrGate_e",
+  "names": [
+   "K_Gate"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 20 & 0xFF",
+    "src": "params",
+    "shift": 20,
+    "mask": 255,
+    "role": "door",
+    "when": "only nameArg 0 or 2 with sw != 0xFF and sw off at create; attached to the door event (eventInfo.setMapToolId) alongside archive event KOKI_GATE_OPEN00 (nameArg 0) / RIDER_GATE_OPEN00 (nameArg 2); the archive event is what plays"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-off",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "notes": "Create: if (sw_no != 0xFF && !fopAcM_isSwitch(this, sw_no)) wait for event, else dead; 0xFF means no event at all"
+   },
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "set at trigger: fopAcM_onSwitch(this, getSwNo()) when checkCommandDoor fires (also consumes a small key)"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "box",
+   "notes": "checkOpen: player pos in gate-local frame (trans pos, rotY current.angle.y, unscaled): -100 <= x <= 100 and 0 <= z <= 100. Needs a small key (dComIfGs_getKeyNum() > 0) and |current.angle.y - player.angle.y| >= 0x5000."
+  },
+  "trigger": "player with a small key stands at the locked gate and presses A; door event ordered by the player",
+  "requester": "this",
+  "relocates": false,
+  "notes": "u8 getSwNo() { return fopAcM_GetParamBit(this, 0, 8); } u8 getEventID() { return fopAcM_GetParamBit(this, 0x14, 8); } u8 getNameArg() { return fopAcM_GetParamBit(this, 0x10, 4); }. nameArg 0 = D_Kgate00 locked gate, 1 = D_Kgate01 bomb-breakable gate (no event; bomb hit sets the switch and deletes the actor), 2 = M_RGate00 rider gate with key. Ordered by player with door as actorB (fopAcM_orderDoorEvent); no Kgate special case there, so evid = the archive event and the REVT id only rides along (its switch blocks the order if on and is set at event start)."
+ },
+ {
+  "file": "d_a_obj_rgate.cpp",
+  "class": "daObjRgate_c",
+  "profile": "fpcNm_Obj_RiderGate_e",
+  "names": [
+   "R_Gate"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 20 & 0xFF",
+    "src": "params",
+    "shift": 20,
+    "mask": 255,
+    "role": "door",
+    "when": "only when sw != 0xFF, sw off and event bit saveBitLabels[68] off at create; attached to the door event alongside archive event RIDER_GATE_OPEN00 (the archive event is what plays)"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-off",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "notes": "Create: sw_no != 0xFF && !fopAcM_isSwitch(this, sw_no) && !isEventBit(saveBitLabels[68])"
+   },
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "set at trigger: fopAcM_onSwitch(this, getSwNo()) on checkCommandDoor (also consumes a small key)"
+   }
+  ],
+  "eventBits": [
+   {
+    "role": "blocks",
+    "src": "const",
+    "value": 68,
+    "kind": "saveBitLabels-index",
+    "notes": "fixed index, not from placement: dSv_event_flag_c::M_035 (after carriage guarding); when set the gate is created dead and drawn open"
+   }
+  ],
+  "area": {
+   "shape": "box",
+   "notes": "checkOpen: player pos in gate-local frame (trans pos, rotY current.angle.y, unscaled): -100 <= x <= 100 and 0 <= z <= 100. Needs a small key (dComIfGs_getKeyNum() > 0) and |current.angle.y - player.angle.y| >= 0x5000."
+  },
+  "trigger": "player with a small key stands at the gate and presses A; door event ordered by the player",
+  "requester": "this",
+  "relocates": false,
+  "notes": "u8 getSwNo() { return fopAcM_GetParamBit(this, 0, 8); } u8 getEventID() { return fopAcM_GetParamBit(this, 0x14, 8); }. Ordered by player with door as actorB (fopAcM_orderDoorEvent); evid = archive event RIDER_GATE_OPEN00, REVT id rides along (switch check at order, switch set at start)."
+ },
+ {
+  "file": "d_a_obj_cdoor.cpp",
+  "class": "daObjCdoor_c",
+  "profile": "fpcNm_Obj_Cdoor_e",
+  "names": [
+   "Cdoor",
+   "Cgate"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 12 & 0xFF",
+    "src": "params",
+    "shift": 12,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "type 1 (J_Suimon water gate) only; type 0 (chain door) never orders"
+   }
+  ],
+  "switches": [],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no area check"
+  },
+  "trigger": "type 1: ordered as soon as the actor runs (actionWait orders whenever mMapToolID != 0xff), and ordered again after each event end (actionDead -> ACT_WAIT); only the REVT entry's switch stops it (dEvt_control_c::order refuses when that switch is on, setParam turns it on at event start)",
+  "requester": "this",
+  "relocates": false,
+  "notes": "mType = (fopAcM_GetParam(this) >> 8) & 0xf; mMapToolID = (fopAcM_GetParam(this) >> 0xc) & 0xff; mEventID = getEventIdx(this, mMapToolID). Switch params & 0xFF only drives the gate open/close animation, not the order. Type comes from params, not from the stage name (Cdoor/Cgate share the profile). A REVT entry without a switch would make it re-order every time the event ends (unverified in game)."
+ },
+ {
+  "file": "d_a_obj_bmshutter.cpp",
+  "class": "daObjBmSh_c",
+  "profile": "fpcNm_Obj_BoomShutter_e",
+  "names": [
+   "BoomSht"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 16 & 0xFF",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "role": "main",
+    "none": 255
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "count": {
+     "src": "params",
+     "shift": 24,
+     "mask": 15
+    },
+    "notes": "checkSw: all of switches sw2 .. sw2+count-1 must be on; count 0 -> checkSw() true immediately (orders on spawn)"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "Create: fopAcM_isSwitch(this, getSwbit()) -> dead (already open)"
+   },
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "set at trigger: modeWait calls fopAcM_onSwitch(this, getSwbit()) in the same frame checkSw() passes"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no area for the event; l_check_area rectangle only used for the roll-crash shake effect"
+  },
+  "trigger": "all boomerang-target switches (sw2..sw2+count-1) are on",
+  "requester": "this",
+  "relocates": false,
+  "notes": "u32 getEvNo() { return fopAcM_GetParamBit(this, 16, 8); } u32 getSwbit() { return fopAcM_GetParamBit(this, 0, 8); } u32 getSwbit2() { return fopAcM_GetParamBit(this, 8, 8); } u32 getSwNum() { return fopAcM_GetParamBit(this, 24, 4); }. if (mEvent == 0xff) setAction(DEAD) -> no event (and the shutter still opens via modeWait). getSwbit3() = home.angle.x & 0xFF and getShtrNum() = params>>28 & 3 only affect shake/SE."
+ },
+ {
+  "file": "d_a_obj_stopper.cpp",
+  "class": "daObjStopper_c",
+  "profile": "fpcNm_Obj_Stopper_e",
+  "names": [
+   "stopper"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 24 & 0xFF",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "stage1",
+    "when": "1st rising edge of switch params&0xFF"
+   },
+   {
+    "expr": "angleX & 0xFF",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "role": "stage2",
+    "when": "2nd rising edge of switch params&0xFF"
+   },
+   {
+    "expr": "params >> 16 & 0xFF",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "role": "stage3",
+    "when": "3rd rising edge of switch params&0xFF; after this event ends switch params>>8&0xFF is set and the actor goes dead"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "actionWait counts off->on edges (isSwitch != field_0x94e && field_0x94e == 0); each edge orders the next stage's id; the switch must go off and on again for the next stage (process memory is zeroed, so a switch already on at spawn counts as the first edge)"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "Create: fopAcM_isSwitch(this, getSwNo2()) -> dead (raised)"
+   },
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "set when the stage-3 event ends"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no area check"
+  },
+  "trigger": "switch params&0xFF turns on (three separate times, one stage per rising edge, 10 frame delay before ordering)",
+  "requester": "this",
+  "relocates": false,
+  "notes": "u8 getEventNo() { return fopAcM_GetParamBit(this, 16, 8); } u8 getEventNo2() { return fopAcM_GetParamBit(this, 24, 8); } u16 getEventNo3() { return field_0x9f8 & 0xff; } (field_0x9f8 = home.angle.x saved in create(), angle x/z then zeroed). u8 getSwNo() { return fopAcM_GetParamBit(this, 0, 8); } u8 getSwNo2() { return fopAcM_GetParamBit(this, 8, 8); }. No 0xFF check: an id of 0xFF orders event idx -1 with tool 0xFF (unverified result)."
+ },
+ {
+  "file": "d_a_obj_stopper2.cpp",
+  "class": "daObjStopper2_c",
+  "profile": "fpcNm_Obj_Stopper2_e",
+  "names": [
+   "dstop"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 8 & 0xFF",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "role": "lower",
+    "none": 255,
+    "when": "bars raised (mOffsetY != 0) and switch params&0xFF is off. REVT type ZEV -> fopAcM_orderMapToolEvent(this, mTool, 0xFF, 0xFFFF, 1, 0) (REVT event plays); type MAPTOOLCAMERA/STB -> fopAcM_orderOtherEventId(this, archive STOP_CLOSE2, mTool, ...). 0xFF -> archive STOP_CLOSE with no tool id"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-off",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "map-tool event fires when this switch is off while the bars are raised; bars start raised when the switch was on at create (mOffsetY = max), lowered when off"
+   },
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "other direction only: bars lowered and switch on -> archive STOP_OPEN with tool 0xFF (no map-tool event)"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no area check"
+  },
+  "trigger": "switch params&0xFF goes off while the door bars are raised (typically after the room is cleared); reversible, re-arms after each event",
+  "requester": "this",
+  "relocates": false,
+  "notes": "u32 getEvId() { return fopAcM_GetParamBit(this, 8, 8); } u32 getSwbit() { return fopAcM_GetParamBit(this, 0, 8); }. field_0x584 = (mOffsetY != 0) + ((mTool != 0xFF && mOffsetY != 0) ? 2 : 0); state 1/3 + switch off -> close order, state 0 + switch on -> STOP_OPEN. REVT looked up with searchMapEventData(mTool) (stay room) and JUT_ASSERTs it exists. The bar height after an event depends on the event's STOP_OPEN/STOP_CLOSE actions, so the next transition is decided at runtime."
+ },
+ {
+  "file": "d_a_obj_swpush.cpp",
+  "class": "daObjSwpush::Act_c",
+  "profile": "fpcNm_Obj_Swpush_e",
+  "names": [
+   "Kbota_A/0",
+   "Kbota_B/1",
+   "KbotaC/2",
+   "Swpush/0",
+   "Lv3bota/0"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params & 0xFF",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "ordered only if getEventIdx(this, id) resolves (dComIfGp_evmng_existence); 0xFF resolves to -1 so no event"
+   }
+  ],
+  "selectors": [
+   {
+    "name": "type",
+    "src": "params",
+    "shift": 24,
+    "mask": 7,
+    "values": "0 stay-down floor switch (on when pressed, obeys save); 1 pop-up (on while held, off on release); 2 inverted stay-down (pressing turns switch OFF); 3 toggle (each press reverses switch, pops up); 4 Lv3 pop-up variant (model S_lv3bota)"
+   },
+   {
+    "name": "model",
+    "src": "params",
+    "shift": 16,
+    "mask": 15,
+    "values": "0 Kbota_00, 1 S_lv3bota, 2 S_lv6bota, 15 -> 0; forced 1 when type 4"
+   },
+   {
+    "name": "couple",
+    "src": "params",
+    "shift": 29,
+    "mask": 1,
+    "values": "1 = needs player and NPC_P2 (wolf partner) riding together; footprint doubled"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "set at trigger: switched when the plate bottoms out (mode_u_l), during the ordered event; type 0/4/1 on, type 2 off, type 3 reversed; pop-up types revert it on release (mode_l_u)"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "angleZ",
+    "shift": 0,
+    "mask": 255,
+    "when": "types 1 and 4 only (FLAG_UNK20)",
+    "notes": "swSave2 = home.angle.z & 0xFF; when on the plate stays down and never pops up, so no release event"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "box",
+   "notes": "ride trigger on the top face (dzb vtx 0x0D,0x0B,0x0A,0x0C) of the switch BG, BG scaled by fixed (1.25,0.5,1.25) and rotated by angles; exact extent needs the dzb (unverified); cull box is +-80*attr.scale XZ (attr.scale 1.0, type 1 = 1.25); placement scale does not affect collision"
+  },
+  "trigger": "player (or carried object / NPC_P2 for couple) steps on the plate; also re-ordered when the plate pops back up for types 1/3/4, and when the switch is flipped externally for types 0/2 (FLAG_OBEY_SAVE moves the plate)",
+  "requester": "this",
+  "relocates": false,
+  "notes": "u8 prm_get_evId() { return PrmAbstract(this, 8, 0); }  int prm_get_swSave() { return PrmAbstract(this, 8, 8); }  int prm_get_type() { return PrmAbstract(this, 3, 0x18); }  mPrmZ = home.angle.z. Order: fopAcM_orderOtherEventId(this, mEventID, prm_get_evId(), 0xFFFF, 0, 1) from demo_reqSw_init on every down (and up for pop-up/toggle) transition. OBJNAME sub arg unused. Engine blocks the order when the REVT entry's switch_no is already set (dEvt_control_c::order)."
+ },
+ {
+  "file": "d_a_obj_swpush2.cpp",
+  "class": "daObjSwpush2::Act_c",
+  "profile": "fpcNm_Obj_Swpush2_e",
+  "names": [
+   "Ksw00_C/2"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params & 0xFF",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "ordered only if dComIfGp_evmng_existence(getEventIdx(this, id)); otherwise a 100-frame pause demo runs instead"
+   }
+  ],
+  "selectors": [
+   {
+    "name": "type",
+    "src": "params",
+    "shift": 24,
+    "mask": 7,
+    "values": "0 normal stay-down (on when pressed, obeys save); 1 no save-follow (FLAG 0x20); 2 inverted (press turns switch OFF, obeys save); 3 heavy: needs Iron Boots, size 1.5"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "set at trigger: switched when the plate reaches the bottom (mode_u_l) during the event; type 0/1/3 on, type 2 off"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "angleZ",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "when": "type 1 only (FLAG 0x20), create time",
+    "notes": "is_switch2: home.angle.z & 0xFF, 0xFF = none; when on the plate starts lowered"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "box",
+   "notes": "ride trigger on BG K_swmn00 dzb scaled by actor scale (scale.x/z additionally * attr.size: 1.0, type 3 = 1.5) and rotated by angles; exact extent needs the dzb (unverified); cull box +-150*attr.size XZ, 0..60 Y"
+  },
+  "trigger": "player or carried object rides the plate for ride_time frames (type 3: player with Iron Boots); also when switch is turned on externally for types 0/2/3 (obey save). Plate never pops back up (mode_lower is empty) so the event fires at most once per load",
+  "requester": "this",
+  "relocates": false,
+  "notes": "prm_get_evId = PrmAbstract(this, 8, 0); prm_get_swSave = PrmAbstract(this, 8, 8); prm_get_type = PrmAbstract(this, 3, 0x18). Order: fopAcM_orderOtherEventId(this, mEventIdx, prm_get_evId(), 0xFFFF, 0, 1). OBJNAME sub arg unused."
+ },
+ {
+  "file": "d_a_swc00.cpp",
+  "class": "daSwc00_c",
+  "profile": "fpcNm_SWC00_e",
+  "names": [
+   "SwAreaC",
+   "SwAreaS"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 24",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "ordered once after the area first triggers; 0xFF = no event (actor just goes dead)"
+   }
+  ],
+  "selectors": [
+   {
+    "name": "type",
+    "src": "angleX",
+    "shift": 8,
+    "mask": 15,
+    "values": "0/4 sw1 on while inside, off when outside; 1/5 sw1 on (latch); 2/6 sw1 off; 3/15 sw1 on then actor deletes; 7/8 sw1 off then deletes. Types 0,1,2,7,15 need sw2 on; 3,4,5,6,8 need sw2 off"
+   },
+   {
+    "name": "condition",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "values": "0 player; 1 player must be riding horse; 2 the horse actor is tested; 3 human Link not on horse; 4 lantern lit (getKandelaarFlamePos != NULL)"
+   },
+   {
+    "name": "shape",
+    "src": "params",
+    "shift": 18,
+    "mask": 3,
+    "values": "3 cylinder, 0 box, 1/2 never hit"
+   },
+   {
+    "name": "scaleMode",
+    "src": "params",
+    "shift": 20,
+    "mask": 15,
+    "values": "0 normal, 1 x10 size"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "set at trigger (sw1): on for types 0,1,3,4,5,15; off for 2,6,7,8; types 0/4 also clear it on leaving the area and at create"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "when": "types 3,15",
+    "notes": "create returns cPhs_ERROR_e if sw1 already on"
+   },
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "when": "types 7,8",
+    "notes": "create returns cPhs_ERROR_e if sw1 is off"
+   },
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "when": "types 0,1,2,7,15",
+    "notes": "sw2 gate checked every frame"
+   },
+   {
+    "role": "required-off",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "when": "types 3,4,5,6,8",
+    "notes": "sw2 gate checked every frame"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "cylinder|box",
+   "notes": "shape 3 cylinder: radius = scale.x*100+30, Y from pos.y-100 (exclusive) to pos.y+scale.y*100; scaleMode 1 uses *1000 instead of *100. shape 0 box: X/Z = pos +-50*scale.x/z, Y = pos.y .. pos.y+100*scale.y, rotated by angleY; scaleMode 1 multiplies scale by 10 first. scale = placement byte*0.1"
+  },
+  "trigger": "player (or horse, per condition) enters the area while the sw2 gate passes",
+  "requester": "this",
+  "relocates": false,
+  "notes": "daSwc00_getEvID: fopAcM_GetParam(i_this) >> 24; getType: (shape_angle.x & 0xf00) >> 8; getCondition: (u8)shape_angle.x; getShape: (param >> 18) & 3; getScale: (param >> 20) & 0xf. Order: fopAcM_orderOtherEventId(this, mEventID, getEvID, 0xffff, 0, 1); event ordered at most once per actor life (actionDead afterwards)."
+ },
+ {
+  "file": "d_a_swhit0.cpp",
+  "class": "daSwhit0_c",
+  "profile": "fpcNm_SWHIT0_e",
+  "names": [
+   "swHit/0",
+   "swHit2/1"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "(params >> 8) & 0xFF",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "0xFE = no map tool id, uses event DEFAULT_SWITCH instead; 0xFF or unresolvable id = no event, switch flips by itself after 30 frames"
+   }
+  ],
+  "selectors": [
+   {
+    "name": "type",
+    "src": "params",
+    "shift": 30,
+    "mask": 3,
+    "values": "0 one-shot on (hit only when off); 1/2 hit toggles, reverts after timer; 3 hit only when on (turns it off)"
+   },
+   {
+    "name": "timer",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "values": "comeback time = timer*15 frames for types 1/2; 0xFF = 0 (no revert)"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "set at trigger: toggled inside the event (staff SWITCH action CHANGE, or by the actor 6 frames in if the REVT entry is a map tool camera) and forced at event end"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "when": "type 0",
+    "notes": "type 0 on = ON_WAIT, cannot be hit back off. Types 1/2: hit when off orders the on event, hit when on orders the off event. Type 3: only a hit while on orders (turns it off)"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "hit sphere r=40 at pos + 95*(sin(ax)*sin(ay), cos(ax), sin(ax)*cos(ay)) (ax=angleX, ay=angleY), TG mask 0xd8fafdff (sword, arrows, boomerang, etc.)"
+  },
+  "trigger": "crystal switch hit by an attack while no event is running",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getEvNo: (param >> 8) & 0xFF, 0xFE -> 0xFF. Order: fopAcM_orderMapToolAutoNextEvent(this, getEvNo(), mEventId, 0xFFFF, 1, 0) (priority 3, auto-chains REVT next id); exception D_MN06 room 4 with switches 50 and 51 on uses fopAcM_orderOtherEventId(this, mEventId, getEvNo(), 0xFFFF, 0, 1). getSwNo2 = home.angle.z & 0xFF only pauses the comeback timer while on. argument!=0 (swHit2) = invisible, same logic. Switch turned on externally just flips the visual state, no event."
+ },
+ {
+  "file": "d_a_andsw2.cpp",
+  "class": "daAndsw2_c",
+  "profile": "fpcNm_ANDSW2_e",
+  "names": [
+   "AND_SW2"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "angleX & 0xFF",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "ordered only when getEventIdx(this, id) != -1; else the output switch is set directly"
+   }
+  ],
+  "selectors": [
+   {
+    "name": "type",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "values": "0 all inputs on, one-shot; 1/6 all inputs on, re-arms when an input goes off; 2 input pattern == swAns, one-shot; 3 pattern == swAns, re-arms; 4 any input on while output off (never orders, no lookup); 5 all inputs on, always armed, skips the event if the REVT switch is already on; other = inert"
+   },
+   {
+    "name": "swAns",
+    "src": "angleX",
+    "shift": 8,
+    "mask": 255,
+    "values": "bit i = required state of input i (types 2/3)"
+   },
+   {
+    "name": "delay",
+    "src": "angleZ",
+    "shift": 0,
+    "mask": 255,
+    "values": "delay = value*15 frames before ordering; 0xFF = none"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "notes": "set at trigger: output switch set when the event is accepted (or directly when no event); types 1/3/6 clear it again when inputs drop"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "none": 255,
+    "when": "types 0,2,3 (and 1/6 when 0xFF)",
+    "notes": "create: output switch already on or 0xFF -> ACT_WAIT/ACT_OFF, no order"
+   },
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "count": {
+     "src": "params",
+     "shift": 0,
+     "mask": 255
+    },
+    "notes": "inputs: N=(params&0xFF) consecutive switches starting at (params>>24)&0xFF; if that is 0xFF the first input is ((params>>16)&0xFF)+1; N 0 or 0xFF = never"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no area; pure switch logic"
+  },
+  "trigger": "the run of input switches reaches the required state (all on, or the swAns bit pattern), optionally after a delay",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getEventNo: home.angle.x & 0xFF; getSwbit: param >> 0x10; getSwbit2: param >> 0x18; getType: param >> 8; getTimer: home.angle.z & 0xFF; getNum: param & 0xFF; getSwAns: (home.angle.x >> 8) & 0xFF. Order: fopAcM_orderOtherEventId(i_this, mEventIdx, getEventNo(), 0xFFFF, 0, 1). Type 5 uses dLib_getEventSwitchNo(eventNo) (REVT switch_no). Type 4 never initialises mEventIdx; the delay path could still order with getEventNo() (unverified)."
+ },
+ {
+  "file": "d_a_alldie.cpp",
+  "class": "daAlldie_c",
+  "profile": "fpcNm_ALLDIE_e",
+  "names": [
+   "ALLdie"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 24",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "ordered only if getEventIdx(this, id) != -1"
+   },
+   {
+    "expr": "REVT[id].field_0x5 (chained)",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "next",
+    "when": "after each event ends, the REVT entry's next-id byte (offset 5) is ordered too, repeatedly while it resolves"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "set at trigger: turned on 65 frames after the room is clear, right before the order"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "create: switch already on -> ACT_WAIT, no check, no event"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "room-wide: fopAcM_myRoomSearchEnemy(roomNo) == NULL continuously for 65 frames"
+  },
+  "trigger": "all enemies in the actor's room are dead",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getEventNo: fopAcM_GetParam(this) >> 0x18; getSwbit: fopAcM_GetParam(this) >> 0x8 (u8). Order: fopAcM_orderOtherEventId(this, mEventIdx, getEventNo(), -1, 0, 1); chained: fopAcM_orderOtherEventId(this, mNextEventIdx, mMapToolID, -1, 0, 1) with mMapToolID = map_evt->field_0x5. Also sets eventInfo map tool id = getEventNo()."
+ },
+ {
+  "file": "d_a_obj_swBallA.cpp",
+  "class": "daObjSwBallA_c",
+  "profile": "fpcNm_Obj_SwBallA_e",
+  "names": [
+   "ballSw"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "angleX & 0xFF",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "dEvLib orderEvent(getEvent(), 0xff, 1) -> fopAcM_orderMapToolEvent"
+   }
+  ],
+  "selectors": [
+   {
+    "name": "areaType",
+    "src": "params",
+    "shift": 24,
+    "mask": 15,
+    "values": "0 cylinder, 1 box, other never"
+   },
+   {
+    "name": "latch",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "values": "1 = stays done after first activation; otherwise keeps re-ordering while the ball sits there (engine blocks repeats via REVT switch_no)"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "notes": "set at trigger: on when the ball-in animation finishes (same frame as the order); off when the ball is removed"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "swbit2: if on at create the switch starts finished (state 2) and never orders; if off, swbit is cleared at create"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "cylinder|box",
+   "notes": "type 0: XZ dist < scale.x*100, Y in [pos.y-10, pos.y+scale.y*100); type 1: box +-scale.x*100 / +-scale.z*100 rotated by angleY, same Y range. scale = placement byte*0.1"
+  },
+  "trigger": "a Lv8 carry ball (daObjCarry TYPE_LV8_BALL) is set down inside the area and the switch animation completes",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getEvent() { return field_0x5c6; } with field_0x5c6 = home.angle.x (u8 cast). getSwbit2 = GetParamBit(8,8), getSwbit = GetParamBit(16,8), getType = GetParamBit(24,4), getArg0 = GetParamBit(0,8)."
+ },
+ {
+  "file": "d_a_obj_swBallB.cpp",
+  "class": "daObjSwBallB_c",
+  "profile": "fpcNm_Obj_SwBallB_e",
+  "names": [
+   "lballSw"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "angleX & 0xFF",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "dEvLib orderEvent(getEvent(), 0xff, 1) -> fopAcM_orderMapToolEvent; re-ordered every frame while the ball stays (engine blocks repeats via REVT switch_no)"
+   }
+  ],
+  "selectors": [
+   {
+    "name": "areaType",
+    "src": "params",
+    "shift": 24,
+    "mask": 15,
+    "values": "0 cylinder, 1 box, other never"
+   },
+   {
+    "name": "id",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "values": "index into the Palace of Twilight event-bit tables (room 0 only)"
+   },
+   {
+    "name": "arg1",
+    "src": "params",
+    "shift": 28,
+    "mask": 15,
+    "values": "1 = also set swbit2 on activation (room 0 only)"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "notes": "set at trigger when the animation finishes; in room 0 only if the ball is carry type 8, and it is not cleared on removal in room 0"
+   },
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "when": "arg1 == 1, room 0 only",
+    "notes": "set at trigger"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "cylinder|box",
+   "notes": "same as ballSw: type 0 XZ dist < scale.x*100, Y in [pos.y-10, pos.y+scale.y*100); type 1 box +-scale.x*100 / +-scale.z*100 rotated by angleY"
+  },
+  "trigger": "a Sol light ball (daObjCarry prm_chk_type_lightball) is set down in the area and the animation completes",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getEvent() { return field_0x5a2; } with field_0x5a2 = home.angle.x (u8). Hard-coded: in room 0, switch 0x3F on at create -> finished state 5, never orders. In room 0 it sets save event bits l_event_bitA[id] (ball type 8) or l_event_bitB[id] (raw u16 bits 0x4304.. / 0x4410..), not conditions."
+ },
+ {
+  "file": "d_a_obj_swBallC.cpp",
+  "class": "daObjSwBallC_c",
+  "profile": "fpcNm_Obj_SwBallC_e",
+  "names": [
+   "lbsw"
+  ],
+  "mapToolIds": [],
+  "switches": [],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no area"
+  },
+  "trigger": "hard-coded switches 0x3D and 0x3E both on (both Sol pedestals filled)",
+  "requester": "this",
+  "relocates": false,
+  "notes": "No map-tool id: orders named event REVIVE_MASTER_SWORD from its own archive P_LBswBC via fopAcM_orderOtherEventId(this, field_0x57c, field_0x57e, 0xffff, 0, 1) with field_0x57e = -1 (0xFF). Fixed switches: 0x3D and 0x3E required on; 0x3F blocks (create -> action 3) and is set at accept; 0x50..0x58 set at event end; tbox 10/11 set. Nothing read from placement; listed for completeness."
+ },
+ {
+  "file": "d_a_obj_swLight.cpp",
+  "class": "daObjSwLight_c",
+  "profile": "fpcNm_Obj_SwLight_e",
+  "names": [
+   "swLight/0"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "angleX & 0xFF",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "dEvLib orderEvent(getEvent(), 0xff, 1) every frame while lit (modeSwOffWait), including right after load if the switch is already on; engine blocks repeats via REVT switch_no"
+   }
+  ],
+  "selectors": [
+   {
+    "name": "onTime",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "values": "stays lit value*15 frames; 0 or 0xFF = 75 frames"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "set at trigger: on when lit, off again when the light fades"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "TG spheres r=90 at pos+(0,90,0)"
+  },
+  "trigger": "torch hit by a light-material sword attack (instant) or a light-material lantern swing held for 60 frames",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getEvent() { return (u8)field_0xb22; } with field_0xb22 = home.angle.x. getSwbit = GetParamBit(0,8), getSwbit2 = GetParamBit(24,8), getOnTime = GetParamBit(16,8). swbit2 (params>>24, 0xFF none) is not an order condition: while on it keeps the torch lit, turning it off unlights it. Order through dEvLib_callback_c -> fopAcM_orderMapToolEvent(this, id, idx, 0xFFFF, 1, 0)."
+ },
+ {
+  "file": "d_a_obj_swhang.cpp",
+  "class": "daObjSwHang_c",
+  "profile": "fpcNm_Obj_SwHang_e",
+  "names": [
+   "buraA/0",
+   "buraB/0",
+   "buraA2/0",
+   "buraB2/0",
+   "bura7A/0",
+   "bura7B/0",
+   "bura7C/0",
+   "bura7D/0",
+   "bura7E/0"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "(params >> 8) & 0xFF",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "0xFF = no event, switch changed directly; else dEvLib orderEvent(getEvId(), 0xff, 1) when the handle reaches full pull length"
+   }
+  ],
+  "selectors": [
+   {
+    "name": "type",
+    "src": "params",
+    "shift": 28,
+    "mask": 15,
+    "values": "0 S_bura_A (hang), 1 S_bura_B (hang), 2 S_bura_7a (hang, needs heavy boots), 3 S_bura_7b (hookshot), 4 S_bura_7c (hookshot + heavy boots)"
+   },
+   {
+    "name": "kind",
+    "src": "params",
+    "shift": 26,
+    "mask": 3,
+    "values": "0 stays down until the switch reverts; 1 springs back up when released (switch reverted at top)"
+   },
+   {
+    "name": "invert",
+    "src": "params",
+    "shift": 25,
+    "mask": 1,
+    "values": "0 pulling turns switch on; 1 pulling turns switch off"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "set at trigger: changeOnStatus() in eventStart (event accepted) or immediately when evId 0xFF; on unless invert bit set"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "create: if the switch is already in the pulled state (on, or off when inverted) the handle starts down and never orders"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "player hang or hookshot on the handle; Co/Tg sphere r=80 (type 3 r=100, type 4 r=150) at the hang point"
+  },
+  "trigger": "player hangs on / hookshots and pulls the handle to full length; also when the switch is flipped externally while the handle is up",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getEvId = GetParamBit(8,8); getSwNo = GetParamBit(0,8); checkType = GetParamBit(25,1); getKind = GetParamBit(26,2); getType_private = GetParamBit(28,4). OBJNAME sub arg 0 for all names; model comes from the type param."
+ },
+ {
+  "file": "d_a_bg_obj.cpp",
+  "class": "daBgObj_c",
+  "profile": "fpcNm_BG_OBJ_e",
+  "names": [
+   "mvbg_a"
+  ],
+  "alsoSpawnedVia": [
+   "mmvbg"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 21 & 0xFF",
+    "src": "params",
+    "shift": 21,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "only archive spec types 1,2,3 (spec.dat of arc \"@bg%04x\" % (params & 0xFFFF)); spec type 0 never orders"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "angleZ",
+    "shift": 0,
+    "mask": 255,
+    "notes": "set at trigger (actionOrder calls fopAcM_onSwitch before the event plays); if already on at create the object starts broken (mAction=3) and orders nothing; turning it on externally while loaded also triggers the event (orderWait_spec)"
+   },
+   {
+    "role": "required-on",
+    "src": "angleZ",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "when": "hit path only, when (angleX & 0xFF) == 0xFF"
+   },
+   {
+    "role": "required-off",
+    "src": "angleZ",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "when": "hit path only, when (angleX & 0xFF) == 0; any other angleX&0xFF with swBit2 != 0xFF disables the hit path"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "hit-triggered via tri/cyl colliders from spec.dat; no player area"
+  },
+  "trigger": "spec types 1/2: destroyed by an attack (type1: bomb or ball-and-chain atp 3; type2: ball-and-chain, sword, bomb, statue swing); any of types 1-3: swBit (angleZ&0xFF) turned on externally while loaded",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getEvId: (fopAcM_GetParam >> 0x15) & 0xFF; getSwBit: field_0xccc & 0xFF with field_0xccc = home.angle.z; getSwBit2: (field_0xccc >> 8) & 0xFF; getObjArg0: field_0xcca & 0xFF with field_0xcca = home.angle.x. mEventIdx = getEventIdx(this, getEvId) (REVT lookup). If evId == 0xFF the break happens without an event. Spec type lives in the archive (spec.dat u16), not in placement: unverified per placement unless the extractor reads the archive. mmvbg (fpcNm_SET_BG_OBJ_e) spawns BG_OBJ with identical params/angle/scale when spec type is 0-2 (3 -> Obj_Flag2, 4 -> Obj_Flag3)."
+ },
+ {
+  "file": "d_a_cstaF.cpp",
+  "class": "daCstaF_c",
+  "profile": "fpcNm_CSTAF_e",
+  "names": [
+   "CstaF"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 12 & 0xFF",
+    "src": "params",
+    "shift": 12,
+    "mask": 255,
+    "role": "main",
+    "none": 255
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 4,
+    "mask": 255,
+    "none": 255,
+    "notes": "on at event end (fopAcM_onSwitch after evmng_endCheck); if already on, or 0xFF, no event is ordered"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no area; triggered by Dominion Rod possession"
+  },
+  "trigger": "player first takes Dominion Rod control of the statue (getCopyRodControllActor() == this) while the switch is off",
+  "requester": "this",
+  "relocates": false,
+  "notes": "m_swbit = (u8)(params >> 4); m_mapToolID = (u8)(params >> 12); m_eventId = getEventIdx(this, m_mapToolID). Order condition: m_swbit != 0xFF && !isSwitch(m_swbit) && m_mapToolID != 0xFF. m_type = params & 0xF (>=2 -> 0) picks model F/FB only. Event bit 0x2540 (raw) only controls a cover model, not the event."
+ },
+ {
+  "file": "d_a_obj_iceleaf.cpp",
+  "class": "daObjIceLeaf_c",
+  "profile": "fpcNm_Obj_IceLeaf_e",
+  "names": [
+   "iceleaf/0"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params & 0xFF",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "role": "main",
+    "when": "always passed; 0xFF is not checked (orders eventIdx -1 with tool 0xFF, effectively none, unverified)"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "set at trigger (when the demo is accepted, before the event plays); not checked at create (unverified whether something else hides an already-dropped leaf)"
+   }
+  ],
+  "eventBits": [
+   {
+    "role": "required",
+    "src": "const",
+    "value": 308,
+    "kind": "saveBitLabels-index",
+    "notes": "saveBitLabels[0x134] (F_0308, Yeto met at Snowpeak top); constant, not from placement"
+   }
+  ],
+  "area": {
+   "shape": "sphere",
+   "notes": "player 3D distance from actor pos < 250 (unscaled) while doing a front roll crash or wolf attack reverse; or ball-and-chain hits cylinder r=100 h=500 at actor pos (unscaled)"
+  },
+  "trigger": "player rolls into it / wolf attack reverse within 250 units, or hits it with the ball and chain; leaf drops",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getEvId: fopAcM_GetParamBit(this, 0, 8); getSwbit: fopAcM_GetParamBit(this, 8, 8); checkRideStatus: fopAcM_GetParamBit(this, 0x10, 8) == 1 means spawned already ridden (mpBck NULL, ordering path would deref NULL: unverified, treat as no event). mEventID = getEventIdx(this, mEvId)."
+ },
+ {
+  "file": "d_a_obj_kwheel00.cpp",
+  "class": "daObjKWheel00_c",
+  "profile": "fpcNm_Obj_KWheel00_e",
+  "names": [
+   "kwhel00",
+   "swhel00"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 9 & 0xFF",
+    "src": "params",
+    "shift": 9,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "0xFF -> wheel starts without an event"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "notes": "must turn on while loaded and wheel stopped; if already on at create the wheel spawns spinning and orders nothing"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": ""
+  },
+  "trigger": "switch (params & 0xFF) turns on while the wheel is stopped",
+  "requester": "this",
+  "relocates": false,
+  "notes": "dEvLib orderEvent(getEvent(), 0xFF, 1) -> fopAcM_orderMapToolEvent(this, id, eventIdx via REVT lookup, flag 0x101 -> priority 3). getSwNo: GetParamBit(0,8); getEvent: GetParamBit(9,8); getArg0 bit8 = direction; getType bit17 = large gold/small platinum model."
+ },
+ {
+  "file": "d_a_obj_kwheel01.cpp",
+  "class": "daObjKWheel01_c",
+  "profile": "fpcNm_Obj_KWheel01_e",
+  "names": [
+   "kwhel01"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 9 & 0xFF",
+    "src": "params",
+    "shift": 9,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "only when switch (params & 0xFF) != 0xFF; 0xFF event -> starts without an event"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "notes": "must turn on while loaded and stopped; on at create -> already spinning, no event; 0xFF -> follows the large KWheel00 rotation, no event"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": ""
+  },
+  "trigger": "switch (params & 0xFF) turns on while the gear is stopped",
+  "requester": "this",
+  "relocates": false,
+  "notes": "eventIndex = getEventIdx(this, getEvent()); setEvent(eventIndex, (u8)getEvent(), 1) passes the args swapped vs setEvent(mapToolId, eventIdx, flag): eventInfo mapToolId becomes (u8)eventIndex and the event id becomes the raw tool number. Runtime result unverified (if lookup fails it orders composite id == getEvent() with tool 0xFF). getEvent: GetParamBit(9,8); getSwNo: GetParamBit(0,8)."
+ },
+ {
+  "file": "d_a_obj_ladder.cpp",
+  "class": "daObjLadder::Act_c",
+  "profile": "fpcNm_Obj_Ladder_e",
+  "names": [
+   "Mhsg6/0",
+   "Mhsg9/1",
+   "Mhsg12/2",
+   "Mhsg15/3",
+   "Mhsg4h/4",
+   "Mhsg3/5"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 16 & 0xFF",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "if the REVT lookup fails (or 0xFF) the ladder drops with no event (evmng_existence false)"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "notes": "must turn on while loaded; if already on at create the ladder spawns fallen and orders nothing"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": ""
+  },
+  "trigger": "switch (params >> 8 & 0xFF) turns on; ladder drops",
+  "requester": "this",
+  "relocates": false,
+  "notes": "prm_get_evId: PrmAbstract(this, 8, 16); prm_get_swSave: PrmAbstract(this, 8, 8); prm_get_type: PrmAbstract(this, 3, 0) (model only; OBJNAME sub arg not used for events). mEventIdx = getEventIdx(this, prm_get_evId())."
+ },
+ {
+  "file": "d_a_obj_mvstair.cpp",
+  "class": "daObjStair_c",
+  "profile": "fpcNm_Obj_MvStair_e",
+  "names": [
+   "mvstair"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 16 & 0xFF",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "role": "main",
+    "none": 255
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "any change of this switch (off->on or on->off) while loaded orders the event; repeatable after each event ends"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "on at create or later -> ACTION_END, never orders"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": ""
+  },
+  "trigger": "switch (params & 0xFF) toggles in either direction; staircase raises/lowers",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getSwbit: GetParamBit(0,8); getSwbit2: GetParamBit(8,8); getEvNo: GetParamBit(16,8); getDir bit28 selects which switch state means lowered. actionWait: if (mIsSwitch != isSwitch(getSwbit())) orderOtherEventId(this, mEventId, getEvNo(), ...). evNo 0xFF -> ACTION_END at create (moves without event)."
+ },
+ {
+  "file": "d_a_obj_rstair.cpp",
+  "class": "daObjRotStair_c",
+  "profile": "fpcNm_Obj_RotStair_e",
+  "names": [
+   "rstair"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params & 0xFF",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "ordered once per load (ACTION_DEAD after the first event)"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "angleZ",
+    "shift": 0,
+    "mask": 255,
+    "notes": "base of 4 consecutive switches sw..sw+3 (one per facing); any of them changing state while loaded starts a rotation and the event; the actor turns the other three off"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": ""
+  },
+  "trigger": "one of the 4 direction switches (angleZ&0xFF + 0..3) changes state; stair rotates",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getEventID: GetParamBit(0,8); mSwNo = home.angle.z, getSwNo = (u8)mSwNo; getSwNo2 = angleZ >> 8 & 0xFF and getSwNo3 = params >> 8 & 0xFF only toggle water collision. mEventId = getEventIdx(this, mMapToolId)."
+ },
+ {
+  "file": "d_a_obj_shield.cpp",
+  "class": "daItemShield_c",
+  "profile": "fpcNm_Obj_Shield_e",
+  "names": [
+   "wshield"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 24 & 0xFF",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "main",
+    "when": "camera demo when the shield falls; 0xFF not checked (orders eventIdx -1, effectively none, unverified)"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "notes": "set at trigger (second crash knocks shield off); if on at create the shield is already on the ground and never orders"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "set after the item get; actor not created when on"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "cylinder",
+   "notes": "player XZ distance < 500 from actor pos (unscaled, no height limit)"
+  },
+  "trigger": "player does a front roll crash or wolf attack reverse within 500 units twice; shield falls off the wall",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getEvId: (params >> 24) & 0xff; getSwBit: (params >> 16) & 0xff; getSwBit2: (params >> 8) & 0xff. mEventIdx = getEventIdx(this, NULL, mEvId) (REVT lookup). Item-get event that follows is DEFAULT_GETITEM, not map-tool."
+ },
+ {
+  "file": "d_a_obj_volcball.cpp",
+  "class": "daObjVolcBall_c",
+  "profile": "fpcNm_Obj_VolcanicBall_e",
+  "names": [
+   "VolBall",
+   "VolBom"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 16 & 0xFF",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "only big-volcano mode (params bit 31 set); 0xFF -> dEvLib orders bogus event id 0xFF (unverified, treat as none)"
+   }
+  ],
+  "switches": [
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "when": "big mode",
+    "notes": "actionEnd returns early when on; (small mode: this switch gates eruptions, no event)"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "when": "big mode",
+    "notes": "actor not created when on"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "cylinder",
+   "notes": "big mode: player XZ distance < 2500 and |actor.y - player.y| < 300 (unscaled) starts the warning/eruption cycle"
+  },
+  "trigger": "big mode: player comes near, eruption runs its course, then with a BigVolc (fpcNm_Obj_VolcanicBomb_e) actor present it waits 60 frames and orders the event (BigVolc startFall on demo start)",
+  "requester": "this",
+  "relocates": false,
+  "notes": "checkBigVolc: GetParamBit(0x1F,1); getEvNo: GetParamBit(0x10,8); getSwBit: GetParamBit(0,8); getSwBit2: GetParamBit(8,8). dEvLib orderEvent(getEvNo(), 0xFF, 1) -> fopAcM_orderMapToolEvent with flag 0x101. Needs a BigVolc actor in the room, otherwise never orders. Small mode (bit31 clear) never orders an event."
+ },
+ {
+  "file": "d_a_obj_zra_freeze.cpp",
+  "class": "daZraFreeze_c",
+  "profile": "fpcNm_OBJ_ZRAFREEZE_e",
+  "names": [
+   "zrF/0",
+   "zrF2/1",
+   "zrF3/2"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params & 0xFF",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "role": "main",
+    "when": "passed with the named event \"zora_koori\" (eventIdx from getEventIdx(this, \"zora_koori\", 0xff)); the REVT entry only supplies switch/camera data, it does not pick the event"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "notes": "0xFF = always active"
+   },
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "notes": "0xFF = never orders"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "notes": "also set at trigger (dComIfGs_onSwitch right after ordering)"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "cylinder",
+   "notes": "player XZ distance < 800 (unscaled, no height limit) and the model bbox fully on screen"
+  },
+  "trigger": "in twilight (dKy_darkworld_check at create) with wolf senses on, player within 800 units and the frozen Zora fully on screen",
+  "requester": "this",
+  "relocates": false,
+  "notes": "field_0x5b0 = params>>8&0xff, field_0x5b1 = params>>16&0xff, field_0x5b2 = params>>24&0xff, mMapToolId = params&0xff. Explicit priority 4. OBJNAME sub arg (argument) picks model only."
+ },
+ {
+  "file": "d_a_obj_avalanche.cpp",
+  "class": "daObjAvalanche_c",
+  "profile": "fpcNm_Obj_Avalanche_e",
+  "names": [
+   "Obj_ava"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 8 & 0xFF",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "role": "main",
+    "when": "passed with named event \"SNOW_COLLAPSE\" from archive V_Yuki (eventInfo.setArchiveName); REVT entry supplies switch/priority data only"
+   }
+  ],
+  "switches": [
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "set at event end; on at create -> already collapsed, never orders"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "box",
+   "notes": "player pos relative to actor, rotated by -angleY: -300 < x < 300, 0 < z < 300, actor.y < player.y < actor.y + 300 (unscaled)"
+  },
+  "trigger": "player as wolf does a wolf attack reverse or front roll crash inside the box; snow wall collapses",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getSwbit: GetParamBit(0,8); getEvId: GetParamBit(8,8). mEventIdx = getEventIdx(this, \"SNOW_COLLAPSE\", 0xff). Requires daPy_py_c::checkNowWolf()."
+ },
+ {
+  "file": "d_a_tag_attack_item.cpp",
+  "class": "daTagAtkItem_c",
+  "profile": "fpcNm_Tag_AttackItem_e",
+  "names": [
+   "atkItem"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 24 & 0xFF",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "main",
+    "none": 255
+   }
+  ],
+  "switches": [],
+  "eventBits": [],
+  "area": {
+   "shape": "cylinder",
+   "notes": "radius = scale.x*50, height = scale.y*100; actor moves itself down: current.pos.y = home.pos.y - scale.y*100, so the collider spans [y - scale.y*100, y]. The player-attack check uses |player.y - (y - scale.y*100)| < scale.y*100, i.e. player.y in (y - scale.y*200, y), XZ distance < scale.x*50."
+  },
+  "trigger": "hit by iron ball or bomb (cylinder TG hit), or player does a front-roll crash / wolf reverse attack inside the radius",
+  "requester": "this",
+  "relocates": false,
+  "notes": "u8 getEvId() { return fopAcM_GetParamBit(this, 0x18, 8); }. action(): if (getEvId() != 0xFF) orderEvent(getEvId(), 0xFF, 1) else spawn items + delete. dEvLib_callback_c path -> fopAcM_orderMapToolEvent(this, evId, getEventIdx(this, evId), 0xFFFF, 1, 0). eventStart spawns items, eventEnd deletes the actor (one-shot, no switch). Item fields: itemNo = params & 0xFF, count = (params >> 8) & 0xFF (0xFF -> 1), item save bit = (params >> 16) & 0xFF (incremented per item, 0xFF = none); these are item-table bits, not switches."
+ },
+ {
+  "file": "d_a_tag_mhint.cpp",
+  "class": "daTagMhint_c",
+  "profile": "fpcNm_Tag_Mhint_e",
+  "names": [
+   "Mhint"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "angleY >> 8 & 0xFF",
+    "src": "angleY",
+    "shift": 8,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "params bit31 = 1: actor orders it itself when the player stands in the area; params bit31 = 0: the player orders it (d_a_alink.cpp:11547) when Z (Midna talk) is pressed with this hint registered as the Z-hint. 0xFF -> plain Midna talk (speak event) instead of a map-tool event."
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "none": 255
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "angleX",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "notes": "actor deletes itself when this switch is on"
+   },
+   {
+    "role": "set-when-done",
+    "src": "angleX",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "when": "params bit29 = 1",
+    "notes": "set after the follow-up Midna message flow (angleZ) finishes, then the tag deletes itself"
+   }
+  ],
+  "eventBits": [
+   {
+    "role": "required",
+    "src": "params",
+    "shift": 0,
+    "mask": 1023,
+    "kind": "saveBitLabels-index",
+    "none": 1023
+   },
+   {
+    "role": "blocks",
+    "src": "params",
+    "shift": 10,
+    "mask": 1023,
+    "kind": "saveBitLabels-index",
+    "none": 1023
+   }
+  ],
+  "area": {
+   "shape": "cylinder",
+   "notes": "radius = scale.x*100 (field_0x5cc = scale.x*scale.x*10000 vs XZ dist^2), player.y in [pos.y, pos.y + scale.y*100]. If params bit30 set, scale.x and scale.y are first multiplied by 10 (radius = byte*100, height = byteY*100)."
+  },
+  "trigger": "player inside the cylinder with the required switch/event bit set for (params >> 20 & 0x1FF) frames (0 or 0x1FF = immediately); bit31=1 auto-orders, bit31=0 only registers a Z-hint and the player presses Z to start it",
+  "requester": "this",
+  "relocates": false,
+  "notes": "mToolEventID = (shape_angle.y >> 8) & 0xFF; mEventID = getEventIdx(this, mToolEventID). field_0x568 = shape_angle.x & 0xFF (required-on); mSwitch = (shape_angle.x >> 8) & 0xFF; field_0x574 = params & 0x3FF (required bit); field_0x57c = (params >> 10) & 0x3FF (blocks: execute returns early while set); field_0x578 = (params >> 20) & 0x1FF delay timer; field_0x56a = params >> 31 (auto-order); field_0x56b = (params >> 29) & 1 (set mSwitch when done). angleY & 0xFF = room camera index for the attention point (0xFF = follow Midna). angleZ = message flow id played after the map-tool event ends (orderSpeakEvent). Bit31 order path also requires player not flying unless swimming; Z path requires magnet boots off unless stage D_MN04B. Alink path: fopAcM_orderOtherEventId(zhint, getEventID(), getToolEventID(), 0xFFFF, 0, 1) with requester = the Mhint actor. Runtime-spawned portal-warp-miss tags use params 0x800FFFFF, angle (-1,-1,msg) -> no map-tool event."
+ },
+ {
+  "file": "d_a_obj_master_sword.cpp",
+  "class": "daObjMasterSword_c",
+  "profile": "fpcNm_Obj_MasterSword_e",
+  "names": [
+   "mstrsrd"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 16 & 0xFF",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "role": "main"
+   }
+  ],
+  "switches": [],
+  "eventBits": [
+   {
+    "role": "blocks",
+    "src": "params",
+    "shift": 0,
+    "mask": 65535,
+    "kind": "saveBitLabels-index",
+    "notes": "actor not created when set; also set by the actor when temp bit tempBitLabels[73] turns on during the event"
+   }
+  ],
+  "area": {
+   "shape": "none",
+   "notes": "carry/lift interaction (attention CARRY distance index 74); collider cylinder r18 h180 fixed"
+  },
+  "trigger": "player lifts (carries) the sword",
+  "requester": "this",
+  "relocates": false,
+  "notes": "u8 getEventID() { return (fopAcM_GetParam(this) >> 0x10) & 0xFF; } u16 getFlagNo() { return fopAcM_GetParam(this) & 0xFFFF; }. executeWait: if (fopAcM_checkCarryNow(this)) fopAcM_orderMapToolEvent(this, getEventID(), 0xFF, 0xFFFF, 1, 0). No 0xFF guard (0xFF would order nothing useful). Completion: when tmp bit 73 is on, gives sword, onEventBit(saveBitLabels[getFlagNo()]), deletes."
+ },
+ {
+  "file": "d_a_obj_mirror_screw.cpp",
+  "class": "daObjMirrorScrew_c",
+  "profile": "fpcNm_Obj_MirrorScrew_e",
+  "names": [
+   "MR_Scrw"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 16 & 0xFF",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "role": "main"
+   }
+  ],
+  "switches": [
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255
+   },
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "notes": "set when the screw finishes descending (executeDown), not on event end"
+   }
+  ],
+  "eventBits": [
+   {
+    "role": "blocks",
+    "src": "const",
+    "value": 361,
+    "kind": "saveBitLabels-index",
+    "notes": "F_0361 spun the spinning pillars; also set by the actor at trigger"
+   },
+   {
+    "role": "blocks",
+    "src": "const",
+    "value": 354,
+    "kind": "saveBitLabels-index",
+    "notes": "F_0354 mirror complete"
+   }
+  ],
+  "area": {
+   "shape": "none",
+   "notes": "trigger is the child Obj_SwSpinner spawned at pos + (0, 2636.121, 0) with params sw << 8"
+  },
+  "trigger": "player spins the spinner on top fast enough for M_attr.mSpinCount consecutive checks",
+  "requester": "this",
+  "relocates": false,
+  "notes": "u8 getSwitchNo() { return (fopAcM_GetParam(this) >> 8) & 0xff; } u8 getEventID() { return (fopAcM_GetParam(this) >> 0x10) & 0xff; }. initDown(): onEventBit(saveBitLabels[361]); fopAcM_orderMapToolEvent(this, getEventID(), 0xFF, 0xFFFF, 1, 0). create() fails if isSwitch(getSwitchNo()) or event bit 361 or 354 is set. Event bits here are fixed constants, not placement fields (src const)."
+ },
+ {
+  "file": "d_a_tag_statue_evt.cpp",
+  "class": "daTagStatue_c",
+  "profile": "fpcNm_Tag_Statue_e",
+  "names": [
+   "TagStat"
+  ],
+  "mapToolIds": [],
+  "switches": [
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 12,
+    "mask": 255,
+    "notes": "getSwbit2: sky character already obtained"
+   },
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 12,
+    "mask": 255,
+    "notes": "onSwitch(getSwbit2()) at event end"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "sphere",
+   "notes": "sphere: player->current.pos.abs(pos) < 100 (fixed, not scaled), plus the owl statue (CstaF) must be > 120 XZ away from the tag"
+  },
+  "trigger": "owl statue pushed off the platform (>120 XZ away, or no statue found) and player within 100 units",
+  "requester": "this",
+  "relocates": false,
+  "notes": "No placement map-tool id: Create() hard-codes mMapToolId = 255 and orders the named event l_eventName[type] = SKY_LETTERS_0<type> (archive Obj_cs_f for type 0, else cs_ev_0<type>) via fopAcM_orderOtherEventId(this, mEventId, 0xFF, ...). type = (params >> 8) & 0xF (getType). params & 0xFF (getSwbit) only drives the glow effect. At end it sets raw event bit l_event_bit[type] = {F_0791, F_0792, F_0793, F_0794, F_0795, F_0812}[type]."
+ },
+ {
+  "file": "d_a_tbox.cpp",
+  "class": "daTbox_c",
+  "profile": "fpcNm_TBOX_e",
+  "names": [
+   "tboxA0",
+   "tboxA1",
+   "tboxA2",
+   "tboxB0",
+   "tboxB1",
+   "tboxB2",
+   "tboxJ0",
+   "tboxP0",
+   "tboxB00",
+   "tboxB01",
+   "tboxW0"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 24 & 0xFF",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "appear",
+    "none": 255,
+    "when": "funcType 2 (all enemies dead) or funcType 1 with swType 15 (switch on): chest-appear cutscene; 0xFF -> named DEFAULT_TREASURE_APPEAR instead"
+   },
+   {
+    "expr": "params >> 24 & 0xFF",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "drop",
+    "none": 255,
+    "when": "funcType 6 (drop/jump chest) when the drop switch condition is met; if the id is 0xFF or not found (mEventId == -1) the chest drops with no event. For swType 0 the drop camera also reads this REVT entry's camera index."
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 12,
+    "mask": 255,
+    "when": "funcType 1 with swType 15; funcType 6 with swType 15",
+    "notes": "funcType 6 swType 0: any of switches sw..sw+3 on triggers the drop"
+   },
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 12,
+    "mask": 255,
+    "when": "funcType 2",
+    "notes": "set at trigger (dComIfGs_onSwitch when the appear event is ordered)"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 12,
+    "mask": 255,
+    "when": "funcType 1 and 2 with sw < 0xC0, funcType 6",
+    "notes": "if already on at creation the chest is already appeared/dropped and no event is ordered"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "map-tool events are switch/enemy driven; opening is a separate door-type event (player within 150 XZ, |dy| < 20, facing) that uses named DEFAULT_TREASURE_* events, not map-tool ids"
+  },
+  "trigger": "funcType 2: no enemies left in the room (fopAcM_myRoomSearchEnemy false) then 65 frames; funcType 1 (swType 15): switch turns on; funcType 6: drop switch(es) turn on",
+  "requester": "this",
+  "relocates": false,
+  "notes": "u32 getEvent() { return fopAcM_GetParam(this) >> 24; } getSwNo = (params >> 12) & 0xff; getFuncType = params & 0x3f; getShapeType = (params >> 20) & 0xf; getTboxNo = (params >> 6) & 0x3f; getSwType = home.angle.x & 0xf (field_0x980 = home.angle.x); itemNo = (angleZ >> 8) & 0xff, pathId = angleZ & 0xff. mEventId = getEventIdx(this, getEvent()). Already-opened chest (dComIfGs_isTbox(tboxNo), per-stage tbox bit) never orders. funcType 0/3/5 never order a map-tool event. funcType 1 with swType != 15 appears silently when the switch turns on."
+ },
+ {
+  "file": "d_a_obj_bosswarp.cpp",
+  "class": "daObjBossWarp_c",
+  "profile": "fpcNm_Obj_BossWarp_e",
+  "names": [
+   "P_Warp",
+   "l8warp"
+  ],
+  "mapToolIds": [],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "when": "stage type != 3 (non boss-room stages): portal appears and player in range is sent via onSceneChangeArea without any event"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "cylinder",
+   "notes": "checkDistance: XZ < 150, -1 < player.y - pos.y < 200 (fixed, not scaled); used for WARP_CHECK and non-boss-room warps"
+  },
+  "trigger": "boss-room stage type 3: orders BOSSCLEARxx on creation (isFirst), then WARP_CHECK when the player steps into the portal, then BOSS_WARPIN(_M) or WARP_CANCEL",
+  "requester": "this",
+  "relocates": true,
+  "notes": "No placement map-tool id: mBossClearMapToolId = 0xff and mBossWarpInMapToolId = 0xff are hard-coded; all orders use named events (l_clearEvName[level] by start stage, WARP_CHECK, WARP_CANCEL, BOSS_WARPIN / BOSS_WARPIN_M from archive ef_Portal). Relocates via player->onSceneChangeArea(getSceneListNo(), 0xff, 0) in the SCENE_CHG cut; getSceneListNo = (params >> 8) & 0xFF (SCLS index); isFirst = (params >> 27) & 1; getSwNo = params & 0xFF."
+ },
+ {
+  "file": "d_a_scene_exit2.cpp",
+  "class": "daScExit_c",
+  "profile": "fpcNm_SCENE_EXIT2_e",
+  "names": [
+   "scnChg2"
+  ],
+  "mapToolIds": [],
+  "switches": [],
+  "eventBits": [],
+  "area": {
+   "shape": "cylinder",
+   "notes": "XZ only, radius = scale.x*100 (mRadius), no height limit: fopAcM_searchPlayerDistanceXZ(this) < mRadius"
+  },
+  "trigger": "player enters the radius",
+  "requester": "this",
+  "relocates": true,
+  "notes": "No placement map-tool id: Create() hard-codes mToolID = 0xFF and orders named SCENE_EXIT (archive SceneExit). SCENE_CHG cut calls dStage_changeScene(params & 0xFF, 0.0f, 0, roomNo, 0, -1) (getSceneID = fopAcM_GetParamBit(this, 0, 8), SCLS index)."
+ },
+ {
+  "file": "d_a_tag_river_back.cpp",
+  "class": "daTagRiverBack_c",
+  "profile": "fpcNm_Tag_RiverBack_e",
+  "names": [
+   "rvback"
+  ],
+  "mapToolIds": [],
+  "switches": [
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "none": 255
+   },
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "none": 255
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no position check at all; active anywhere while loaded"
+  },
+  "trigger": "player is swimming (dComIfGp_checkPlayerStatus0(0, 0x100000), set by the alink swim procs)",
+  "requester": "this",
+  "relocates": true,
+  "notes": "No placement map-tool id: Create() sets mMapToolID = -1 (0xFF) and orders named RIVER_BACK (archive RvBack). SCENE_CHG cut calls dStage_changeScene(getNextSceneNo() = params & 0xFF, ...). getSwbit = (params >> 8) & 0xFF, getSwbit2 = (params >> 16) & 0xFF."
+ },
+ {
+  "file": "d_a_npc_ash.cpp",
+  "class": "daNpcAsh_c",
+  "profile": "fpcNm_NPC_ASH_e",
+  "names": [
+   "Ash"
+  ],
+  "mapToolIds": [],
+  "switches": [],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": ""
+  },
+  "trigger": "n/a (no map-tool event)",
+  "requester": "this",
+  "relocates": false,
+  "notes": "Misnamed field: orderEvent(mMapToolId, name, -1, 40, -1, 1) passes mMapToolId as i_speak (1st arg of daNpcF_c::orderEvent(int i_speak, char*, u16, u16 prio, u8 mapToolID, u16 flag)); the real u8 mapToolID slot gets -1 = 0xFF. mMapToolId is only ever assigned 0 (d_a_npc_ash.cpp:910), never from placement. Ash orders only named events from archive Ash."
+ },
+ {
+  "file": "d_a_npc_gro.cpp",
+  "class": "daNpc_grO_c",
+  "profile": "fpcNm_NPC_GRO_e",
+  "names": [
+   "grO"
+  ],
+  "mapToolIds": [],
+  "switches": [],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": ""
+  },
+  "trigger": "n/a (no map-tool event)",
+  "requester": "this",
+  "relocates": false,
+  "notes": "Misnamed local: main() has u16 mapToolId = 0xFFFF and passes it as param_2 (the u16 event condition/mask forwarded to fopAcM_orderOtherEventId param_3), while the u8 mapToolID slot is the literal 0xFF: orderEvent(mUnkFlag, l_evtNames[...], mapToolId, 40, 0xFF, 1). No placement map-tool id; only named events."
+ },
+ {
+  "file": "d_a_obj_amiShutter.cpp",
+  "class": "daAmiShutter_c",
+  "profile": "fpcNm_Obj_AmiShutter_e",
+  "names": [
+   "amiShut"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params & 0xFF",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "type (params>>16 & 0xF) 0 or 1 only; 0xFF = shutter closes with no event"
+   }
+  ],
+  "switches": [
+   {
+    "role": "blocks-if-on",
+    "src": "const",
+    "notes": "hardcoded switch 4, not from placement: type 0 with fopAcM_isSwitch(this,4) on closes without ordering",
+    "value": 4
+   },
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "type>=2 only: plain switch-driven shutter (open/close on change), never orders an event"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "cylinder",
+   "notes": "type 0: player XZ distance from placement pos >= 400 (l_HIO.mRange, fixed) AND home.y < player.y < home.y+50 (player has walked 400+ away on that floor). type 1: no area, triggers as soon as player getFootOnGround(). Scale unused."
+  },
+  "trigger": "type 0/1 net shutter starts open; when the player is in the area (type 0) or on ground (type 1) it orders the event and closes in eventStart",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getType(){return fopAcM_GetParamBit(this,16,4);} getSwBit(){..8,8} getEvent(){..0,8}. Type 0 also skips everything (starts closed) if cDmr_SkipInfo!=0 && player.y > -800 at create. Fires once per load (ends in MODE_CLOSE_END). Type 0 with switch 4 off: player forced into DEMO_TURN_BACK when the shutter finishes closing. dEvLib orderEvent(id,0xFF,1): id!=0xFF -> fopAcM_orderMapToolEvent(this,id,0xFF,0xFFFF,0x101,0) (event idx looked up from REVT; flag 0x100 = auto-next, prio 3), re-ordered every frame from eventUpdate() until accepted; actor reacts in eventStart(); no eventEnd override, so the actor sets nothing at event end. id==0xFF -> no event, actor calls eventStart() directly."
+ },
+ {
+  "file": "d_a_obj_lv4CandleDemoTag.cpp",
+  "class": "dalv4CandleDemoTag_c",
+  "profile": "fpcNm_Tag_Lv4CandleDm_e",
+  "names": [
+   "L4cddTg"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 24 & 0xFF",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "main",
+    "none": 255
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "SwNG; actor turns it off again after the spawned enemies die"
+   },
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "SwDest; cleared at create, turned on when all enemies spawned by eventStart are dead (after the cutscene, not at event end)"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "notes": "SwOK (shape_angle.x & 0xFF); on at create or during watch -> mode end, no event"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no player area"
+  },
+  "trigger": "SwNG (wrong candle order) turns on while the Lv4EdShutter in the room is closed (getStatus()!=0) or no Lv4EdShutter exists; after 60 frames orders the event, eventStart spawns E_BS enemies on room path params>>16 & 0xFF",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getSwNG(){return fopAcM_GetParamBit(this,0,8);} getSwDest(){..8,8} getPathID(){..0x10,8} getSwOK(){return shape_angle.x & 0xFF;} getEventID(){..0x18,8}. Create fails if the room path is missing. Repeatable: re-arms after the enemies die. dEvLib orderEvent(id,0xFF,1): id!=0xFF -> fopAcM_orderMapToolEvent(this,id,0xFF,0xFFFF,0x101,0) (event idx looked up from REVT; flag 0x100 = auto-next, prio 3), re-ordered every frame from eventUpdate() until accepted; actor reacts in eventStart(); no eventEnd override, so the actor sets nothing at event end. id==0xFF -> no event, actor calls eventStart() directly."
+ },
+ {
+  "file": "d_a_obj_lv4EdShutter.cpp",
+  "class": "daLv4EdShutter_c",
+  "profile": "fpcNm_Obj_Lv4EdShutter_e",
+  "names": [
+   "L4eShut"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 24 & 0xFF",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "same id for close (status 0) and open (status 1)"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "CloseSw: while open (status 0) turning on starts close; actor turns it off after reopening"
+   },
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "OpenSw: while closed (status 1) turning on starts open; actor turns it off after reopening"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "angleZ",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "notes": "ZenmetuSw (shape_angle.z & 0xFF): on at create or after an open -> permanently inert"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no player area"
+  },
+  "trigger": "CloseSw (when open) or OpenSw (when closed) turns on; after waitTime (params>>16 & 0xFF) frames orders the event",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getCloseSw(){..0,8} getOpenSw(){..8,8} getWaitTime(){..16,8} getEventID(){..24,8} getZenmetuSw(){return shape_angle.z & 0xFF;}. Execute() never calls eventUpdate(): with id!=0xFF the order is issued only once (the frame setEvent runs) and eventStart is never reached, so the shutter would not move; behaviour with a real id unverified (probably always placed with 0xFF). dEvLib orderEvent(id,0xFF,1): id!=0xFF -> fopAcM_orderMapToolEvent(this,id,0xFF,0xFFFF,0x101,0) (event idx looked up from REVT; flag 0x100 = auto-next, prio 3), re-ordered every frame from eventUpdate() until accepted; actor reacts in eventStart(); no eventEnd override, so the actor sets nothing at event end. id==0xFF -> no event, actor calls eventStart() directly."
+ },
+ {
+  "file": "d_a_obj_lv4bridge.cpp",
+  "class": "daObjLv4Brg_c",
+  "profile": "fpcNm_Obj_Lv4Bridge_e",
+  "names": [
+   "l4brg"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 8 & 0xFF",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "role": "main",
+    "none": 255
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "on at create -> bridge already extended, no event"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no player area"
+  },
+  "trigger": "switch params & 0xFF turns on while the room is loaded; orders event, eventStart slides the bridge out 2000 units",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getSwbit(){return fopAcM_GetParamBit(this,0,8);} getEvID(){..8,8}. One-shot. dEvLib orderEvent(id,0xFF,1): id!=0xFF -> fopAcM_orderMapToolEvent(this,id,0xFF,0xFFFF,0x101,0) (event idx looked up from REVT; flag 0x100 = auto-next, prio 3), re-ordered every frame from eventUpdate() until accepted; actor reacts in eventStart(); no eventEnd override, so the actor sets nothing at event end. id==0xFF -> no event, actor calls eventStart() directly."
+ },
+ {
+  "file": "d_a_obj_lv6ChangeGate.cpp",
+  "class": "daLv6ChangeGate_c",
+  "profile": "fpcNm_Obj_Lv6ChgGate_e",
+  "names": [
+   "l6ChBlk"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 24 & 0xFF",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "ordered on every change of the effective switch state, both directions"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "Sw; effective state = swState ^ isSwitch(Sw), swState = params>>12 & 0xF (0xF treated as 0); a change either way orders the event (slide right when effective on, left when off)"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "notes": "Sw2 (shape_angle.x & 0xFF): on at create -> actor not created; actor sets it itself when broken by a copper statue swing (unrelated to the event)"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no player area"
+  },
+  "trigger": "effective switch state (isSwitch(params & 0xFF) xor params>>12 & 0xF) changes while loaded; repeatable",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getEventID(){..24,8} getWaitTime(){..16,8} getSwState(){..12,4} getSw(){..0,8} getSw2(){return shape_angle.x & 0xFF;}. dEvLib orderEvent(id,0xFF,1): id!=0xFF -> fopAcM_orderMapToolEvent(this,id,0xFF,0xFFFF,0x101,0) (event idx looked up from REVT; flag 0x100 = auto-next, prio 3), re-ordered every frame from eventUpdate() until accepted; actor reacts in eventStart(); no eventEnd override, so the actor sets nothing at event end. id==0xFF -> no event, actor calls eventStart() directly."
+ },
+ {
+  "file": "d_a_obj_lv6elevta.cpp",
+  "class": "daObjLv6ElevtA_c",
+  "profile": "fpcNm_Obj_Lv6ElevtA_e",
+  "names": [
+   "l6eleva"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 16 & 0xFF",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "same id for rotate right, rotate left and rotate back"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "notes": "SwNo: on while at angle 0 -> rotate +90 and lower 1500"
+   },
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "notes": "Sw2No: on while at angle 0 -> rotate -90 and lower 800; both off while rotated -> rotate back. Either switch 0xFF disables the actor"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no player area"
+  },
+  "trigger": "one of its two switches changes (sw1 or sw2 on at angle 0, or both off when rotated); only active when a Lv6SwTurn actor with identical getSwbit/getSwbit2 exists",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getSwNo(){..0,8} getSw2No(){..8,8} getEvent(){..0x10,8}. Initial angle is taken from the switches at create, so no event on load. Repeatable. dEvLib orderEvent(id,0xFF,1): id!=0xFF -> fopAcM_orderMapToolEvent(this,id,0xFF,0xFFFF,0x101,0) (event idx looked up from REVT; flag 0x100 = auto-next, prio 3), re-ordered every frame from eventUpdate() until accepted; actor reacts in eventStart(); no eventEnd override, so the actor sets nothing at event end. id==0xFF -> no event, actor calls eventStart() directly."
+ },
+ {
+  "file": "d_a_obj_lv3Water2.cpp",
+  "class": "daLv3Water2_c",
+  "profile": "fpcNm_Obj_Lv3Water2_e",
+  "names": [
+   "l3wat02"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 16 & 0xFF",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "role": "east",
+    "none": 255,
+    "when": "Sw1 (angleX & 0xFF) changed state"
+   },
+   {
+    "expr": "params >> 24 & 0xFF",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "west",
+    "none": 255,
+    "when": "Sw2 (angleX >> 8 & 0xFF) changed state and Sw1 did not"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "notes": "Sw1 east: any change vs state at create (or after the last event) orders the east id"
+   },
+   {
+    "role": "required-on",
+    "src": "angleX",
+    "shift": 8,
+    "mask": 255,
+    "notes": "Sw2 west: any change orders the west id"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no player area"
+  },
+  "trigger": "either of its two switches changes state while loaded (raise or lower); repeatable",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getParamSw1(){return shape_angle.x & 0xFF;} getParamSw2(){return (shape_angle.x & 0xFF00)>>8;} getParamEvent(){..16,8} getParamEvent2(){..24,8}; level step params>>4 & 0xFFF (*5), frames angleZ low/high byte. Switches 0xE/0xF are hardcoded for particles only. dEvLib orderEvent(id,0xFF,1): id!=0xFF -> fopAcM_orderMapToolEvent(this,id,0xFF,0xFFFF,0x101,0) (event idx looked up from REVT; flag 0x100 = auto-next, prio 3), re-ordered every frame from eventUpdate() until accepted; actor reacts in eventStart(); no eventEnd override, so the actor sets nothing at event end. id==0xFF -> no event, actor calls eventStart() directly."
+ },
+ {
+  "file": "d_a_obj_lv3Water.cpp",
+  "class": "daLv3Water_c",
+  "profile": "fpcNm_Obj_Lv3Water_e",
+  "names": [
+   "l3water"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "angleX & 0xFF",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "role": "main",
+    "none": 255
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "any change vs state at create/last event orders the event (raise when on, lower when off)"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no player area"
+  },
+  "trigger": "switch params & 0xFF changes state while loaded; repeatable",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getParamEvent(){return shape_angle.x & 0xFF;} getParamType(){return (shape_angle.x & 0xFF00)>>8;} switch getParam(0,8); level params>>12 & 0xFFF, frames params>>24. Types 1,10,15,17,19,20 only toggle collision/visibility in eventStart instead of animating. dEvLib orderEvent(id,0xFF,1): id!=0xFF -> fopAcM_orderMapToolEvent(this,id,0xFF,0xFFFF,0x101,0) (event idx looked up from REVT; flag 0x100 = auto-next, prio 3), re-ordered every frame from eventUpdate() until accepted; actor reacts in eventStart(); no eventEnd override, so the actor sets nothing at event end. id==0xFF -> no event, actor calls eventStart() directly."
+ },
+ {
+  "file": "d_a_obj_lv4CandleTag.cpp",
+  "class": "dalv4CandleTag_c",
+  "profile": "fpcNm_Tag_Lv4Candle_e",
+  "names": [
+   "L4cdlTg"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "angleX & 0xFF",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "role": "main",
+    "none": 255
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "notes": "SwNG: on while SwOK off orders the event"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "notes": "SwOK: on at create or while watching -> end, no event"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no player area"
+  },
+  "trigger": "SwNG (params>>16 & 0xFF) turns on (wrong candle) while SwOK (params>>8 & 0xFF) is off; repeatable once SwNG goes off again",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getSwTop(){..0,8} getSwOK(){..8,8} getSwNG(){..0x10,8} getSwTotal(){..0x18,8} getEventID(){return shape_angle.x & 0xff;}. 60 frames after eventStart it turns OFF switches SwTop..SwTop+SwTotal-1 (params & 0xFF, count params>>24) to reset the candles. dEvLib orderEvent(id,0xFF,1): id!=0xFF -> fopAcM_orderMapToolEvent(this,id,0xFF,0xFFFF,0x101,0) (event idx looked up from REVT; flag 0x100 = auto-next, prio 3), re-ordered every frame from eventUpdate() until accepted; actor reacts in eventStart(); no eventEnd override, so the actor sets nothing at event end. id==0xFF -> no event, actor calls eventStart() directly."
+ },
+ {
+  "file": "d_a_obj_syRock.cpp",
+  "class": "daSyRock_c",
+  "profile": "fpcNm_Obj_SyRock_e",
+  "names": [
+   "syRock"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 16 & 0xFF",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "role": "main",
+    "none": 255
+   }
+  ],
+  "switches": [
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "SwBit1: on at create -> rock already fallen, no event"
+   },
+   {
+    "role": "set-when-done",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "SwBit1 set by the actor when the falling rock lands (after eventStart, during the event)"
+   },
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "notes": "SwBit2 auto-drop switch"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "cylinder",
+   "notes": "not a player area: bomb hit volume, cylinder R=150 H=680 with base at (pos.x, pos.y-250, pos.z); an AT_TYPE_BOMB hit triggers. Scale unused."
+  },
+  "trigger": "SwBit2 (params>>8 & 0xFF) turns on, or a bomb hits the stalactite; orders the event, eventStart drops it",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getSwBit1(){..0,8} getSwBit2(){..8,8} getEvetID(){..16,8} getArg0(){return shape_angle.x & 0xF;} (Arg0==1: creation waits until a WaterPillar within XZ 5.0 exists). One-shot. dEvLib orderEvent(id,0xFF,1): id!=0xFF -> fopAcM_orderMapToolEvent(this,id,0xFF,0xFFFF,0x101,0) (event idx looked up from REVT; flag 0x100 = auto-next, prio 3), re-ordered every frame from eventUpdate() until accepted; actor reacts in eventStart(); no eventEnd override, so the actor sets nothing at event end. id==0xFF -> no event, actor calls eventStart() directly."
+ },
+ {
+  "file": "d_a_obj_Turara.cpp",
+  "class": "daTurara_c",
+  "profile": "fpcNm_Obj_Turara_e",
+  "names": [
+   "Turara"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params >> 24 & 0xFF",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "main",
+    "none": 255
+   }
+  ],
+  "switches": [
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "notes": "SwBit3: on at create -> actor not created; set by the actor when the icicle is destroyed"
+   },
+   {
+    "role": "blocks-if-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "notes": "SwBit1: on at create -> icicle already fallen, no event; actor sets it on landing (state!=0 variant) and at create when state==1"
+   },
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "none": 255,
+    "notes": "SwBit2 drop switch"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "cylinder",
+   "notes": "not a player area: bomb hit volume, cylinder R=170 H=510 with base at (pos.x, pos.y-50, pos.z); AT_TYPE_BOMB triggers the drop, AT_TYPE_IRON_BALL destroys it (sets SwBit3, no event). Scale unused."
+  },
+  "trigger": "SwBit2 (params>>8 & 0xFF) turns on, or a bomb hits the icicle; orders the event, eventStart drops it",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getSwBit1(){..0,8} getSwBit2(){..8,8} getSwBit3(){..16,8} getEvetID(){..0x18,8} getState(){return shape_angle.x;} stored in a u8 (angleX & 0xFF): 0 = falls after angleZ & 0xFF frames and spawns E_KK on landing, !=0 = HIO wait time, ==1 also sets SwBit1 at create. dEvLib orderEvent(id,0xFF,1): id!=0xFF -> fopAcM_orderMapToolEvent(this,id,0xFF,0xFFFF,0x101,0) (event idx looked up from REVT; flag 0x100 = auto-next, prio 3), re-ordered every frame from eventUpdate() until accepted; actor reacts in eventStart(); no eventEnd override, so the actor sets nothing at event end. id==0xFF -> no event, actor calls eventStart() directly."
+ },
+ {
+  "file": "d_a_obj_waterPillar.cpp",
+  "class": "daWtPillar_c",
+  "profile": "fpcNm_Obj_WaterPillar_e",
+  "names": [
+   "wColumn"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "angleX & 0xFF",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "role": "main",
+    "none": 255,
+    "when": "only when the switch params & 0xFF != 0xFF"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "none": 255,
+    "notes": "0xFF = no switch: pillar runs immediately and never orders. No create-time check: if already on at load the event is ordered again on every room load"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "none",
+   "notes": "no player area (scale.x*140 and height are collision only)"
+  },
+  "trigger": "switch params & 0xFF is on (checked every frame while waiting); orders the event, eventStart starts the water column rising",
+  "requester": "this",
+  "relocates": false,
+  "notes": "getEventID(){return shape_angle.x & 0xFF;} mSwitchNo = getParam(0,8); type getParam(8,4). dEvLib orderEvent(id,0xFF,1): id!=0xFF -> fopAcM_orderMapToolEvent(this,id,0xFF,0xFFFF,0x101,0) (event idx looked up from REVT; flag 0x100 = auto-next, prio 3), re-ordered every frame from eventUpdate() until accepted; actor reacts in eventStart(); no eventEnd override, so the actor sets nothing at event end. id==0xFF -> no event, actor calls eventStart() directly."
+ },
+ {
+  "file": "d_a_obj_Y_taihou.cpp",
+  "class": "daObjYtaihou_c",
+  "profile": "fpcNm_Obj_Ytaihou_e",
+  "names": [
+   "Ytaihou"
+  ],
+  "mapToolIds": [
+   {
+    "expr": "params & 0xFF",
+    "src": "params",
+    "shift": 0,
+    "mask": 255,
+    "role": "facing0",
+    "none": 255,
+    "when": "cannon index 0 (neither angle switch on)"
+   },
+   {
+    "expr": "params >> 8 & 0xFF",
+    "src": "params",
+    "shift": 8,
+    "mask": 255,
+    "role": "facing1",
+    "none": 255,
+    "when": "index 1 (only the angleX>>8 switch on)"
+   },
+   {
+    "expr": "params >> 16 & 0xFF",
+    "src": "params",
+    "shift": 16,
+    "mask": 255,
+    "role": "facing2",
+    "none": 255,
+    "when": "index 2 (only the angleX & 0xFF switch on)"
+   },
+   {
+    "expr": "params >> 24 & 0xFF",
+    "src": "params",
+    "shift": 24,
+    "mask": 255,
+    "role": "facing3",
+    "none": 255,
+    "when": "index 3 (both on)"
+   }
+  ],
+  "switches": [
+   {
+    "role": "required-on",
+    "src": "angleX",
+    "shift": 0,
+    "mask": 255,
+    "notes": "facing bit 1 (index |= 2); the actor writes it itself when the player rotates the cannon"
+   },
+   {
+    "role": "required-on",
+    "src": "angleX",
+    "shift": 8,
+    "mask": 255,
+    "notes": "facing bit 0 (index |= 1); the actor writes it itself"
+   }
+  ],
+  "eventBits": [],
+  "area": {
+   "shape": "cylinder",
+   "notes": "not a player area: collider cylinder R=120 H=200 at local offset (0,0,-50) from pos, rotated by the cannon facing; an NBOMB touching it fires"
+  },
+  "trigger": "a bomb touches the cannon; if an iron ball is loaded and the id for the current facing != 0xFF it orders that event, otherwise fires without an event",
+  "requester": "this",
+  "relocates": false,
+  "notes": "int getEvent(u8 i){return fopAcM_GetParamBit(this,(i&0x1f)<<3,8);} called with field_0x775 = (isSwitch(angleX&0xFF)?2:0)|(isSwitch(angleX>>8&0xFF)?1:0); facing yaw = home.angle.y + {0,0xC000,0x8000,0x4000}[index]. Which id fires depends on runtime rotation, so pick it by the current switch state. Repeatable. dEvLib orderEvent(id,0xFF,1): id!=0xFF -> fopAcM_orderMapToolEvent(this,id,0xFF,0xFFFF,0x101,0) (event idx looked up from REVT; flag 0x100 = auto-next, prio 3), re-ordered every frame from eventUpdate() until accepted; actor reacts in eventStart(); no eventEnd override, so the actor sets nothing at event end. id==0xFF -> no event, actor calls eventStart() directly."
+ }
+]
