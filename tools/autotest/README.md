@@ -277,9 +277,10 @@ while B fights, a teammate's kill, heart container and warp out of the arena mus
 `boss-diababa` and `boss-fyrus` (tag `boss-fight`): both start in the arena with the boss alive
 (lib.js's boss checkpoints without `stageBoss`) and wait for its intro. A kills its boss for real,
 takes the heart container and leaves through the warp; B's `bossWatch` runs until 20 s after A
-arrived (A's world state merged). Then B kills its own boss: one BOSSCLEAR, one heart container (+5
-max life), one warp, the prompt still waiting; B warps out, the held packets apply, no prompt comes
-(A went where B's own warp went), and both end with +5 max life and the boss and heart bits.
+arrived (A's world state merged); the heart container's bit and grant came through meanwhile (+5 max
+life), the boss bit did not. Then B kills its own boss: one BOSSCLEAR, one warp, no heart container (A
+took the team's), the prompt still waiting; B warps out, the held packets apply, no prompt comes (A
+went where B's own warp went), and both end with +5 max life and the boss and heart bits.
 `boss-dangoro` does the same for a mini-boss with `killBoss` `flags` and a walk out of the stage.
 The `-observe` variants (manual, tag `boss-fight-observe`) turn B's guard off and only log what A's
 kill changes in B's fight, then B's own clear (`expectBossClear` `soft`).

@@ -202,10 +202,11 @@ older builds go without it or without those clicks.
   those destinations per game for later catch-ups. Cutscenes started by NPCs or objects play only
   for the player who triggers them; teammates in the room get the follow prompt if the scene moves
   them.
-- Everyone fights their own bosses and mini-bosses. While you fight one, a teammate's kill, heart
-  container and warp out of that arena change nothing for you: their flags from there, follow
-  prompts and catch-up offers wait until you leave the arena (a game over that brings you back
-  keeps the wait), and nobody is pulled into a cutscene. You get one heart container per boss.
+- Everyone fights their own bosses and mini-bosses. While you fight one, a teammate's kill and warp
+  out of that arena never interrupt you: their switches, story flags and boss-beaten flag from there,
+  follow prompts and catch-up offers wait until you leave the arena (a game over that brings you
+  back keeps the wait), and nobody is pulled into a cutscene. The team gets one heart container per
+  boss: once a teammate took it, your own kill drops none and their pickup reaches you.
 - Sync Blocks and Chains covers push blocks and gravestones, Snowpeak's ice blocks, turning
   switches, Castle Town's push doors and chain switches. Beamos statues, the walls pulled by a
   chain, the wolf's ceiling chains and Snowpeak's cannons still move only for whoever moves them;

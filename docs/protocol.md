@@ -191,12 +191,12 @@ Each of these carries `teamId`, `layout`, `protocolVersion` and `addToQueue`. Th
 
 Boss fights: while the receiver fights its own boss or mini-boss (from the first tick it stands in the
 room of a live one until it stands, settled, outside that arena; a game over that reloads the arena
-keeps it), it holds what a teammate's kill there would change: `SET_FLAG`, `UNSET_FLAG` and the event
-bits whose `stageName` (and, for arenas that are one room of a larger stage, `roomNo`) are the arena's,
-the boss bits of `UPDATE_DUNGEON_ITEMS` for the arena's stage table (keys, map, compass and boss key go
-on), and `GIVE_ITEM` whose `check` lies in the arena (its heart container heals fully). A merge meanwhile
-leaves out the held bits, the arena's boss bits and a higher max life. All of it applies, in order, when
-the fight ends; nothing is dropped.
+keeps it), it holds what a teammate's kill there would interrupt: switch `SET_FLAG`s and `UNSET_FLAG`s
+and the event bits whose `stageName` (and, for arenas that are one room of a larger stage, `roomNo`) are
+the arena's, and the boss and mini-boss bits of `UPDATE_DUNGEON_ITEMS` for the arena's stage table. Keys,
+map, compass, boss key, item flags, chests, `GIVE_ITEM` and the heart container's `STAGE_LIFE` go on: with
+that bit set our own kill spawns no second heart container. A merge meanwhile leaves out the held bits
+and the arena's boss bits. All of it applies, in order, when the fight ends; nothing is dropped.
 
 Catch-up: the relay keeps, per team, team game and layout, the last untargeted
 `UPDATE_WORLD_STATE` and every `addToQueue` packet since (numbered with `queueEpoch` and
