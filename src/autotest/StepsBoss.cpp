@@ -53,6 +53,14 @@ std::map<std::string, int> sEventCounts;
 uint32_t sLastSeq = 0;
 u16 sMarkedMaxLife = 0;
 
+int clearEvents() {
+    int n = 0;
+    for (const auto& [name, count] : sEventCounts) {
+        n += name.rfind("BOSSCLEAR", 0) == 0 ? count : 0;
+    }
+    return n;
+}
+
 const char* currentStage() {
     const char* s = dComIfGp_getStartStageName();
     return s != nullptr ? s : "";
@@ -338,10 +346,17 @@ std::optional<bool> killBoss(StepContext& ctx) {
 }
 
 // After our kill: its scenes are over, the clear left `heart` heart containers and `warp` warps.
+// A boss with a warp is done after its own BOSSCLEAR (a teammate's boss bit may be set already).
 // soft: a mismatch is only logged.
 std::optional<bool> expectBossClear(StepContext& ctx) {
+    static int s_clearsBefore = 0;
+    if (!ctx.begun) {
+        s_clearsBefore = clearEvents();
+    }
     const bool soft = ctx.step.value("soft", false);
-    const bool beaten = dComIfGs_isStageBossEnemy() || dComIfGs_isStageMiddleBoss();
+    const bool beaten = ctx.step.value("warp", 1) > 0 ?
+                            clearEvents() > s_clearsBefore :
+                            dComIfGs_isStageBossEnemy() || dComIfGs_isStageMiddleBoss();
     const bool quiet = !dComIfGp_event_runCheck() && story::tracker().quietTicks() >= 90;
     if (dComIfGp_event_runCheck() && !padBusy() && ctx.ticks % 20 == 0) {
         pulsePad(0.0f, 0.0f, PAD_BUTTON_A, 3);
@@ -362,13 +377,7 @@ std::optional<bool> expectBossClear(StepContext& ctx) {
     const int wantHearts = ctx.step.value("heart", 1);
     const int wantWarps = ctx.step.value("warp", 1);
     TwiliLog.info("[autotest] boss clear: {} heart container(s), {} warp(s), BOSSCLEAR events {}",
-        hearts, warps, [] {
-            int n = 0;
-            for (const auto& [name, count] : sEventCounts) {
-                n += name.rfind("BOSSCLEAR", 0) == 0 ? count : 0;
-            }
-            return n;
-        }());
+        hearts, warps, clearEvents());
     if ((hearts != wantHearts || warps != wantWarps) && soft) {
         TwiliLog.warn("[autotest] boss clear differs: {} heart container(s) and {} warp(s), want {} and {}",
             hearts, warps, wantHearts, wantWarps);
