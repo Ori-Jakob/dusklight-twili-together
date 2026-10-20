@@ -169,11 +169,16 @@ Motion (`StepsMotion.cpp`):
 | `findSlope` | `minDeg` (12), `maxDeg` (30), `radius` (1200), `step` (60) | puts our Link on the nearest steady slope around it, standing across it (none near Faron Field's start; South Faron's spawn is on one) |
 | `expectFeetOnGround` | `self`, `maxSpread` (4), `minBend` (0), `contact` (true), `frames` (30), `trace`, `timeoutSec` | the feet (paws) of the first peer's dummy (or ours) stand at the same height over our ground, the legs bent at least `minBend` degrees, and the dummy's leg adjustment on |
 | `expectDummyAirborne` | `timeoutSec` (5) | the first peer's dummy has its feet off the ground (its sender's are) |
+| `expectDummyBody` | `rootX`, `rootZ` (cleared to these), `rootMatch` with `rootTol` (0.5), `notStanding`, `magne`, `up` (`[x, y, z]`) with `upTol` (0.05), `tweak`, `turnDeg` or `tweakA`/`tweakB` with `turnTol` (2), `minTicks` (1), `timeoutSec` | the first peer's dummy's body matrix extras ("ym") on `minTicks` ticks: the root where the sender's calc put it (`notStanding`: not the old standing pin), the body matrix's up axis and its turn beyond the shape angle |
 
 The thresholds of `puppet-ground-steady` and `puppet-feet-slope(-wolf)` come from their runs: the
 body's climb rate changed by at most 1.45 a tick, ours and the dummy's (`jerk` 3), a human's feet
 stood 0.3 apart (`maxSpread` 2) and a standing wolf, B's own too, keeps a paw up to 7.6 over its
 ground (`maxSpread` 10).
+
+`puppet-root-matrix`: B's plain slash clears the root's Z to -7 (the dummy used to pin the standing
+5); the patched "ym" phases (a ladder-style root, a magnetic-boots ceiling, a horse run tweak, a
+climbing wall's turn) come out exactly: root (12, -20), up (0, -1, 0) at 180 degrees, 28.3 and 45.
 
 World sync (`StepsWorld.cpp`):
 
@@ -227,10 +232,13 @@ Items held up: chests, item gets, trades (`StepsGetItem.cpp`):
 | op | fields | does |
 | --- | --- | --- |
 | `expectLocalGetItem` | `item` (shown), `real` (given), `shows` (1), `ticks` (0), `timeoutSec` (30) | what our capture sent: the latest item and the totals |
-| `expectRemoteGetItem` | `item`, `near` (`[x, y, z]` from the dummy, in its facing frame) with `tol` (30), `minScale`, `emitters`, `maxFailures` (0); `drawn: false` (held up there, not drawn here); `none` (nothing wanted, built or loading); `frames` (0), `timeoutSec` (30) | until the first peer's dummy shows it so, then for `frames` more ticks |
+| `expectRemoteGetItem` | `item`, `near` (`[x, y, z]` from the dummy, in its facing frame) with `tol` (30), `minScale`, `emitters`, `maxFailures` (0); `drawn: false` (held up there, not drawn here); `none` (nothing wanted, built or loading); in every mode `light` (lit now), `minLightPow`, `sound` (the Poe soul's now), `minSoundTicks`, `minLightFades` with `minLightFadeTicks`, `minSparkleFades` with `minSparkleFadeTicks`/`maxSparkleFadeTicks`; `frames` (0), `timeoutSec` (30) | until the first peer's dummy shows it so, then for `frames` more ticks |
 
 Written for items held up on a puppet, **not run yet** (the machine was in use): `getitem-chest`,
 `getitem-heart-piece`, `getitem-hidden` and `getitem-rando` (`scenarios/getitem.js`).
+`getitem-heart-piece` also checks daDitem_c's light on the puppet's item (power 6.4 of 8 when the
+item went), its fade (8 ticks) and the heart sparkles' fade-out after it (10 ticks, 26 alpha a
+tick); `getitem-poe-soul` the Poe soul's sound on every tick it is held up.
 
 Fidelity (`StepsFidelity.cpp`):
 
@@ -247,7 +255,7 @@ Wolf, Midna and transformations (`StepsWolf.cpp`):
 | op | fields | does |
 | --- | --- | --- |
 | `setForm` | `form` (`wolf`, `human`) | the form Link spawns in on the next stage load (follow with a warp) |
-| `transform` | `form`, `trace`, `voice`, `timeoutSec` | transforms our player; with `trace` every stage and every expected emitter must show; `voice` plays Midna's demo's transformation voice |
+| `transform` | `form`, `trace`, `midnaSent`, `midnaLog`, `voice`, `timeoutSec` | transforms our player; with `trace` every stage and every expected emitter must show (`midnaSent`: we sent Midna on every tick of each stage her game drew her; `midnaLog`: a line per tick); `voice` plays Midna's demo's transformation voice |
 | `expectLocalForm` | `form` | |
 | `expectRemoteForm` | `form`, `body` (form or `hidden`), `count`, `timeoutSec` | peers send `form` and their dummies show `body` |
 | `expectCleanAnims` | `frames` (120), `maxRefused` (0) | no dummy refuses more clips than that |
@@ -255,12 +263,17 @@ Wolf, Midna and transformations (`StepsWolf.cpp`):
 | `expectRemoteMidna` | `mode` (`drawn`, `shadow`, `apart`, `none`), `upper`, `hairHand`, `leftHand`, `rightHand`, `tired`, `maxRefused`, `count`, `frames`, `timeoutSec` | peers' dummies pose their Midna so |
 | `midnaSfx` | `sound`, `voice` (true) | our Midna starts that creature voice or sound (sent as PLAYER_SFX) |
 | `markRemoteMidna` / `expectRemoteMidnaSince` | `minSfx`, `minApartTicks`, `minShownTicks`, `timeoutSec` | the first peer's dummy heard that many Midna sounds and showed her that long since the mark |
+| `measureRemoteMidnaTransform` | `minSent` (`{A, swap, C, after}`), `maxMissed` (1), `maxGap` (0), `afterTicks` (30), `timeoutSec` | through the first peer's next transformation (and `afterTicks` after it), per stage: the ticks its pose had Midna against the ticks its dummy drew her, and the ticks without her between the first and last |
 | `expectRemoteSfxTiming` | `sound`, `maxLag` (1), `transform`, `timeoutSec` | the first peer's dummy played that PLAYER_SFX within `maxLag` ticks of the pose tick it was made in (and of the transformation's start) |
 | `transformFxSelfTest` | | replay planner and codec; needs no peer |
 | `expectRemoteTransformFx` | `form`, `maxLag`, `minSilhouette`, `fur`, `maxAnchorErr`, `skip`, `hidden`, `anchorSource`, `timeoutSec` | the first peer's next transformation as sent and as its dummy replayed it |
 | `expectNoTransformFx` | `frames` | the dummy replays no transformation |
 | `expectDummyTransformFx` | `emitters`, `tev`, `silhouette`, `anchorSource`, `frames`, `timeoutSec` | exactly these emitters this tick, and the other fields |
 | `waitRemoteTransformPhase` | `phase` (`A`, `swap`, `C`), `timeoutSec` | until the first peer sends that stage |
+
+`midna-transform`: turning human, B's game draws Midna on all 14 ticks before the body swap and on
+its 5 (as her shadow on the back), none after it (MD_RETURN); turning wolf, only after the swap.
+A's dummy draws her on each tick its pose has her, with no tick without her in between.
 
 Wolf attacks (`StepsWolfFx.cpp`):
 
@@ -348,8 +361,9 @@ Epona (`StepsHorse.cpp`):
 | `rideHorse` | `ride` (true), `mode` (`force`, `mount`, `beside`), `side` (`left`, `right`), `trace`, `timeoutSec` | on (forced, or the real mount: beside her, A on the GET_ON prompt) or off our horse; `beside` only stands there |
 | `expectLocalHorse` | `present` (true), `ridden`, `timeoutSec` | our horse as shown and ridden |
 | `setHorseHidden` | `hidden` (true) | our horse's call wait on or off |
-| `expectRemoteHorse` | `count`, `name`, `ridden`, `parked`, `maxDist`, `maxSeatDist`, `zelda`, `maxZeldaDist` (150), `card`, `tagLine2`, `onScreen`, `tint`, `vanilla`, `hueGain`, `frames`, `timeoutSec` | peers' puppets as the fields say, held for `frames` ticks |
+| `expectRemoteHorse` | `count`, `name`, `ridden`, `parked`, `maxDist`, `maxSeatDist`, `zelda`, `maxZeldaDist` (150), `zeldaLook`, `zeldaNeck`/`zeldaBody` (`[x, y]`) with `zeldaAngleTol` (64), `zeldaBtp`, `zeldaBtk`, `zeldaMatchSender` (her eye clips are the latest sent), `zeldaEyeMove`, `zeldaTurnTol` (1.5), `card`, `tagLine2`, `onScreen`, `tint`, `vanilla`, `hueGain`, `frames`, `timeoutSec` | peers' puppets as the fields say, held for `frames` ticks; a shown Zelda's head and body joints must turn by what her look gives |
 | `spawnHoZelda` | `timeoutSec` | Zelda behind our Link on our horse (daHoZelda_c) |
+| `expectLocalZeldaLook` | `btp`, `btk`, `timeoutSec` | our capture sends our Zelda's look ("oy") with these eye clips |
 | `expectRiderBowTilt` | `minDeg` (20), `maxDeg` (35), `minTicks` (5), `timeoutSec` | a peer's riding dummy turns joint 5 for its bow |
 | `expectNoRemoteHorse` | `timeoutSec` | no puppet shown, no horse card drawn |
 | `expectRidePrompt` | `target` (`own`, `remote`), `frames` (60), `dist` (110) | GET_ON on our horse / never on the puppet |
@@ -361,6 +375,9 @@ Epona (`StepsHorse.cpp`):
 `horse-mount-smooth` (`scenarios/horse.js`) mounts with an A press: `procHorseRideInit` called from a
 step runs after `execute`, so the mount's first root reset never happens and B's own Link sinks into
 the horse and snaps up at the end. From behind, her body pushes Link out of the prompt's reach.
+`horse-zelda-look` patches "oy" with turns and moved eyes; before that B's own Zelda already turns
+her neck (2222, -5555), which A's copy follows. `horse-fmap` opens the field map once: a second
+open after the B press that closed it stays at alpha 0.
 
 Teleport (`StepsTeleport.cpp`):
 
@@ -474,7 +491,7 @@ Map cursors (`StepsMapCursor.cpp`). Targets are peer names or `#<client id>`:
 | `dumpMapCursors` | `surface` | logs the frame and `MAPCURSOR_PROBE` screen fractions |
 | `openPauseMap` | `surface` (`dmap`, `fmap`), `timeoutSec` | the dungeon or field map, as the map button opens it (a B press closes it) |
 | `checkFmapLinkIcon` | `tolPx` (1) | on the field map our position, placed as remote players are, lands under the Link icon |
-| `expectMapHorse` | `target`, `color`, `ridden`, `ownerAway`, `holdTicks`, `timeoutSec` | a remote Epona's horseshoe on the minimap |
+| `expectMapHorse` | `surface` (`minimap`, `fmap`), `target`, `color`, `ridden`, `ownerAway`, `maxFromMarkerPx`, `holdTicks`, `timeoutSec` | a remote Epona's horseshoe on the minimap or the field map (`maxFromMarkerPx`: that near its owner's marker and half its height across) |
 
 Item toasts (`StepsItemToast.cpp`), checked through the toast history:
 
