@@ -181,7 +181,8 @@ repairs the stream.
 | `UPDATE_DUNGEON_ITEMS` | `saveTblNo`, `keyDelta`, `dungeonItemBits` | small keys, map, compass, boss key |
 | `LIGHT_DROP` | `area`, `tbl`, `tbox` | a tear of light picked up. Unless that tear's TBOX bit is already set, the receiver sets it, adds one to the area's count (at most 16) and removes the tear from its screen; the bit keeps replays from counting twice |
 | `SHARE_PICKUP` | `items` (item numbers, at most 64) | consumables the sender just collected (rupees, hearts, fairies, arrows, seeds, bombs; no purchases, no bottled fairy, no tear) and, in a randomizer game, its trap item `0x13`. The receiver adds the same gain within its own limits (wallet, hearts, quiver or slingshot owned, bomb bags of that kind or empty ones; no heal while knocked out) with `sharePickups` on, and passes a trap to its own randomizer. Never queued or cached; receivers ignore replays |
-| `UPDATE_WORLD_STATE` | `fmt` (`dsv1`), `save`, `dan`, `danStageNo`, `saveTblNo`, `seenEpoch`, `seenSeq`, optional `targetClientId` | the whole save as base64; merged, never simply copied. `seenEpoch`/`seenSeq`: the last queued packet this save has applied |
+| `TAKE_ITEM` | `itemNo`, and `slot` or `firstBit: true` | the game took this item from the sender: the lantern (slot 1, the monkey), Auru's memo or Ashei's sketch (slot 19), Renado's letter, the invoice, the wooden statue or Ilia's charm (slot 21), the Sky Book (slot 22), or the pumpkin or cheese (`firstBit`, no slot). Never sent in a randomizer game and never for a shield; consumables are not takes. The receiver removes its copy the way the game does once that is safe (no menu, cutscene or loading, not held in hand; a lantern lit on the belt goes out), with a toast, and grants the item again on a later `GIVE_ITEM` of it from a teammate. An item that comes back to the sender without an item get (a game over during the monkey's theft, an event's trade swap) goes out as `GIVE_ITEM` |
+| `UPDATE_WORLD_STATE` | `fmt` (`dsv1`), `save`, `dan`, `danStageNo`, `saveTblNo`, `seenEpoch`, `seenSeq`, optional `targetClientId` | the whole save as base64; merged, never simply copied. Outside randomizer games an empty slot is not refilled with an item the receiver's first-get bit says it had (it was taken), except the lantern once the monkey's theft is over (event bits `F_0224`/`F_0225` without `F_0226`), and a takeable item the sender's save shows taken (slot empty, first-get bit set; the lantern only during the theft) is taken from the receiver too. `seenEpoch`/`seenSeq`: the last queued packet this save has applied |
 | `REQUEST_WORLD_STATE` | `catchUp` | asks the team for its state |
 
 Each of these carries `teamId`, `layout`, `protocolVersion` and `addToQueue`. The relay adds
@@ -195,7 +196,8 @@ Catch-up: the relay keeps, per team, team game and layout, the last untargeted
 replays the queue and the team's last 16 story moves, oldest first. A fresh untargeted world state
 replaces the cache and drops from the queue what it holds: its sender's own packets and the
 others' up to `seenSeq`. The others' later packets stay queued (all of them when `seenEpoch` is not
-this queue's epoch); a state without `seenSeq` empties the queue.
+this queue's epoch); a state without `seenSeq` empties the queue. A `TAKE_ITEM` with `firstBit`
+stays queued past every state: a save cannot tell a taken pumpkin from one never had.
 
 ### Kills and story (teammates only)
 

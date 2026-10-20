@@ -107,7 +107,7 @@ the others see the owner's values, greyed out.
 
 | Setting | Default | |
 | --- | --- | --- |
-| Sync World State | on | teams share flags, items, keys and save progress |
+| Sync World State | on | teams share flags, items, keys and save progress; outside randomizer games an item the game takes away (the lantern the monkey steals, a trade item handed over) leaves every teammate too, shields never |
 | Share Wooden Shields | on | off: a burnt wooden shield stays burnt for everyone who lost it |
 | Sync Enemy Deaths | off | a regular enemy a teammate defeats near you disappears for you too (not bosses; the drop goes to whoever defeated it) |
 | Share Enemy Damage | on | with Sync Enemy Deaths: teammates wear down the same enemies, so your hits weaken their copy too |
