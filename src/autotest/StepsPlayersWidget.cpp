@@ -91,8 +91,8 @@ std::string describeWidget() {
 std::string describeTab() {
     std::string s = fmt::format("tab={} rows=[", ui::playersTabShown());
     for (const ui::PlayersTabRow& r : ui::playersTabRows()) {
-        s += fmt::format(" '{}' teleport={}{} '{}' actions={};", clientName(r.clientId), r.teleport,
-            r.blocked ? " blocked" : "", r.tooltip, r.actions);
+        s += fmt::format(" '{}' teleport={}{} '{}' actions={} text='{}';", clientName(r.clientId),
+            r.teleport, r.blocked ? " blocked" : "", r.tooltip, r.actions, r.text);
     }
     return s + " ]";
 }
@@ -164,7 +164,7 @@ std::optional<bool> expectPlayersTab(StepContext& ctx) {
         ui::playersTabShown() &&
         rowsMatch(step, rows, [](const json& want, const ui::PlayersTabRow& r) {
             const std::string teleport = !r.teleport ? "none" : r.blocked ? "blocked" : "ready";
-            return contains(r.tooltip, want, "tooltip") &&
+            return contains(r.tooltip, want, "tooltip") && contains(r.text, want, "text") &&
                    (!want.contains("teleport") ||
                        want.value("teleport", std::string{}) == teleport) &&
                    (!want.contains("actions") || want.value("actions", false) == r.actions);

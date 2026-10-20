@@ -1113,7 +1113,7 @@ std::vector<PlayersTabRow> playersTabRows() {
         if (slot.row.elem != 0 && slot.row.visible && slot.clientId != 0) {
             const bool teleport = slot.teleport.elem != 0 && slot.teleport.visible;
             rows.push_back({slot.clientId, teleport, teleport && slot.blocked,
-                teleport ? slot.lastTooltip : std::string{}, slot.actions.visible});
+                teleport ? slot.lastTooltip : std::string{}, slot.actions.visible, slot.lastText});
         }
     }
     return rows;

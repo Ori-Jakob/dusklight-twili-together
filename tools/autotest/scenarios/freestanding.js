@@ -6,6 +6,20 @@ const { MODS, STAGES, COMMON_CVARS, RANDOMIZER_MODE_CVARS, warp, waitStage, barr
 
 const GREEN_RUPEE = 0x01;
 const HEART_PIECE = 0x21;
+const POE_SOUL = 0xe0;
+// A memory switch of South Faron no actor of the stage uses: the test Poe's soul switch.
+const POE_SWITCH = 0x7e;
+// E_hp: lamp-less day Poe (arg0 0xFF), soul switch in bits 8-15, no appear switch.
+const POE_PARAM = (0xffff00ff | (POE_SWITCH << 8)) >>> 0;
+// The golden wolf of Ordon Spring (mode 0): its skill is this saveBitLabels entry. It leaps at a
+// Link who comes close (its warp to the Hero's Shade), so it stands far off.
+const WOLF_PARAM = 0xffff0100;
+const WOLF_SKILL_LABEL = 0x153;
+// The randomizer's custom golden wolf flag (an unused event bit in vanilla).
+const WOLF_ITEM_FLAG = 0x3c10;
+// The fishing hole's heart piece and the memory item bit the rod sets for it.
+const FISHING = { stage: "F_SP127", room: 0, point: 0 };
+const FISHING_HEART_BIT = 0x80;
 // Memory item bits of South Faron (stage table 2) for the spawned items.
 const RUPEE_BIT = 0x9c;
 const HEART_BIT = 0x9d;
@@ -212,6 +226,187 @@ module.exports = [
                     { op: "expectFieldItem", tag: "h", present: false, forSec: 3 },
                     { op: "expectInventory", maxLife: BASE_LIFE + 1, forSec: 2 },
                     ...barrier("done", "A"),
+                    { op: "quit" },
+                ],
+            },
+        ],
+    },
+    {
+        name: "poe-soul-sync",
+        description: "A takes a Poe's soul: B's copy of the Poe fades, B gets one soul, the check's second grant is not given to A",
+        timeoutSec: 360,
+        cvars: COMMON_CVARS,
+        instances: [
+            {
+                name: "A",
+                start: STAGES.southFaron,
+                steps: [
+                    ...inFaron("B"),
+                    { op: "spawnEnemy", name: "E_hp", tag: "poe", param: POE_PARAM, dx: 300, dy: 100 },
+                    { op: "expectEnemyHealth", tag: "poe", timeoutSec: 20 },
+                    ...barrier("spawned", "B"),
+                    { op: "deleteEnemy", tag: "poe" },
+                    { op: "takeCheck", check: `poe:F_SP108:${POE_SWITCH}`, switch: POE_SWITCH, item: POE_SOUL },
+                    { op: "expectInventory", poes: 1, timeoutSec: 20 },
+                    ...barrier("taken", "B"),
+                    { op: "expectInventory", poes: 1, forSec: 5 },
+                    { op: "expectPickups", deduped: 0 },
+                    ...barrier("done", "B"),
+                    { op: "quit" },
+                ],
+            },
+            {
+                name: "B",
+                start: STAGES.southFaron,
+                steps: [
+                    ...inFaron("A"),
+                    { op: "spawnEnemy", name: "E_hp", tag: "poe", param: POE_PARAM, dx: 300, dy: 100 },
+                    { op: "expectEnemyHealth", tag: "poe", timeoutSec: 20 },
+                    ...barrier("spawned", "A"),
+                    ...barrier("taken", "A"),
+                    { op: "expectEnemyGone", tag: "poe", timeoutSec: 15 },
+                    { op: "expectSwitch", no: POE_SWITCH },
+                    { op: "expectInventory", poes: 1, timeoutSec: 30 },
+                    { op: "expectInventory", poes: 1, forSec: 5 },
+                    { op: "expectPickups", actorsRemoved: 1, deduped: 0 },
+                    ...barrier("done", "A"),
+                    { op: "quit" },
+                ],
+            },
+        ],
+    },
+    {
+        name: "golden-wolf-sync",
+        description: "A learns a golden wolf's skill and takes a randomizer golden wolf item: B's wolf and item vanish, B gets the item once",
+        timeoutSec: 360,
+        cvars: COMMON_CVARS,
+        instances: [
+            {
+                name: "A",
+                start: STAGES.southFaron,
+                steps: [
+                    ...inFaron("B"),
+                    { op: "spawnFieldItem", tag: "w", item: HEART_PIECE, bit: 0xff, dist: 200 },
+                    { op: "markFieldItem", tag: "w", wolfFlag: WOLF_ITEM_FLAG },
+                    ...barrier("spawned", "B"),
+                    { op: "takeCheck", eventLabel: WOLF_SKILL_LABEL },
+                    ...barrier("skill", "B"),
+                    ...barrier("checked", "B"),
+                    { op: "takeCheck", check: `golden_wolf:${WOLF_ITEM_FLAG}`, eventBit: WOLF_ITEM_FLAG, tag: "w", item: HEART_PIECE },
+                    { op: "expectInventory", maxLife: BASE_LIFE + 1, timeoutSec: 20 },
+                    ...barrier("taken", "B"),
+                    { op: "expectInventory", maxLife: BASE_LIFE + 1, forSec: 5 },
+                    { op: "expectPickups", deduped: 0 },
+                    ...barrier("done", "B"),
+                    { op: "quit" },
+                ],
+            },
+            {
+                name: "B",
+                start: STAGES.southFaron,
+                steps: [
+                    ...inFaron("A"),
+                    { op: "spawnEnemy", name: "GWolf", tag: "gw", param: WOLF_PARAM, dx: 1200, dz: 1200 },
+                    { op: "expectEnemyHealth", tag: "gw", timeoutSec: 20 },
+                    { op: "spawnFieldItem", tag: "w", item: HEART_PIECE, bit: 0xff, dist: 200 },
+                    { op: "markFieldItem", tag: "w", wolfFlag: WOLF_ITEM_FLAG },
+                    ...barrier("spawned", "A"),
+                    ...barrier("skill", "A"),
+                    { op: "expectEnemyGone", tag: "gw", timeoutSec: 15 },
+                    { op: "expectFieldItem", tag: "w", forSec: 1 },
+                    { op: "expectPickups", actorsRemoved: 1 },
+                    ...barrier("checked", "A"),
+                    ...barrier("taken", "A"),
+                    { op: "expectFieldItem", tag: "w", present: false, timeoutSec: 15 },
+                    { op: "expectEventBit", no: WOLF_ITEM_FLAG },
+                    { op: "expectInventory", maxLife: BASE_LIFE + 1, timeoutSec: 30 },
+                    { op: "expectInventory", maxLife: BASE_LIFE + 1, forSec: 5 },
+                    { op: "expectPickups", actorsRemoved: 1, removed: 1, deduped: 0 },
+                    ...barrier("done", "A"),
+                    { op: "quit" },
+                ],
+            },
+        ],
+    },
+    {
+        name: "fishing-heart-sync",
+        description: "A takes the fishing hole's heart piece while B has it hooked on the lure: B's copy goes off the line, B gets one piece and no heart scene",
+        timeoutSec: 360,
+        cvars: COMMON_CVARS,
+        instances: [
+            {
+                name: "A",
+                start: FISHING,
+                steps: [
+                    ...connect,
+                    ...noPickups,
+                    ...meetIn(FISHING, "B"),
+                    { op: "setInventory", maxLife: BASE_LIFE },
+                    { op: "findFieldItem", tag: "h", bit: FISHING_HEART_BIT },
+                    ...barrier("found", "B"),
+                    ...barrier("hooked", "B"),
+                    { op: "takeCheck", check: "fishing_heart_piece", itemBit: FISHING_HEART_BIT, tag: "h", item: HEART_PIECE },
+                    { op: "expectItemBit", bit: FISHING_HEART_BIT },
+                    { op: "expectInventory", maxLife: BASE_LIFE + 1, timeoutSec: 20 },
+                    ...barrier("taken", "B"),
+                    { op: "expectInventory", maxLife: BASE_LIFE + 1, forSec: 5 },
+                    { op: "expectPickups", deduped: 0 },
+                    ...barrier("done", "B"),
+                    { op: "quit" },
+                ],
+            },
+            {
+                name: "B",
+                start: FISHING,
+                steps: [
+                    ...connect,
+                    ...noPickups,
+                    ...meetIn(FISHING, "A"),
+                    { op: "setInventory", maxLife: BASE_LIFE },
+                    { op: "findFieldItem", tag: "h", bit: FISHING_HEART_BIT },
+                    ...barrier("found", "A"),
+                    { op: "markFieldItem", tag: "h", hooked: true },
+                    ...barrier("hooked", "A"),
+                    ...barrier("taken", "A"),
+                    { op: "expectFieldItem", tag: "h", present: false, timeoutSec: 15 },
+                    { op: "expectItemBit", bit: FISHING_HEART_BIT },
+                    { op: "expectInventory", maxLife: BASE_LIFE + 1, timeoutSec: 30 },
+                    { op: "expectInventory", maxLife: BASE_LIFE + 1, forSec: 5 },
+                    { op: "expectPickups", removed: 1, deduped: 0 },
+                    ...barrier("done", "A"),
+                    { op: "quit" },
+                ],
+            },
+        ],
+    },
+    {
+        name: "item-name-language",
+        description: "English messages get our name corrections; forced to another language the game's own names show (plural pieces, bugs with their sex), the light arrow falls back",
+        timeoutSec: 120,
+        cvars: COMMON_CVARS,
+        instances: [
+            {
+                name: "solo",
+                steps: [
+                    waitStage(STAGES.linksHouse),
+                    { op: "expectItemNames", english: true, items: [
+                        { item: HEART_PIECE, name: "Piece of Heart", source: "mod" },
+                        { item: 0xc0, name: "Male Beetle", source: "mod" },
+                        { item: 0x44, name: "Clawshot", source: "game" },
+                    ] },
+                    { op: "itemNamesEnglish", value: false },
+                    { op: "expectItemNames", english: false, items: [
+                        { item: HEART_PIECE, name: "Pieces of Heart", source: "game" },
+                        { item: 0xc0, name: "Beetle (M)", source: "game" },
+                        { item: 0xc1, name: "Beetle (F)", source: "game" },
+                        { item: 0x53, name: "Light Arrow", source: "fallback" },
+                        { item: 0x49, name: "Master Sword", source: "game" },
+                        { item: POE_SOUL, name: "Poe Souls", source: "game" },
+                        { item: 0x44, name: "Clawshot", source: "game" },
+                    ] },
+                    { op: "itemNameAudit" },
+                    { op: "itemNamesEnglish", value: null },
+                    { op: "expectItemNames", english: true, items: [{ item: HEART_PIECE, name: "Piece of Heart", source: "mod" }] },
                     { op: "quit" },
                 ],
             },

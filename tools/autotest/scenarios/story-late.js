@@ -80,6 +80,35 @@ const followTo = (stage, titleHas = "") => [
 
 const scenarios = [
     pair({
+        name: "story-tears-tab",
+        description: "in the Eldin twilight the Players tab shows each teammate's tear count; B's lost tear shows on A's tab",
+        timeoutSec: 420,
+        a: {
+            start: { ...STORY.eldinTwilight, lightDrops: { 1: 10 } },
+            steps: [
+                { op: "showWindow", tab: 2 },
+                { op: "expectPlayersTab", rows: [{ name: "B", text: "Eldin tears 10/16" }], timeoutSec: 30 },
+                ...barrier("seen", "B"),
+                ...barrier("lost", "B"),
+                { op: "expectPlayersTab", rows: [{ name: "B", text: "Eldin tears 9/16" }], timeoutSec: 30 },
+                { op: "hideWindow" },
+            ],
+        },
+        b: {
+            start: { ...STORY.eldinTwilight, lightDrops: { 1: 10 } },
+            steps: [
+                { op: "showWindow", tab: 2 },
+                { op: "expectPlayersTab", rows: [{ name: "A", text: "Eldin tears 10/16" }], timeoutSec: 30 },
+                ...barrier("seen", "A"),
+                // Lost here only: no LIGHT_DROP goes out.
+                { op: "setLightDrops", area: 1, num: 9 },
+                ...barrier("lost", "A"),
+                { op: "expectPlayersTab", rows: [{ name: "A", text: "Eldin tears 10/16" }], holdTicks: 30 },
+                { op: "hideWindow" },
+            ],
+        },
+    }),
+    pair({
         name: "story-eldin-spring",
         description: "A completes the Eldin tears: kytag04's potential-event warp is one strong move; B in Faron follows and ends human in Kakariko",
         a: {

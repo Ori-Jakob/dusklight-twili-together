@@ -6,13 +6,15 @@ const { MODS, STAGES, ITEMS, COMMON_CVARS, RANDOMIZER_MODE_CVARS, warp, waitStag
 // dItemNo_* values (include/d/d_item_data.h) and randomizer ids (mods/randomizer/src/item_ids.h).
 const I = {
     ...ITEMS,
-    heart: 0x00, redRupee: 0x04, silverRupee: 0x07, arrows10: 0x0e, halfMilkBottle: 0x65, poeSoul: 0xe0,
+    heart: 0x00, redRupee: 0x04, silverRupee: 0x07, arrows10: 0x0e, heartPiece: 0x21, halfMilkBottle: 0x65, poeSoul: 0xe0,
     randoTrap: 0x13, randoOrdonPortal: 0x14, randoForestKey: 0x85,
 };
 // A TBOX number no chest of the stage table uses; South Faron is stage table 2.
 const TBOX = 62;
 const FARON_TBL = 2;
 const FOREST_TBL = 0x10;
+// Three hearts; one piece makes 16.
+const BASE_LIFE = 15;
 // The randomizer's Ordon portal is this switch of the Ordon stage table (Link's house is in it).
 const ORDON_PORTAL_SWITCH = 0x34;
 
@@ -122,6 +124,35 @@ module.exports = [
                 ],
             },
         ],
+    },
+    {
+        name: "chest-sync-overlap",
+        description: "A and B open their copies of one heart piece chest at the same moment: both chests open and each gets the piece exactly once",
+        timeoutSec: 360,
+        cvars: COMMON_CVARS,
+        instances: ["A", "B"].map((name, i, names) => ({
+            name,
+            start: STAGES.southFaron,
+            steps: [
+                ...connect,
+                ...noPickups,
+                ...meetIn(STAGES.southFaron, names[1 - i]),
+                { op: "setInventory", maxLife: BASE_LIFE },
+                { op: "spawnChest", tag: "c", tbox: TBOX, item: I.heartPiece },
+                { op: "wait", sec: 2 },
+                { op: "expectChestOpen", tag: "c", open: false, forSec: 0 },
+                ...barrier("chests", names[1 - i]),
+                { op: "openChest", tag: "c" },
+                { op: "expectChestOpen", tag: "c", timeoutSec: 30 },
+                { op: "expectTbox", no: TBOX },
+                { op: "expectInventory", maxLife: BASE_LIFE + 1, timeoutSec: 30 },
+                ...barrier("opened", names[1 - i]),
+                { op: "expectInventory", maxLife: BASE_LIFE + 1, forSec: 6 },
+                { op: "expectPickups", max: { deduped: 1 } },
+                ...barrier("done", names[1 - i]),
+                { op: "quit" },
+            ],
+        })),
     },
     {
         name: "pickup-share",

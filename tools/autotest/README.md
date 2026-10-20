@@ -196,19 +196,31 @@ Chests, freestanding items, shared pickups and traps (`StepsPickups.cpp`):
 | `spawnFieldItem` | `tag`, `item` (0x21/0x22: a heart piece or container), `bit` (item bit), `dist` (150) | a resting field item `dist` units in front of our player |
 | `takeFieldItem` | `tag`, `holdSec` (0), `timeoutSec` | puts the item on our player until he takes it, pressing A through its message only after `holdSec`; done when it is gone and no event runs |
 | `holdFieldItem` | `tag`, `hold` (true) | marks the item as pulled by the clawshot, or lets it go |
+| `findFieldItem` | `tag`, `bit` (0x80), `timeoutSec` | tags the stage's own item (or heart piece) with that item bit, like the fishing hole's heart piece |
+| `markFieldItem` | `tag`, `wolfFlag` (event bit), `hooked` | turns a heart piece into the randomizer's golden wolf item with that flag / hooks it on a lure (the rod's `startCtrl`) |
+| `takeCheck` | `check`, `item`, `switch`, `itemBit`, `eventBit`, `eventLabel` (a `saveBitLabels` index), `tag` | takes a check as its game code does without the actor: sets the flags given, deletes the tagged field item and grants `item` silently under the check name |
 | `expectFieldItem` | `tag`, `present` (true), `forSec`, `timeoutSec` | the item exists |
 | `expectItemBit` | `bit` (below 0x80 dungeon, else memory), `tbl` (another stage table: its save slot), `set`, `forSec`, `timeoutSec` | an item bit |
 | `setInventory` | `rupees`, `life` (quarter hearts), `arrows`, `maxLife` (heart pieces, 5 a heart) | sets them in the save |
 | `expectInventory` | `rupees`, `life`, `arrows`, `bombs` (bag 0), `seeds`, `poes`, `bottles` (filled slots), `maxLife`, `keys` with `tbl`; `forSec`, `timeoutSec` | waits until each given value matches (and holds `forSec`) |
-| `expectPickups` | `sent`, `applied`, `skipped`, `rupees`, `life`, `arrows`, `seeds`, `bombs`, `trapsSent`, `trapsReceived`, `trapsApplied`, `grantsApplied`, `grantsQueued`, `removed`, `blocked`, `deduped` (freestanding items removed, pickups stopped, GIVE_ITEMs dropped); `min`/`max` objects of the same; `forSec`, `timeoutSec` | the SHARE_PICKUP, GIVE_ITEM and freestanding counters |
+| `expectPickups` | `sent`, `applied`, `skipped`, `rupees`, `life`, `arrows`, `seeds`, `bombs`, `trapsSent`, `trapsReceived`, `trapsApplied`, `grantsApplied`, `grantsQueued`, `removed`, `blocked`, `deduped`, `actorsRemoved` (freestanding items removed, pickups stopped, GIVE_ITEMs dropped, Poes and golden wolves removed); `min`/`max` objects of the same; `forSec`, `timeoutSec` | the SHARE_PICKUP, GIVE_ITEM and placed-check counters |
+| `setLightDrops` | `area`, `num` | sets that area's tear count here only (a lost tear) |
+| `itemNamesEnglish` | `value` (true, false, null = the disc's) | forces the item names' disc language |
+| `expectItemNames` | `english`, `items` (`item`, `name`, `source`: `game`, `mod`, `fallback`, `unknown`), `timeoutSec` | the language the names see and each item's name and source |
 
 Written for the chest sync, shared pickups, randomizer items, traps and toast batching, and **not run
 yet** (the machine was in use): `chest-sync`, `chest-sync-away`, `pickup-share`, `pickup-no-replay`,
 `rando-item-sync`, `rando-trap-spread` and `item-toast-burst` (`scenarios/pickups.js`).
+`chest-sync-overlap`: both open one heart piece chest at once, each gets the piece once.
 
 Written for freestanding items and item names, **not run yet** (the machine was in use):
 `freestanding-sync`, `freestanding-overlap`, `freestanding-busy`, `freestanding-away`,
-`item-name-audit` and `item-name-audit-rando` (`scenarios/freestanding.js`).
+`item-name-audit` and `item-name-audit-rando` (`scenarios/freestanding.js`). Placed checks
+beyond items: `poe-soul-sync` (a taken Poe fades for B, one soul each), `golden-wolf-sync` (a
+learned skill removes B's golden wolf, a taken golden wolf item vanishes and arrives once) and
+`fishing-heart-sync` (the fishing hole's heart piece leaves B's lure); `item-name-language` checks
+the corrections are English-only (the US disc forced to another language). `story-tears-tab`
+(`scenarios/story-late.js`) shows each teammate's tear count, and B's lost tear, in the Players tab.
 
 Items held up: chests, item gets, trades (`StepsGetItem.cpp`):
 
@@ -493,7 +505,7 @@ disturbs them:
 | op | fields | does |
 | --- | --- | --- |
 | `expectPlayersWidget` | `shown`, `gate` (`off`, `notConnected`, `noSave`, `empty`, `cutscene`, `menu`), `header`, `count`, `rows` (`name`; `label`, the name as shown; `area`, `tooltip` substrings; `teleport`: `ready`, `blocked`, `none`), `absent` (names), `x`, `y`, `minX`, `minY` (per mille), `opacity`, `scale` (percent), `clickableInGame` (the host takes its clicks with the menu closed), `holdTicks`, `timeoutSec` | the widget as the last tick built it |
-| `expectPlayersTab` | `count`, `rows` (`name`, `teleport`, `tooltip`, `actions`), `absent`, `holdTicks`, `timeoutSec` | the Players tab's rows; the tab must be shown (`showWindow` tab 2) |
+| `expectPlayersTab` | `count`, `rows` (`name`, `teleport`, `tooltip`, `actions`, `text` in the row's RML), `absent`, `holdTicks`, `timeoutSec` | the Players tab's rows; the tab must be shown (`showWindow` tab 2) |
 | `clickPlayersWidget` | `target`, `at` (`[x, y]`), `expect`, `reason`, `timeoutSec` | presses the target's teleport button (the host's click callback, or with `at` a real click there) and waits for the teleport's result |
 | `movePlayersWidget` | `x`, `y` (0 to 1) | moves the widget there as a drag would |
 | `mouseDrag` / `mouseMove` | `from`, `to`, `frames` / `x`, `y` | a left-button drag / a pointer move |

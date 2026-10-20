@@ -1,4 +1,5 @@
-// Steps for chest sync, freestanding items, shared pickups and traps; reference in the runner README.
+// Steps for chest sync, placed checks, shared pickups, traps and item names; reference in the
+// runner README.
 
 #include "autotest/AutoTest.hpp"
 #include "autotest/AutoTestSteps.hpp"
@@ -6,10 +7,12 @@
 #include "core/Log.hpp"
 #include "core/Session.hpp"
 #include "sync/WorldSync.hpp"
+#include "ui/ItemNames.hpp"
 
 #include "SSystem/SComponent/c_malloc.h"
 #include "SSystem/SComponent/c_math.h"
 #include "d/actor/d_a_obj_item.h"
+#include "d/actor/d_a_obj_life_container.h"
 #include "d/actor/d_a_player.h"
 #include "d/actor/d_a_tbox.h"
 #include "d/d_bg_s_gnd_chk.h"
@@ -22,6 +25,7 @@
 
 #include <dolphin/pad.h>
 #include <fmt/format.h>
+#include <mods/svc/item.h>
 
 #include <cmath>
 #include <map>
@@ -237,6 +241,91 @@ std::optional<bool> takeFieldItem(StepContext& ctx) {
     return false;
 }
 
+void* findBitItem(void* proc, void* data) {
+    auto* actor = static_cast<fopAc_ac_c*>(proc);
+    const int bit = *static_cast<int*>(data);
+    if (!fopAcM_IsExecuting(fopAcM_GetID(actor))) {
+        return nullptr;
+    }
+    if (fopAcM_GetName(actor) == fpcNm_Obj_LifeContainer_e) {
+        return static_cast<daObjLife_c*>(actor)->getSaveBitNo() == bit ? actor : nullptr;
+    }
+    if (fopAcM_GetName(actor) == fpcNm_ITEM_e) {
+        return daItem_prm::getItemBitNo(static_cast<daItem_c*>(actor)) == bit ? actor : nullptr;
+    }
+    return nullptr;
+}
+
+// Tags a stage's own item with item bit `bit` (the fishing hole's heart piece) for the item steps.
+std::optional<bool> findFieldItem(StepContext& ctx) {
+    int bit = ctx.step.value("bit", 0x80);
+    if (fopAc_ac_c* item = fopAcM_Search(&findBitItem, &bit)) {
+        sFieldItems[ctx.step.value("tag", std::string("item"))] = fopAcM_GetID(item);
+        return true;
+    }
+    if (ctx.seconds > ctx.timeout(20.0)) {
+        ctx.fail(fmt::format("findFieldItem: no item with bit {}", bit));
+    }
+    return false;
+}
+
+// The randomizer's golden wolf item (wolfFlag: its event bit) or the fishing rod's hold (hooked):
+// what the randomizer and the rod make of a heart piece.
+std::optional<bool> markFieldItem(StepContext& ctx) {
+    fopAc_ac_c* item = fieldItemOf(ctx.step);
+    if (item == nullptr || fopAcM_GetName(item) != fpcNm_Obj_LifeContainer_e) {
+        if (ctx.seconds > ctx.timeout(10.0)) {
+            ctx.fail("markFieldItem: no such heart piece");
+        }
+        return false;
+    }
+    auto* life = static_cast<daObjLife_c*>(item);
+    if (ctx.step.contains("wolfFlag")) {
+        life->mGoldenWolfItem = true;
+        life->field_0x938 = static_cast<s16>(ctx.step.value("wolfFlag", 0));
+    }
+    if (ctx.step.value("hooked", false)) {
+        life->startCtrl();
+    }
+    return true;
+}
+
+// Takes a check the way its game code does, without the actor: sets its flag (switch, item bit,
+// event bit or event label), deletes the tagged field item and grants `item` under `check`.
+std::optional<bool> takeCheck(StepContext& ctx) {
+    const nlohmann::json& step = ctx.step;
+    const int room = dStage_roomControl_c::getStayNo();
+    if (step.contains("switch")) {
+        dComIfGs_onSwitch(step.value("switch", 0), room);
+    }
+    if (step.contains("itemBit")) {
+        dComIfGs_onItem(step.value("itemBit", 0), room);
+    }
+    if (step.contains("eventBit")) {
+        dComIfGs_onEventBit(static_cast<u16>(step.value("eventBit", 0)));
+    }
+    if (step.contains("eventLabel")) {
+        dComIfGs_onEventBit(dSv_event_flag_c::saveBitLabels[step.value("eventLabel", 0)]);
+    }
+    if (step.contains("tag")) {
+        if (fopAc_ac_c* item = fieldItemOf(step)) {
+            fopAcM_delete(item);
+        }
+    }
+    if (step.contains("item")) {
+        const std::string check = step.value("check", std::string{});
+        if (svc_item == nullptr ||
+            svc_item->give_item(mod_ctx, check.empty() ? nullptr : check.c_str(),
+                static_cast<uint8_t>(step.value("item", 0)), ITEM_GIVE_SILENT) != MOD_OK)
+        {
+            ctx.fail("takeCheck: ItemService refused the grant");
+            return false;
+        }
+    }
+    TwiliLog.info("[autotest] took check '{}'", step.value("check", std::string{}));
+    return true;
+}
+
 // Marks the item as pulled by the clawshot (hold: true) or lets it go, as a busy item.
 std::optional<bool> holdFieldItem(StepContext& ctx) {
     fopAc_ac_c* item = fieldItemOf(ctx.step);
@@ -318,7 +407,7 @@ std::optional<bool> expectPickups(StepContext& ctx) {
         {"trapsReceived", s.trapsReceived}, {"trapsApplied", s.trapsApplied},
         {"grantsApplied", s.grantsApplied}, {"grantsQueued", s.grantsQueued},
         {"removed", s.freestandingRemoved}, {"blocked", s.freestandingBlocked},
-        {"deduped", s.grantsDeduped},
+        {"deduped", s.grantsDeduped}, {"actorsRemoved", s.actorsRemoved},
     };
     std::string bad;
     for (const auto& [name, value] : have) {
@@ -399,6 +488,33 @@ std::optional<bool> expectInventory(StepContext& ctx) {
     return false;
 }
 
+// english: how the names see the disc; items: [{item, name, source}] (game, mod, fallback, unknown).
+std::optional<bool> expectItemNames(StepContext& ctx) {
+    static constexpr const char* kSources[] = {"game", "mod", "fallback", "unknown"};
+    const nlohmann::json& step = ctx.step;
+    std::string bad;
+    if (step.contains("english") && ui::itemNamesEnglish() != step.value("english", true)) {
+        bad += fmt::format(" english={}", ui::itemNamesEnglish());
+    }
+    for (const nlohmann::json& want : step.value("items", nlohmann::json::array())) {
+        const auto no = static_cast<uint8_t>(want.value("item", 0));
+        const std::string& name = ui::itemDisplayName(no);
+        const char* source = kSources[static_cast<int>(ui::itemNameSource(no))];
+        if ((want.contains("name") && want.value("name", std::string{}) != name) ||
+            (want.contains("source") && want.value("source", std::string{}) != source))
+        {
+            bad += fmt::format(" 0x{:02X}=\"{}\"/{}", no, name, source);
+        }
+    }
+    if (bad.empty()) {
+        return true;
+    }
+    if (ctx.seconds > ctx.timeout(10.0)) {
+        ctx.fail("expectItemNames:" + bad);
+    }
+    return false;
+}
+
 std::optional<bool> pickupSteps(const std::string& op, StepContext& ctx) {
     if (op == "spawnChest") {
         return spawnChest(ctx);
@@ -420,6 +536,29 @@ std::optional<bool> pickupSteps(const std::string& op, StepContext& ctx) {
     }
     if (op == "holdFieldItem") {
         return holdFieldItem(ctx);
+    }
+    if (op == "findFieldItem") {
+        return findFieldItem(ctx);
+    }
+    if (op == "markFieldItem") {
+        return markFieldItem(ctx);
+    }
+    if (op == "takeCheck") {
+        return takeCheck(ctx);
+    }
+    if (op == "setLightDrops") {
+        dComIfGs_setLightDropNum(
+            static_cast<u8>(ctx.step.value("area", 0)), static_cast<u8>(ctx.step.value("num", 0)));
+        return true;
+    }
+    if (op == "itemNamesEnglish") {
+        const auto v = ctx.step.find("value");
+        ui::forceItemNamesEnglishForTest(
+            v != ctx.step.end() && v->is_boolean() ? (v->get<bool>() ? 1 : 0) : -1);
+        return true;
+    }
+    if (op == "expectItemNames") {
+        return expectItemNames(ctx);
     }
     if (op == "expectFieldItem") {
         return expectFieldItem(ctx);

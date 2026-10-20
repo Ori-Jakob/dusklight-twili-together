@@ -26,6 +26,8 @@ struct PlayersTabRow {
     bool blocked = false;
     std::string tooltip;
     bool actions = false;
+    // The row's RML.
+    std::string text;
 };
 std::vector<PlayersTabRow> playersTabRows();
 bool playersTabShown();
