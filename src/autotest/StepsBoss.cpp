@@ -491,6 +491,22 @@ std::optional<bool> bossSteps(const std::string& op, StepContext& ctx) {
         return false;
     }
 
+    // A Fused Shadow (crystal) or Mirror Shard (mirror) bit of our collection.
+    if (op == "expectCollect") {
+        const dSv_player_collect_c& c = dComIfGs_getSaveInfo()->getPlayer().getCollect();
+        const bool shadow = step.contains("crystal");
+        const int bit = step.value(shadow ? "crystal" : "mirror", 0);
+        const bool have = shadow ? c.isCollectCrystal(static_cast<u8>(bit)) : c.isCollectMirror(static_cast<u8>(bit));
+        if (have == step.value("set", true)) {
+            return true;
+        }
+        if (ctx.seconds > ctx.timeout(30.0)) {
+            ctx.fail(fmt::format("expectCollect {} {}: crystals 0x{:02X} mirrors 0x{:02X}",
+                shadow ? "crystal" : "mirror", bit, c.mCrystal, c.mMirror));
+        }
+        return false;
+    }
+
     if (op == "markMaxLife") {
         sMarkedMaxLife = maxLife();
         TwiliLog.info("[autotest] max life {}", sMarkedMaxLife);

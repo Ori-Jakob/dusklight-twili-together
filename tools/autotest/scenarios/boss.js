@@ -8,6 +8,8 @@ const QUAL_BOSS = 64;
 // fopAcM_createItemForBoss's item bit; dungeon bits STAGE_BOSS_ENEMY, STAGE_LIFE, STAGE_BOSS_ENEMY_2.
 const HEART_BIT = 0x9f;
 const HEART_ITEM = 0x22;
+// COLLECT_REWARD toasts a Fused Shadow under the randomizer's ids.
+const FUSED_SHADOW = 0xd8;
 const BOSS_BIT = 3;
 const LIFE_BIT = 4;
 const MINIBOSS_BIT = 7;
@@ -30,6 +32,7 @@ const killAndLeave = (b) => [
     { op: "killBoss", how: "real" },
     { op: "expectBossClear", heart: 1, warp: 1, timeoutSec: 300 },
     { op: "expectEventCount", name: "BOSSCLEAR", prefix: true, count: 1 },
+    { op: "expectCollect", crystal: b.crystal },
     { op: "findFieldItem", bit: HEART_BIT, tag: "heart" },
     { op: "takeFieldItem", tag: "heart", timeoutSec: 90 },
     settle(),
@@ -90,8 +93,11 @@ function bossScenario(b) {
                     ...barrier("fighting", "A", 300),
                     { op: "bossWatch", tag: b.id, until: "a-out", from: "A", holdSec: 20, timeoutSec: 900 },
                     { op: "expectBossHeld", min: 3 },
-                    // Received mid-fight, uninterrupted: A's heart container (one, with its toast) and its bit.
+                    // Received mid-fight, uninterrupted: A's heart container (one, with its toast) and its bit,
+                    // and the dungeon's reward from A's Midna scene.
                     { op: "expectItemToast", kind: "item", from: "A", item: HEART_ITEM, timeoutSec: 30 },
+                    { op: "expectCollect", crystal: b.crystal },
+                    { op: "expectItemToast", kind: "item", from: "A", item: FUSED_SHADOW + b.crystal, timeoutSec: 30 },
                     { op: "expectMaxLife", delta: 5, forSec: 5 },
                     { op: "expectDungeonBit", bit: LIFE_BIT },
                     { op: "expectDungeonBit", bit: BOSS_BIT, set: false },
@@ -226,8 +232,8 @@ function miniBossScenario(m, observe) {
 }
 
 const bosses = [
-    { id: "diababa", name: "Diababa (Forest Temple)", start: alive("forestBoss"), exitStage: "F_SP108" },
-    { id: "fyrus", name: "Fyrus (Goron Mines)", start: alive("goronMinesBoss"), exitStage: "F_SP109" },
+    { id: "diababa", name: "Diababa (Forest Temple)", start: alive("forestBoss"), exitStage: "F_SP108", crystal: 0 },
+    { id: "fyrus", name: "Fyrus (Goron Mines)", start: alive("goronMinesBoss"), exitStage: "F_SP109", crystal: 1 },
 ];
 const miniBosses = [
     {
