@@ -12,6 +12,14 @@ const enableTeleport = [
 const standStill = { op: "wait", frames: 45 };
 // Still there a few seconds later: map event 0 of South Faron would load another stage.
 const stayIn = (s) => [waitStage(s), { op: "wait", sec: 5 }, waitStage(s)];
+// Hyrule Field by the Faron Field start: event tag 36 (a 2500 wide box), armed until switch 45.
+const intoFieldTag = { op: "standInEventTag", mapToolId: 36 };
+const leaveFieldTag = [{ op: "standInEventTag", mapToolId: 36, outside: true }, { op: "wait", frames: 30 }];
+// Otherwise B's switch 45 could reach A.
+const noWorldSync = [
+    { op: "setRoomOption", name: "syncWorldState", value: false },
+    { op: "waitRoomOption", name: "syncWorldState", value: false, timeoutSec: 20 },
+];
 
 module.exports = [
     {
@@ -188,6 +196,58 @@ module.exports = [
                     ...barrier("b-in-event-again", "A"),
                     ...barrier("done", "A", 180),
                     { op: "endEvent" },
+                    { op: "quit" },
+                ],
+            },
+        ],
+    },
+    {
+        name: "teleport-event-area",
+        description: "landing beside a player who stands in an event tag's area (an event only they have seen) starts no event for the requester, after a stage load and without one; walking back in starts it",
+        timeoutSec: 420,
+        cvars: COMMON_CVARS,
+        instances: [
+            {
+                name: "A",
+                steps: [
+                    ...connect,
+                    waitStage(STAGES.linksHouse),
+                    { op: "waitPeers", count: 1, timeoutSec: 90 },
+                    ...enableTeleport,
+                    ...noWorldSync,
+                    ...barrier("b-in-area", "B", 180),
+                    { op: "teleportTo", target: "B", expect: "stage", placement: "exact", timeoutSec: 90 },
+                    // Right away: in its own game B drifts aside once our dummy stands next to it.
+                    { op: "expectBeside", target: "B" },
+                    waitStage(STAGES.faronField),
+                    // Our tag is armed: only the landing keeps it from firing.
+                    { op: "expectSwitch", no: 45, set: false },
+                    { op: "expectOwnEvent", running: false, holdTicks: 90 },
+                    ...leaveFieldTag,
+                    { op: "teleportTo", target: "B", expect: "local", placement: "exact", timeoutSec: 30 },
+                    { op: "expectBeside", target: "B" },
+                    { op: "expectOwnEvent", running: false, holdTicks: 90 },
+                    ...leaveFieldTag,
+                    intoFieldTag,
+                    { op: "expectOwnEvent", running: true, holdTicks: 1, timeoutSec: 10 },
+                    ...barrier("done", "B"),
+                    { op: "quit" },
+                ],
+            },
+            {
+                name: "B",
+                start: { ...STAGES.faronField, saveSwitches: [{ stage: "F_SP121", no: 45 }] },
+                steps: [
+                    ...connect,
+                    waitStage(STAGES.faronField),
+                    { op: "waitPeers", count: 1, timeoutSec: 90 },
+                    ...enableTeleport,
+                    ...noWorldSync,
+                    intoFieldTag,
+                    standStill,
+                    { op: "expectOwnEvent", running: false, holdTicks: 30 },
+                    ...barrier("b-in-area", "A", 180),
+                    ...barrier("done", "A", 300),
                     { op: "quit" },
                 ],
             },

@@ -387,6 +387,7 @@ Teleport (`StepsTeleport.cpp`):
 | `expectNear` | `target`, `maxDist` (250), `timeoutSec` | our Link within `maxDist` of the peer's reported position |
 | `expectBeside` | `target`, `minDist` (40), `maxDist` (150), `maxAngleDeg` (20), `timeoutSec` | our Link that far from the peer's reported position (on the ground plane), facing its way |
 | `expectOwnEvent` | `running` (false), `holdTicks` (60), `timeoutSec` | an event runs in our own game (or not) for `holdTicks` |
+| `standInEventTag` | `mapToolId`, `margin` (300), `outside` | puts our Link on level ground inside that event tag's area of our room, `margin` from its edge (or, `outside`, on the nearest ground up to 1000 past that margin outside it) |
 
 Written for teleporting beside the target, also into its cutscene, and the widget's clicks with the
 menu closed, **not run yet** (the machine was in use): `teleport-cutscene` and `teleport-fallback`
