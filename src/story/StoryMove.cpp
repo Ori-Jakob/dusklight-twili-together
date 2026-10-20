@@ -2,6 +2,7 @@
 
 #include "story/StoryState.hpp"
 
+#include "boss/BossFight.hpp"
 #include "core/Config.hpp"
 #include "core/LocalPlayer.hpp"
 #include "core/Log.hpp"
@@ -50,6 +51,8 @@ constexpr uint32_t kConsistencySettleTicks = 150;
 constexpr int kMaxInconsistentDeclines = 3;
 
 State s_state;
+// Our boss fight held the prompts last tick.
+bool s_fightHeld = false;
 
 const char* currentStage() {
     const char* s = dComIfGp_getStartStageName();
@@ -340,7 +343,7 @@ void tickLoadWaiting() {
             "Follow cancelled. You can catch up later from the Twili-Together window.");
         return;
     }
-    const char* why = local::localTeleportBlocker();
+    const char* why = boss::guarded() ? "boss-fight" : local::localTeleportBlocker();
     if (why == nullptr && !teleport::idle()) {
         why = "pending";
     }
@@ -952,9 +955,28 @@ void tickPrompt() {
         closePrompt();
     }
 
+    // Our boss fight: nothing pops up until it ends, and waiting offers time out only after it.
+    const bool fight = boss::guarded();
+    if (fight) {
+        if (pr.showing) {
+            ui::closeStoryPrompt();
+            pr.showing = false;
+            pr.waitingCalm = true;
+            TwiliLog.info("[story] prompt {} waits for our boss fight", promptKindName(pr.kind));
+        }
+        pr.waitingSince = now;
+    } else if (s_fightHeld) {
+        // Our own clear may have taken us where the teammate went.
+        if (team.valid && !team.satisfied && standingIn(team.move)) {
+            team.satisfied = true;
+        }
+        team.offerableAt = std::max(team.offerableAt, now + kOfferDelay);
+    }
+    s_fightHeld = fight;
+
     updateTransient();
     if (team.valid && !team.offered && !team.satisfied && !team.declined && syncing &&
-        !team.transient && now >= team.offerableAt)
+        !team.transient && now >= team.offerableAt && !fight)
     {
         offerTeamMove();
     }
@@ -963,7 +985,7 @@ void tickPrompt() {
     const uint32_t seq = tracker().stageLoadSeq();
     if (seq != pr.checkedLoadSeq && tracker().ticksSinceLoad() >= kConsistencySettleTicks &&
         dComIfGp_event_runCheck() == FALSE && !loadActive() && teleport::idle() && !joining() &&
-        !tracker().movePending())
+        !tracker().movePending() && !fight)
     {
         pr.checkedLoadSeq = seq;
         checkConsistency();
@@ -972,7 +994,7 @@ void tickPrompt() {
     // An offered pop-up waits for the player to be free.
     if (pr.kind != PromptKind::None && pr.waitingCalm) {
         const bool calm = local::localTeleportBlocker() == nullptr && !ui::anyDocumentVisible() &&
-                          !loadActive() && teleport::idle() && !joining();
+                          !loadActive() && teleport::idle() && !joining() && !fight;
         if (calm) {
             presentPrompt();
         } else if (now - pr.waitingSince > kCalmTimeout) {
@@ -998,7 +1020,8 @@ std::string debugText() {
         promptKindName(s_state.prompt.kind), s_state.prompt.showing, s_state.prompt.waitingCalm,
         s_state.prompt.inconsistentDeclines, loadPhaseName(s_state.load.phase), s_state.load.reason,
         joinStateName(s_state.join.state), s_state.join.reason, s_state.movesSent,
-        s_state.movesReceived, team.transient ? " | transient" : "");
+        s_state.movesReceived, team.transient ? " | transient" : "") +
+           (boss::guarded() ? fmt::format(" | boss fight in {}", boss::arena().stage) : "");
 }
 
 }  // namespace detail

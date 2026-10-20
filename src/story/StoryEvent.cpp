@@ -2,6 +2,7 @@
 
 #include "story/StoryState.hpp"
 
+#include "boss/BossFight.hpp"
 #include "core/LocalPlayer.hpp"
 #include "core/Log.hpp"
 #include "core/Session.hpp"
@@ -55,7 +56,7 @@ bool isEventTag(int16_t profile) {
 bool missToastWorthy(const char* reason) {
     for (const char* quiet : {"loading", "cutscene", "room", "seen", "different-event", "trigger",
              "ended", "refused", "state", "npc-missing", "npc-event", "npc-not-allowlisted",
-             "npc-randomizer", "npc-data"})
+             "npc-randomizer", "npc-data", "boss", "boss-fight"})
     {
         if (std::strcmp(reason, quiet) == 0) {
             return false;
@@ -99,6 +100,10 @@ const char* notJoinable(const Instance& in) {
     }
     if (in.copyOf != 0) {
         return "copy";
+    }
+    // Boss intros, phases, deaths, clears and the warp out: a teammate's never interrupts our fight.
+    if (boss::isBossEvent(in.requester, in.stage, in.name)) {
+        return "boss";
     }
     if (in.orderType != dEvt_type_OTHER_e || in.eventId == -1) {
         return "not-a-demo";
@@ -230,6 +235,9 @@ const char* pullInBlocker() {
     State& st = state();
     if (!st.forcedBlocker.empty()) {
         return st.forcedBlocker.c_str();
+    }
+    if (boss::guarded()) {
+        return "boss-fight";
     }
     if (const char* why = local::localTeleportBlocker()) {
         return why;
@@ -423,6 +431,12 @@ void handleStoryEvent(const nlohmann::json& packet) {
         dComIfG_play_c::getLayerNo(0) != packet.value("layer", -1) || stay != room)
     {
         return miss("room");
+    }
+    if (boss::isBossEvent(-1, currentStage(), eventName)) {
+        return miss("boss");
+    }
+    if (boss::guarded()) {
+        return miss("boss-fight");
     }
     const std::string req = packet.value("req", std::string{});
     if (req == "npc") {
