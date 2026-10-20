@@ -39,7 +39,9 @@ The client's first packet is the handshake:
   "roomId": "friday",
   "sessionKey": "k3j2...",
   "color": {"r": 255, "g": 64, "b": 64},
-  "game": {"inGame": true, "kind": "vanilla", "key": "vanilla", "display": {"name": "", "mode": ""}}
+  "game": {"inGame": true, "kind": "vanilla", "key": "vanilla", "display": {"name": "", "mode": ""}},
+  "features": ["cos.send", "cos.recv"],
+  "gameId": "GZ2E01"
 }
 ```
 
@@ -48,6 +50,11 @@ The client's first packet is the handshake:
 - `sessionKey` is random per game process. It lets a reconnect replace the old connection and
   keeps the relay from replaying a player's own packets back to them.
 - `game` says what the player runs; see [Team games](#team-games).
+- `features` (optional) says what the client can do with [looks](#looks): `cos.send` (it reads
+  its cosmetics settings, which needs the host's ModsService), `cos.recv` (it shows other
+  players' cosmetics, which needs TextureService), and later `looks.send` and `looks.recv`.
+  Unknown names are dropped. `gameId` is the disc's game id (4 to 8 of `A-Z0-9`), empty when the
+  client cannot tell.
 
 A handshake with another `app` or a `protocolVersion` below 5 gets `SERVER_MESSAGE` and
 `DISABLE_CLIENT` (both with a `message`) and the connection is closed. Packets sent before the
@@ -56,11 +63,14 @@ handshake are ignored, and so is a second handshake.
 On success the relay answers with `ALL_CLIENT_STATE`:
 
 ```json
-{"type": "ALL_CLIENT_STATE", "clients": [ ...client states... ], "roomState": { ... }}
+{"type": "ALL_CLIENT_STATE", "clients": [ ...client states... ], "roomState": { ... },
+ "relayFeatures": ["cos.send", "cos.recv"]}
 ```
 
-then one `TEAM_STATE` per team in the room. Everyone else in the room gets an
-`UPDATE_CLIENT_STATE` with the new player.
+then one `TEAM_STATE` per team in the room, then the newest `LOOK_MANIFEST` of every player the
+joiner may see. Everyone else in the room gets an `UPDATE_CLIENT_STATE` with the new player.
+`relayFeatures` lists the [looks](#looks) features this relay forwards; an older relay sends none,
+and clients then share nothing.
 
 A client state holds `clientId`, `name`, `teamId`, `color` (the player's own), `displayColor`
 (what everyone shows them in: the team colour on a named team, otherwise their own), `modVersion`,
@@ -171,6 +181,33 @@ play them back a little behind the newest one, so network jitter does not show. 
 
 Presence is best effort: when the send queue is full, deltas are dropped and the next keyframe
 repairs the stream.
+
+### Looks
+
+How a player looks to the others: for now, the colours of the cosmetics mod
+(`dev.twilitrealm.cosmetics`), which teammates' games show on that player's puppets with their
+own recolour.
+
+```json
+{"type": "LOOK_MANIFEST", "quiet": true, "rev": 4, "scope": "room", "looks": [],
+ "cosmetics": {"ver": "1.0.0", "vars": {"herosTunicTorsoColor": "1e88e5", "midnaHairBaseColor": 3}}}
+```
+
+- `cosmetics` is null when the player shares none: the mod is off or missing, every value is at
+  its default, or the player turned Share My Cosmetics off. `ver` is the cosmetics mod's version.
+  `vars` holds only values that differ from the default: the 22 colours as `rrggbb` and
+  `midnaHairBaseColor` / `midnaHairTipsColor` as a palette index 1 to 9. The names are the cosmetics
+  mod's settings, the same list Dusklight's ModsService hands out.
+- `scope` is `room` (everyone in the room) or `team` (teammates only).
+- `looks` stays empty until look mods are shared.
+
+The relay rebuilds the packet from these fields (unknown vars and values are dropped, colours
+lowercased), stamps `clientId` and `gameId` (from the sender's handshake), and drops one over 16
+KiB. It sends it to the others in scope that listed `cos.recv` (`cosmetics` stays null for a
+sender without `cos.send`). It keeps each player's newest manifest while they are connected and
+gives it to everyone who joins later. A player's manifests go out at most once every 2 s: one sent
+sooner waits, a newer one replaces it, and the newest always goes out. Clients send one when they
+join and whenever what they share changes, also at most once every 2 s.
 
 ### World sync (same room, team, team game and save layout)
 

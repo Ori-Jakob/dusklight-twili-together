@@ -2797,3 +2797,123 @@ test("block and chain packets from a member off the team game are dropped", () =
     await b.waitType("PUSH_MOVE");
     await off.expectNone((p) => p.type === "PUSH_MOVE", "PUSH_MOVE to a mismatched member");
 }));
+
+const COS_SEND = ["cos.send", "cos.recv"];
+const manifest = (rev, vars, extra = {}) => ({
+    type: "LOOK_MANIFEST", quiet: true, rev, gameId: "GZ2E01", looks: [],
+    cosmetics: vars === null ? null : { ver: "1.0.0", vars }, ...extra,
+});
+
+test("ALL_CLIENT_STATE names the relay's features", () => withServer(async (mk) => {
+    const a = mk();
+    const all = await a.join({ name: "A" });
+    assert.deepEqual(all.relayFeatures, ["cos.send", "cos.recv"]);
+}));
+
+test("LOOK_MANIFEST is rebuilt from known fields and reaches only cosmetics receivers in the room", () => withServer(async (mk, server) => {
+    const a = mk();
+    const b = mk();
+    const old = mk();
+    const other = mk();
+    await a.join({ name: "A", roomId: "r", features: COS_SEND, gameId: "GZ2E01" });
+    await b.join({ name: "B", roomId: "r", features: ["cos.recv", "bogus"] });
+    await old.join({ name: "O", roomId: "r" });
+    await other.join({ name: "X", roomId: "elsewhere", features: COS_SEND });
+    a.send(manifest(3, {
+        herosTunicTorsoColor: "1E88E5", linkHairColor: "zzzzzz", midnaHairBaseColor: 3,
+        midnaHairTipsColor: 12, aButtonColor: "ff0000", spinnerColor: 0xff0000,
+    }, { extra: "dropped", clientId: 999, looks: [{ slot: "link" }], scope: "everywhere" }));
+    const got = await b.waitType("LOOK_MANIFEST");
+    assert.deepEqual(got, {
+        type: "LOOK_MANIFEST", quiet: true, clientId: a.id, rev: 3, gameId: "GZ2E01", scope: "room", looks: [],
+        cosmetics: { ver: "1.0.0", vars: { herosTunicTorsoColor: "1e88e5", midnaHairBaseColor: 3 } },
+    });
+    await a.expectNone((p) => p.type === "LOOK_MANIFEST", "an echo to the sender");
+    await old.expectNone((p) => p.type === "LOOK_MANIFEST", "a manifest to a client without cos.recv");
+    await other.expectNone((p) => p.type === "LOOK_MANIFEST", "a manifest to another room");
+    await waitForLog(server, /\[A\] LOOK_MANIFEST rev=3 scope=room cosmetics=2/);
+}));
+
+test("a manifest without usable cosmetics values carries null, and a sender without cos.send shares none", () => withServer(async (mk) => {
+    const a = mk();
+    const b = mk();
+    const c = mk();
+    await a.join({ name: "A", features: COS_SEND });
+    await b.join({ name: "B", features: ["cos.recv"] });
+    await c.join({ name: "C", features: ["cos.recv"] });
+    a.send(manifest(1, { linkHairColor: "#123456", midnaHairTipsColor: 0 }));
+    assert.equal((await b.waitType("LOOK_MANIFEST")).cosmetics, null);
+    c.send(manifest(1, { linkHairColor: "123456" }));
+    const fromC = await b.waitType("LOOK_MANIFEST", (p) => p.clientId === c.id);
+    assert.equal(fromC.cosmetics, null);
+}));
+
+test("the newest LOOK_MANIFEST is replayed to a joiner and forgotten when its sender leaves", () => withServer(async (mk) => {
+    const a = mk();
+    const b = mk();
+    await a.join({ name: "A", features: COS_SEND });
+    await b.join({ name: "B", features: COS_SEND });
+    a.send(manifest(1, { linkHairColor: "111111" }));
+    await b.waitType("LOOK_MANIFEST", (p) => p.rev === 1);
+    // Within the interval: held for the room, but a joiner gets it at once.
+    a.send(manifest(2, { linkHairColor: "222222" }));
+    const late = mk();
+    await late.join({ name: "L", features: ["cos.recv"] });
+    const replay = await late.waitType("LOOK_MANIFEST", (p) => p.clientId === a.id);
+    assert.equal(replay.rev, 2);
+    assert.equal(replay.cosmetics.vars.linkHairColor, "222222");
+    await a.close();
+    await b.waitType("UPDATE_CLIENT_STATE", (p) => p.clientId === a.id && p.online === false);
+    const later = mk();
+    await later.join({ name: "M", features: ["cos.recv"] });
+    await later.expectNone((p) => p.type === "LOOK_MANIFEST" && p.clientId === a.id, "a manifest of a client that left");
+}));
+
+test("LOOK_MANIFEST bursts go out once per interval, always the newest, never dropped", () => withServer(async (mk) => {
+    const a = mk();
+    const b = mk();
+    await a.join({ name: "A", features: COS_SEND });
+    await b.join({ name: "B", features: ["cos.recv"] });
+    const start = Date.now();
+    for (let rev = 1; rev <= 5; rev++) a.send(manifest(rev, { linkHairColor: `00000${rev}` }));
+    assert.equal((await b.waitType("LOOK_MANIFEST")).rev, 1);
+    const second = await b.waitType("LOOK_MANIFEST", () => true, 2000);
+    assert.equal(second.rev, 5, "the held manifest is the newest");
+    assert.ok(Date.now() - start >= 250, "not before the interval");
+    await b.expectNone((p) => p.type === "LOOK_MANIFEST", "a third manifest for the burst", 500);
+    // After a quiet interval the next one goes out at once.
+    await settle(350);
+    a.send(manifest(6, null));
+    const sixth = await b.waitType("LOOK_MANIFEST", () => true, 150);
+    assert.equal(sixth.rev, 6);
+    assert.equal(sixth.cosmetics, null);
+}, { TT_LOOK_MANIFEST_INTERVAL_MS: "300" }));
+
+test("a team-scoped LOOK_MANIFEST reaches teammates only", () => withServer(async (mk) => {
+    const a = mk();
+    const mate = mk();
+    const rival = mk();
+    await a.join({ name: "A", teamId: "red", features: COS_SEND });
+    await mate.join({ name: "M", teamId: "red", features: ["cos.recv"] });
+    await rival.join({ name: "R", teamId: "blue", features: ["cos.recv"] });
+    a.send(manifest(1, { eponaColor: "aa5500" }, { scope: "team" }));
+    assert.equal((await mate.waitType("LOOK_MANIFEST")).scope, "team");
+    await rival.expectNone((p) => p.type === "LOOK_MANIFEST", "a team manifest to another team");
+    const lateRival = mk();
+    await lateRival.join({ name: "L", teamId: "blue", features: ["cos.recv"] });
+    await lateRival.expectNone((p) => p.type === "LOOK_MANIFEST", "a team manifest replayed to another team");
+}));
+
+test("an oversized LOOK_MANIFEST is dropped and the last good one stays", () => withServer(async (mk, server) => {
+    const a = mk();
+    const b = mk();
+    await a.join({ name: "A", features: COS_SEND });
+    await b.join({ name: "B", features: ["cos.recv"] });
+    a.send(manifest(1, { linkHairColor: "abcdef" }));
+    await b.waitType("LOOK_MANIFEST");
+    a.send(manifest(2, { linkHairColor: "abcdef" }, { padding: "x".repeat(20000) }));
+    await waitForLog(server, /\[A\] rejected LOOK_MANIFEST \(\d+ bytes\)/);
+    const late = mk();
+    await late.join({ name: "L", features: ["cos.recv"] });
+    assert.equal((await late.waitType("LOOK_MANIFEST")).rev, 1);
+}));

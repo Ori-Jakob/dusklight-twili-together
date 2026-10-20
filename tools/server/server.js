@@ -64,6 +64,21 @@ const GAME_KEY_RE = /^[A-Za-z0-9/._-]{1,96}$/;
 const PERMALINK_RE = /^[A-Za-z0-9+/=_-]{1,512}$/;
 // A key from a probe fingerprint only: it syncs once that member confirmed it.
 const UNVERIFIED_KEY_PREFIX = "rando-probe/";
+// What a client says it can do in its handshake, and what this relay forwards.
+const CLIENT_FEATURES = new Set(["cos.send", "cos.recv", "looks.send", "looks.recv"]);
+const RELAY_FEATURES = ["cos.send", "cos.recv"];
+const GAME_ID_RE = /^[A-Z0-9]{4,8}$/;
+// A player's LOOK_MANIFEST goes out at most this often; a newer one waits and is never dropped.
+const LOOK_MANIFEST_INTERVAL_MS = envNumber("TT_LOOK_MANIFEST_INTERVAL_MS", 2000);
+const MAX_LOOK_MANIFEST_BYTES = 16384;
+// The cosmetics mod's shareable settings: colours as "rrggbb", Midna's hair as a palette index.
+const COSMETICS_COLOR_VARS = new Set(["herosTunicCapColor", "herosTunicTorsoColor", "herosTunicSkirtColor",
+    "zoraArmorCapColor", "zoraArmorHelmetColor", "zoraArmorTorsoColor", "zoraArmorScalesColor",
+    "zoraArmorFlippersColor", "lanternGlowColor", "woodenSwordColor", "ordonSwordBladeColor",
+    "ordonSwordHandleColor", "msBladeColor", "msHandleColor", "lightSwordGlowColor", "boomerangColor",
+    "ironBootsColor", "spinnerColor", "midnaChargeRingColor", "linkHairColor", "wolfLinkColor", "eponaColor"]);
+const COSMETICS_INDEX_VARS = new Set(["midnaHairBaseColor", "midnaHairTipsColor"]);
+const COSMETICS_COLOR_RE = /^[0-9a-f]{6}$/;
 
 function envNumber(name, fallback) {
     const v = Number(process.env[name]);
@@ -186,7 +201,9 @@ let nextClientId = 1;
  *             roomNo: number, saveTblNo: number, horseName: string, horsePlace: object|null,
  *             lastTeleportRequestAt: number, lastDamageAt: Map<number, number>,
  *             awaitingResults: Map<string, number>, game: GameIdentity,
- *             gateLogged: Set<string> }} Client
+ *             gateLogged: Set<string>, features: string[], gameId: string,
+ *             lookManifest: object|null, lookSentAt: number, lookPending: boolean,
+ *             lookTimer: NodeJS.Timeout|null }} Client
  * @typedef {{ inGame: boolean, kind: string, key: string, display: { name: string, mode: string },
  *             share: object|null, allowUnverified: boolean }} GameIdentity
  * @typedef {{ id: string, ownerClientId: number|null, game: object|null, color: object|null,
@@ -425,6 +442,87 @@ function asGameIdentity(v) {
         share: inGame ? asShare(o.share) : null,
         allowUnverified: o.allowUnverified === true,
     };
+}
+
+function asFeatures(v) {
+    return Array.isArray(v) ? [...new Set(v.filter((f) => typeof f === "string" && CLIENT_FEATURES.has(f)))] : [];
+}
+
+// The sender's cosmetics version and its non-default shareable values; null when none is left.
+function asCosmetics(v) {
+    if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+    const src = v.vars && typeof v.vars === "object" && !Array.isArray(v.vars) ? v.vars : {};
+    const vars = {};
+    for (const [name, value] of Object.entries(src)) {
+        if (COSMETICS_COLOR_VARS.has(name) && typeof value === "string" &&
+            COSMETICS_COLOR_RE.test(value.toLowerCase())) {
+            vars[name] = value.toLowerCase();
+        } else if (COSMETICS_INDEX_VARS.has(name) && Number.isInteger(value) && value >= 1 && value <= 9) {
+            vars[name] = value;
+        }
+    }
+    return Object.keys(vars).length === 0 ? null : { ver: asString(v.ver, "", 32), vars };
+}
+
+// Rebuilt from known fields only. Look entries are not defined yet: always empty.
+function asLookManifest(client, packet) {
+    return {
+        type: "LOOK_MANIFEST",
+        quiet: true,
+        clientId: client.clientId,
+        rev: asInt(packet.rev, 0, 0, 0x7fffffff),
+        gameId: client.gameId,
+        scope: packet.scope === "team" ? "team" : "room",
+        looks: [],
+        cosmetics: client.features.includes("cos.send") ? asCosmetics(packet.cosmetics) : null,
+    };
+}
+
+// The sender's manifest as `c` may see it, or null when it is not for `c`.
+function lookManifestFor(sender, c) {
+    const m = sender.lookManifest;
+    if (!m || c.clientId === sender.clientId) return null;
+    if (m.scope === "team" && c.teamId !== sender.teamId) return null;
+    const cosmetics = c.features.includes("cos.recv");
+    const looks = c.features.includes("looks.recv") && c.gameId !== "" && c.gameId === sender.gameId;
+    if (!cosmetics && !looks) return null;
+    return { ...m, cosmetics: cosmetics ? m.cosmetics : null, looks: looks ? m.looks : [] };
+}
+
+function forwardLookManifest(room, client) {
+    client.lookPending = false;
+    client.lookSentAt = Date.now();
+    for (const c of room.clients.values()) {
+        const packet = lookManifestFor(client, c);
+        if (packet) send(c, packet);
+    }
+}
+
+// The newest manifest is kept for joiners at once; the room gets one per interval, never an old one.
+function handleLookManifest(room, client, packet) {
+    const bytes = Buffer.byteLength(JSON.stringify(packet));
+    if (bytes > MAX_LOOK_MANIFEST_BYTES) {
+        log(`[${client.name}] rejected LOOK_MANIFEST (${bytes} bytes)`);
+        return;
+    }
+    client.lookManifest = asLookManifest(client, packet);
+    const cosmetics = client.lookManifest.cosmetics;
+    log(`[${client.name}] LOOK_MANIFEST rev=${client.lookManifest.rev} scope=${client.lookManifest.scope} ` +
+        `cosmetics=${cosmetics ? Object.keys(cosmetics.vars).length : "none"}`);
+    const wait = client.lookSentAt + LOOK_MANIFEST_INTERVAL_MS - Date.now();
+    if (wait <= 0 && client.lookTimer === null) {
+        forwardLookManifest(room, client);
+        return;
+    }
+    client.lookPending = true;
+    if (client.lookTimer !== null) return;
+    client.lookTimer = setTimeout(() => {
+        client.lookTimer = null;
+        const current = rooms.get(client.roomId);
+        if (client.lookPending && current && current.clients.get(client.clientId) === client) {
+            forwardLookManifest(current, client);
+        }
+    }, Math.min(Math.max(wait, 0), MAX_TIMER_MS));
 }
 
 function updateCachedClientState(client, packet) {
@@ -864,6 +962,12 @@ function handleHandshake(conn, packet) {
         awaitingResults: new Map(), // "attackerId:hitId" of hits forwarded to this victim -> Date.now()
         game: asGameIdentity(packet.game),
         gateLogged: new Set(),
+        features: asFeatures(packet.features),
+        gameId: typeof packet.gameId === "string" && GAME_ID_RE.test(packet.gameId) ? packet.gameId : "",
+        lookManifest: null,
+        lookSentAt: 0,
+        lookPending: false,
+        lookTimer: null,
     };
     room.clients.set(clientId, client);
     clientsById.set(clientId, client);
@@ -880,8 +984,14 @@ function handleHandshake(conn, packet) {
         type: "ALL_CLIENT_STATE",
         clients: [...room.clients.values()].map((c) => clientStateOf(room, c, clientId)),
         roomState: roomStatePacket(room).state,
+        relayFeatures: RELAY_FEATURES,
     });
     sendAllTeams(room, client);
+    // Everyone's newest manifest, also one still waiting for its interval.
+    for (const c of room.clients.values()) {
+        const manifest = lookManifestFor(c, client);
+        if (manifest) send(client, manifest);
+    }
 
     broadcastRoom(room, clientId, { type: "UPDATE_CLIENT_STATE", ...clientStateOf(room, client, -1) });
     if (ownerChanged) {
@@ -896,6 +1006,9 @@ function handleHandshake(conn, packet) {
 function handleDisconnect(client) {
     const room = rooms.get(client.roomId);
     clientsById.delete(client.clientId);
+    clearTimeout(client.lookTimer);
+    client.lookTimer = null;
+    client.lookManifest = null;
     if (!room) return;
 
     room.clients.delete(client.clientId);
@@ -1095,6 +1208,10 @@ function handlePacket(client, packet) {
     }
     if (packet.type === "SET_TEAM_COLOR") {
         handleSetTeamColor(room, client, packet);
+        return;
+    }
+    if (packet.type === "LOOK_MANIFEST") {
+        handleLookManifest(room, client, packet);
         return;
     }
 
