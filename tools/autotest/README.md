@@ -356,7 +356,8 @@ Wolf, Midna and transformations (`StepsWolf.cpp`):
 | `expectRemoteForm` | `form`, `body` (form or `hidden`), `count`, `timeoutSec` | peers send `form` and their dummies show `body` |
 | `expectCleanAnims` | `frames` (120), `maxRefused` (0) | no dummy refuses more clips than that |
 | `setMidna` | `ride`, `visible`, `timeoutSec` | Midna on our wolf's back (visible in the light world: transform level 3) |
-| `expectRemoteMidna` | `mode` (`drawn`, `shadow`, `apart`, `none`), `upper`, `hairHand`, `leftHand`, `rightHand`, `tired`, `maxRefused`, `count`, `frames`, `timeoutSec` | peers' dummies pose their Midna so |
+| `callMidna` | `timeoutSec` (20) | orders the Midna talk Z orders (Midna must be with our Link); done once she is out as her shadow, past her appear clip. The talk stays open |
+| `expectRemoteMidna` | `mode` (`drawn`, `shadow`, `apart`, `none`), `upper`, `hairHand`, `leftHand`, `rightHand`, `tired`, `silhouette`, `maxRefused`, `count`, `frames`, `timeoutSec` | peers' dummies pose their Midna so; `silhouette` (with `apart`): the peer sends her as her shadow and its dummy drew her through the gokou and invisible models on one of the last two ticks |
 | `midnaSfx` | `sound`, `voice` (true) | our Midna starts that creature voice or sound (sent as PLAYER_SFX) |
 | `markRemoteMidna` / `expectRemoteMidnaSince` | `minSfx`, `minApartTicks`, `minShownTicks`, `timeoutSec` | the first peer's dummy heard that many Midna sounds and showed her that long since the mark |
 | `measureRemoteMidnaTransform` | `minSent` (`{A, swap, C, after}`), `maxMissed` (1), `maxGap` (0), `afterTicks` (30), `timeoutSec` | through the first peer's next transformation (and `afterTicks` after it), per stage: the ticks its pose had Midna against the ticks its dummy drew her, and the ticks without her between the first and last |
@@ -370,6 +371,12 @@ Wolf, Midna and transformations (`StepsWolf.cpp`):
 `midna-transform`: turning human, B's game draws Midna on all 14 ticks before the body swap and on
 its 5 (as her shadow on the back), none after it (MD_RETURN); turning wolf, only after the swap.
 A's dummy draws her on each tick its pose has her, with no tick without her in between.
+
+`midna-shadow`: A, human in South Faron (light world), calls Midna out; she stands beside Link as
+her shadow. B checks A's dummy draws her that way for 60 ticks, then holds its camera 200 and 160
+units from A's dummy. A's forced cutscene then hides the dummy, Midna included. Captures: A's own
+Midna (`MIDNA_HOLD a-local`), A's dummy on B (`b-puppet`, `b-puppet-side`) and the hidden dummy
+(`b-hidden`).
 
 Wolf attacks (`StepsWolfFx.cpp`):
 
@@ -465,7 +472,7 @@ Epona (`StepsHorse.cpp`):
 | `expectRidePrompt` | `target` (`own`, `remote`), `frames` (60), `dist` (110) | GET_ON on our horse / never on the puppet |
 | `expectNotRiding` | `frames` (30) | our Link rides nothing |
 | `clearEnemies` | `radius` (8000, 0 for the whole stage), `keep` | deletes the enemies near our Link and logs each; `keep: true` also deletes any that come within the radius later in the script |
-| `horseCamera` | `target` (`remote`, `own`, `both`, `dummy`), `back`, `up`, `side`, `height`, `hold` / `release` | the camera behind our Link looking at the horse (or the peer's dummy); `hold` keeps it (CameraService operator) |
+| `horseCamera` | `target` (`remote`, `own`, `both`, `dummy`), `back`, `near`, `up`, `side`, `height`, `hold` / `release` | the camera behind our Link looking at the horse (or the peer's dummy); `near` puts it that far from the target on our side instead; `hold` keeps it (CameraService operator) |
 | `measureRiderClimb` | `phase` (`mount`, `dismount`), `frames` (120), `maxStep` (45), `seatTol` (60), `maxDip` (40), `maxSeatDist` (60), `trace` | the hips of the first peer's dummy against its horse puppet for `frames` ticks: never inside her body, no jump over `maxStep` in a tick; for a mount they reach the saddle and do not sink more than `maxDip` after |
 
 `horse-mount-smooth` (`scenarios/horse.js`) mounts with an A press: `procHorseRideInit` called from a
