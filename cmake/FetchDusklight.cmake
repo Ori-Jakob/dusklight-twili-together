@@ -53,6 +53,8 @@ if (NOT _twili_have STREQUAL _twili_want)
     # A shallow fetch by name works for commits too, unlike FetchContent's GIT_SHALLOW.
     _twili_git(fetch --depth 1 "${DUSKLIGHT_REPOSITORY}" "${DUSKLIGHT_VERSION}")
     _twili_git(-c advice.detachedHead=false checkout --force FETCH_HEAD)
+    # A reused checkout keeps the submodule URL from its first init unless synced.
+    _twili_git(submodule sync --quiet -- extern/aurora)
     _twili_git(submodule update --init --depth 1 extern/aurora)
     file(WRITE "${_twili_stamp}" "${_twili_want}\n")
 
