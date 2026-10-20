@@ -166,9 +166,10 @@ bool isKillSyncable(s16 procName, u32 params) {
     }
 }
 
-// isActor/onActor assert a setID below ACTOR_MAX and a live zone for the room.
+// isActor/onActor assert a setID below ACTOR_MAX and a live zone for the room. An extra's setId is
+// its original's.
 bool zoneOk(const SpawnKey& k) {
-    if (k.setId >= dSv_zoneActor_c::ACTOR_MAX || k.roomNo < 0 || k.roomNo >= 64) {
+    if (k.dup != 0 || k.setId >= dSv_zoneActor_c::ACTOR_MAX || k.roomNo < 0 || k.roomNo >= 64) {
         return false;
     }
     const int zoneNo = dComIfGp_roomControl_getZoneNo(k.roomNo);
