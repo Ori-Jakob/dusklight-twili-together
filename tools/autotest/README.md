@@ -203,28 +203,31 @@ World sync (`StepsWorld.cpp`):
 | `expectMerges` | `min`, `max`, `timeoutSec` | world-state merges applied so far: waits for `min`, fails above `max` |
 
 Blocks and chains (`StepsPush.cpp`, scenarios in `scenarios/blocks.js`). `kind` is `movebox`
-(default), `iceblock` or `swchain`; `near` (`[x, z]`) picks the one placed nearest, else the one
-nearest our Link:
+(default), `iceblock`, `swturn`, `lv6swturn`, `pushdoor` or `swchain`; `near` (`[x, z]`) picks the one
+placed nearest, else the one nearest our Link. A turning object's spot is its step times 100, at
+`[step * 100, 0]`:
 
 | op | fields | does |
 | --- | --- | --- |
 | `pushBlock` | `kind`, `near`, `dir` (0 to 3 in the block's frame; default: any), `firstDir` (0), `pull`, `timeoutSec` (10) | what our Link's push does to the block, each tick until it starts moving; without `dir` it tries the next direction every 10 ticks |
-| `expectBlock` | `kind`, `near`, `at` (`[x, z]`) with `tol` (5), `moved` (off its placement), `moving`, `minApplied` / `maxApplied` (teammate moves replayed), `minSnapped`, `matchesRemote` (on the spot the last teammate move or rest named), `stillFrames`, `timeoutSec` (30) | until all hold |
+| `expectBlock` | `kind`, `near`, `at` (`[x, z]`) with `tol` (5), `step` (a turning object's), `moved` (off its placement), `moving`, `minApplied` / `maxApplied` (teammate moves replayed), `minSnapped`, `matchesRemote` (on the spot the last teammate move or rest named), `stillFrames`, `timeoutSec` (30) | until all hold |
 | `signalBlockPos` / `expectBlockPosSignal` | `kind`, `near`, `name` (`blockpos`); `from`, `tol` (5), `timeoutSec` | sends our block's spot in a signal / waits for the peer's and fails unless ours matches |
 | `approachChain` | `near`, `dist` (40) | puts our Link beside the chain switch's handle, on its far side from the base, facing it |
-| `pullChain` | `near`, `untilSwitch`, `untilOut`, `frames`, `timeoutSec` (30) | holds R (picking the chain up) and then pulls away from the base until the switch is on, that many links are out or the frames ran out; keeps holding R, still, afterwards |
+| `pullChain` | `near`, `untilSwitch`, `untilOut`, `frames`, `pullPower` (0), `trace`, `timeoutSec` (30) | holds R (picking the chain up) and then pulls away from the base until the switch is on, that many links are out or the frames ran out; keeps holding R, still, afterwards. The stick pulls at about 6, under the 10 a switch takes without iron boots: `pullPower` sets the chain's tension to that once every link is out, until its force pull starts. `trace` logs the pull every 10 ticks |
 | `releaseChain` | | lets go of R |
 | `expectChain` | `near`, `driven` (follows a teammate's pull), `held` (by our Link), `minOut` / `maxOut`, `minDrivenTicks`, `endNear` with `tol` (150), `timeoutSec` (30) | until all hold |
 | `expectChainAtPuppet` | `near`, `maxDist` (120), `timeoutSec` (10) | the chain's handle is within `maxDist` of the puller's puppet |
 | `dumpPush` | | logs every tracked block and chain with its counters |
 
-Written for block and chain sync, **not run yet**: `blocks-push` (Goron Mines room 6 block, B
-replays A's push and stops on A's spot), `blocks-off` (Sync Blocks and Chains off: B's block stays),
-`blocks-both` (both push the same block at once from opposite sides and end on one spot),
+Block and chain sync: `blocks-push` (Goron Mines room 6 block, B replays A's push and stops on A's
+spot), `blocks-off` (Sync Blocks and Chains off: B's block stays), `blocks-both` (both push the same
+block at once from opposite sides; the lower client id's push wins and the other snaps to it),
 `blocks-pathed-late` (a Death Mountain block saved in switch 0x3a: B sees the first push live, leaves,
 and finds the saved spot when it comes back), `blocks-ice` (a Snowpeak courtyard ice block slides for
-B too) and `blocks-chain` (the Arbiter's Grounds entrance chain: B's chain follows A's puppet, the
-switch reaches B as a flag, and the chain lets go with A).
+B too), `blocks-turn` (an Arbiter's Grounds turning wall turns for B too and its switch reaches B)
+and `blocks-chain` (a City in the Sky chain switch: B's chain follows A's puppet, the switch reaches
+B as a flag, and the chain lets go with A; Arbiter's Grounds' entrance chain lies on sand that
+voids Link out).
 
 Items the game takes away (`StepsTake.cpp`, scenarios in `scenarios/take.js`). The take steps use
 the game's own calls outside any remote apply, so the take poller sees them:

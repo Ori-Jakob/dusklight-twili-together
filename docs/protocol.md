@@ -213,8 +213,8 @@ stays queued past every state: a save cannot tell a taken pumpkin from one never
 
 | Packet | Goes to | Notes |
 | --- | --- | --- |
-| `PUSH_MOVE` | teammates in the same stage and layer | `{v: 1, stageName, layerNo, key, from: {x, z}, to: {x, z}, dir, pull, walk}`: a block the sender's Link (or iron ball) just set moving. `key` is the object's placement `{roomNo, procName, params, setId, home: {x, y, z}, angle: [x, y, z]}`; `dir` 0 to 3 in the object's own frame; `to` only for grid blocks (`Obj_Movebox`), `walk` only for ice blocks (1 a push, 2 an iron ball hit) |
-| `PUSH_REST` | teammates in the same stage and layer | `{v: 1, stageName, layerNo, key, from, pos: {x, z}}`: where that move stopped |
+| `PUSH_MOVE` | teammates in the same stage and layer | `{v: 1, stageName, layerNo, key, from: {x, z}, to: {x, z}, dir, pull, walk}`: a block the sender's Link (or iron ball) just set moving. `key` is the object's placement `{roomNo, procName, params, setId, home: {x, y, z}, angle: [x, y, z]}`; `dir` 0 to 3 in the object's own frame; `to` only for grid blocks (`Obj_Movebox`), `walk` only for ice blocks (1 a push, 2 an iron ball hit). A turning switch or push door (`Obj_SwTurn`, `Obj_Lv6SwTurn`, `Obj_PushDoor`) sends `step` and `toStep` (its turn steps, -12 to 12) for `from` and `to`, and `dir` 0 (a step up) or 1 (down) |
+| `PUSH_REST` | teammates in the same stage and layer | `{v: 1, stageName, layerNo, key, from, pos: {x, z}}`: where that move stopped (`step` and `toStep` for a turning object) |
 | `CHAIN_PULL` | teammates in the same stage and layer | `{v: 1, stageName, layerNo, key, held, hook, out, cap, end: {x, y, z}, rel: {x, y, z}}`: a chain switch the sender holds (by hand, or `hook` by the clawshot), ten a second and once more with `held: false` on release. `out` is the links out, `cap` the stepped chains' limit, `end` the handle; `rel` the handle from the sender's feet in its facing frame (hand only) |
 
 A receiver plays a move with its own copy of the object only if that copy stands where the move
