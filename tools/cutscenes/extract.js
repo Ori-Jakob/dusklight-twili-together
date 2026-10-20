@@ -253,6 +253,14 @@ function makeRecipes(L) {
     };
 }
 
+// PLYR points without an arrival event of their own, a plain start (mode 0) first; never a horse,
+// fall or special-event start (modes 2, 3, 10, 11).
+function startPoints(roomData, dist, ok) {
+    const mode = (p) => (p.params >>> 12) & 0x1f;
+    return roomData.dzx.players.filter((p) => (p.params >>> 24) === NONE && ![2, 3, 10, 11].includes(mode(p)) && ok(p))
+        .sort((a, b) => (mode(a) !== 0) - (mode(b) !== 0) || dist(a) - dist(b));
+}
+
 function checkpoint(stage, room, point, r) {
     const out = { stage, room, point };
     if (!r.natural) out.layer = r.layer;
@@ -633,9 +641,8 @@ function main() {
                 const reach = t.area.shape === "box" ? Math.hypot(t.area.x, t.area.z) / 2 : t.area.radius;
                 return Math.hypot(p.pos[0] - t.pos[0], p.pos[2] - t.pos[2]) > reach + 300;
             };
-            const points = roomData.dzx.players.filter((p) => (p.params >>> 24) === NONE && ((p.params >>> 12) & 0x1f) === 0 && outside(p));
             const dist = (p) => Math.hypot(p.pos[0] - t.pos[0], p.pos[2] - t.pos[2]);
-            points.sort((a, b) => dist(a) - dist(b));
+            const points = startPoints(roomData, dist, outside);
             if (!points.length) {
                 w.noStartPoint = true;
                 continue;
@@ -689,7 +696,7 @@ function main() {
             if (e.test || !r || g.room < 0) continue;
             const roomData = stages.get(g.stage)?.rooms.get(g.room);
             const dist = (p) => Math.hypot(p.pos[0] - g.pos[0], p.pos[2] - g.pos[2]);
-            const points = (roomData?.dzx.players ?? []).filter((p) => (p.params >>> 24) === NONE && ((p.params >>> 12) & 0x1f) === 0).sort((a, b) => dist(a) - dist(b));
+            const points = roomData ? startPoints(roomData, dist, () => true) : [];
             if (!points.length) continue;
             e.test = {
                 start: checkpoint(g.stage, g.room, points[0].angle[2] & 0xff, r),

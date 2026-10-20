@@ -504,7 +504,7 @@ For a batch, `cut-batch-story-<stage>-<n>` (classes a and b) and `cut-batch-npc-
 run a stage's cutscenes in story order on one boot, setting the flags that grow between them before
 each warp, with soft checks; rerun a `CUTSCENE FAIL` by its `cut-<id>` name. Rough lengths: all
 batches about 9 hours (`--tag cutscene-batch-story` about 6, `--tag cutscene-batch-npc` about 3),
-every isolated scenario about 12 hours (`--tag cutscene-likely` about 7). Regenerate the catalog after
+every isolated scenario about 13 hours (`--tag cutscene-likely` about 7). Regenerate the catalog after
 a decomp or mod rule change: `node tools/cutscenes/extract.js`.
 
 Colouring (`StepsRecolor.cpp`):
