@@ -524,6 +524,20 @@ function main() {
         e.mod = modHandling(e, rules);
     }
 
+    // A map event reached only as another's `next` continues that instance: it shares its fate.
+    const mapEvent = new Map(cutscenes.filter((e) => e.source === "map").map((e) => [`${e.stage}/${e.room}/${e.mapToolId}`, e]));
+    for (const e of cutscenes) {
+        if (e.source !== "map" || !e.triggers.length || e.triggers.some((t) => t.kind !== "chain")) continue;
+        const roots = e.triggers.map((t) => mapEvent.get(`${e.stage}/${t.room}/${t.fromMapToolId}`)).filter(Boolean);
+        const root = roots.find((r) => r.mod.pullIn === "likely") ?? roots[0];
+        if (!root) continue;
+        e.chainOf = root.id;
+        e.mod.pullIn = root.mod.pullIn === "likely" ? "likely" : root.mod.pullIn === "no" ? "no" : "unverified";
+        e.mod.refusal = !root.mod.refusal ? null : root.mod.refusal.startsWith("continuation") ? root.mod.refusal : `continuation (${root.mod.refusal})`;
+        e.mod.notes = e.mod.notes.filter((n) => !n.startsWith("no placed trigger"));
+        e.mod.notes.push(`plays as the next event of ${root.id} ${root.name}`);
+    }
+
     // ---- when: milestone, layer and conditions per trigger; the test recipe ----
     const arrivalKey = (stage, room, point) => `${stage}/${room}/${point}`;
     const byArrival = new Map();

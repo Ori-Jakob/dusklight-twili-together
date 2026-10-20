@@ -103,8 +103,8 @@ Recipes name the milestone whose flags (all those before it, too) they start fro
 
 ## Gap analysis
 
-Classes a to c: 612 events. Same-room pull-in (STORY_EVENT) likely: 190;
-refused by a rule: 384; trigger not found statically: 38.
+Classes a to c: 612 events. Same-room pull-in (STORY_EVENT) likely: 191;
+refused by a rule: 386; trigger not found statically: 35.
 
 | Refusal | Events | Why |
 | --- | --- | --- |
@@ -115,6 +115,8 @@ refused by a rule: 384; trigger not found statically: 38.
 | actor-requester | 12 | a placed actor (switch, door, object, Midna hint) orders the map event with itself as requester |
 | not-a-demo | 12 | a potential event with its own camera (bosses) |
 | not-a-map-event | 5 | ordered by name (map-tool id 0xFF), so B cannot look it up in its own REVT table |
+| continuation (camera) | 1 |  |
+| continuation (repeatable-arrival) | 1 |  |
 
 Pulled in when likely means: the originator's instance passes notJoinable (an OTHER event with a map-tool
 id, from the stage, room or demo list, a ZEV or STB map event, requested by nobody, the player or an event
@@ -151,6 +153,7 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 - `@cs_ev_03/SKY_LETTERS_03` SKY_LETTERS_03 (cs_ev_03.arc): list; tag_statue_evt
 - `@cs_ev_04/SKY_LETTERS_04` SKY_LETTERS_04 (cs_ev_04.arc): list; tag_statue_evt
 - `@cs_ev_05/SKY_LETTERS_05` SKY_LETTERS_05 (cs_ev_05.arc): list; tag_statue_evt
+- `R_SP107/1/m15` R01_midna00 (R_SP107 r1, Castle Town Sewers): continuation (camera); after MapToolCamera10 (next)
 - `F_SP110/3/m13` R03_big_vol (F_SP110 r3, Death Mountain Trail): actor-requester; VolBom: big mode: player comes near, eruption runs its course, then with a BigVolc (fpcNm_Obj_VolcanicBomb_e) actor present it waits 60 frames and orders the event (BigVolc startFall on demo start)
 - `F_SP113/0/m4` zora_koori (F_SP113 r0, Zora's Domain): actor-requester; zrF: in twilight (dKy_darkworld_check at create) with wolf senses on, player within 800 units and the frozen Zora fully on screen; zrF3: in twilight (dKy_darkworld_check at create) with wolf senses on, player within 800 units and the frozen Zora fully on screen; zrF2: in twilight (dKy_darkworld_check at create) with wolf senses on, player within 800 units and the frozen Zora fully on screen
 - `@SCanZev/SKY_CANNON_FIRE_FIRST` SKY_CANNON_FIRE_FIRST (SCanZev.arc): list; obj_scannon
@@ -165,6 +168,7 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 - `D_MN11/4/m4` LV5R04C0 (D_MN11 r4, Snowpeak Ruins): actor-requester; Ytaihou: a bomb touches the cannon
 - `D_MN11/4/m6` LV5R04C1 (D_MN11 r4, Snowpeak Ruins): actor-requester; Ytaihou: a bomb touches the cannon
 - `D_MN07/5/LV7R05OP0` LV7R05OP0 (D_MN07 r5, City in the Sky): not-a-map-event; unverified: no placed trigger found
+- `D_MN08/0/m32` R00_start (D_MN08 r0, Palace of Twilight): continuation (repeatable-arrival); after LV8_EXIT (next)
 
 ## Legend
 
@@ -444,7 +448,7 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 | `R_SP107/3/m30` demo21 (stb) | R_SP107 r3, Castle Town Sewers | arrive at point 23 (r3) | captured, layer 9 (explicit) | goes to F_SP122 r8 p100 L9; plays demo21.stb | a | same room: likely; elsewhere: prompt (curated castle-escape if it sets 0x0502) | `cut-R_SP107-3-m30` |
 | `R_SP107/3/m24` demo07_01b (stb) | R_SP107 r3, Castle Town Sewers | arrive at point 21 (r3) | zant, layer 12 (explicit) | goes to R_SP107 r3 p1; plays demo07_01b.stb | a | same room: likely; elsewhere: menu row, or a prompt if the move changes form or levels | `cut-R_SP107-3-m24` |
 | `R_SP107/1/m14` R01_jump00 (stb) | R_SP107 r1, Castle Town Sewers | unverified: no placed trigger found | unverified | plays R01_jump00.stb | a | same room: unverified; elsewhere: none | - |
-| `R_SP107/1/m15` R01_midna00 (stb) | R_SP107 r1, Castle Town Sewers | after MapToolCamera10 (next) | unverified | plays R01_midna00.stb | a | same room: unverified; elsewhere: none | - |
+| `R_SP107/1/m15` R01_midna00 (stb) | R_SP107 r1, Castle Town Sewers | after MapToolCamera10 (next) | unverified | plays R01_midna00.stb | a | same room: no (continuation (camera)); elsewhere: none | - |
 
 ## Forest Temple
 
@@ -639,7 +643,7 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 | `F_SP115/0/m2` ikada_l (stb) | F_SP115 r0, Lake Hylia | unverified: no placed trigger found | unverified | plays ikada_l.stb | a | same room: unverified; elsewhere: none | - |
 | `F_SP116/3/m15` START (zev) | F_SP116 r3, Castle Town | ordered by name in d_a_door_spiral.cpp (not placed here); ordered by name in d_a_obj_sekizoa.cpp (not placed here); ordered by name in d_a_scene_exit2.cpp (not placed here) | unverified | stage change (in code) | c | same room: no (not-a-map-event); elsewhere: story move to a place decided in code: prompt if strong, else a menu row | - |
 | `F_SP126/0/m5` y_mushi (stb) | F_SP126 r0, Upper Zora's River | unverified: no placed trigger found | unverified | plays y_mushi.stb | a | same room: unverified; elsewhere: none | - |
-| `R_SP160/5/m3` pou2 (stb) | R_SP160 r5, Jovani's House | after pou (next) | unverified | plays pou2.stb | a | same room: unverified; elsewhere: none | - |
+| `R_SP160/5/m3` pou2 (stb) | R_SP160 r5, Jovani's House | after pou (next) | unverified | plays pou2.stb | a | same room: likely; elsewhere: none | - |
 
 ### Lanayru: NPC and actor events
 
@@ -823,7 +827,7 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 | `D_MN08/11/m12` demo24_02 (stb) | D_MN08 r11, Palace of Twilight | arrive at point 21 (r11) | mirror, layer 9 (explicit) | goes to D_MN08 r0 p20 L9; plays demo24_02.stb | a | same room: likely; elsewhere: menu row, or a prompt if the move changes form or levels | `cut-D_MN08-11-m12` |
 | `D_MN08A/10/m3` demo33_01 (stb) | D_MN08A r10, Palace of Twilight Throne Room | arrive at point 21 (r10) | mirror, layer 8 (explicit) | goes to D_MN08 r11 p22 L8; plays demo33_01.stb | b | same room: likely; elsewhere: prompt (boss clear) | `cut-D_MN08A-10-m3` |
 | `D_MN08A/10/m4` demo25_01 (stb) | D_MN08A r10, Palace of Twilight Throne Room | arrive at point 24 (r10); arrive at point 25 (r10) | mirror, layer 9 (explicit) | goes to D_MN08A r10 p23; plays demo25_01.stb | b | same room: likely; elsewhere: menu row, or a prompt if the move changes form or levels | `cut-D_MN08A-10-m4` |
-| `D_MN08/0/m32` R00_start (stb) | D_MN08 r0, Palace of Twilight | after LV8_EXIT (next) | unverified | switch 1; plays R00_start.stb | a | same room: unverified; elsewhere: none | - |
+| `D_MN08/0/m32` R00_start (stb) | D_MN08 r0, Palace of Twilight | after LV8_EXIT (next) | unverified | switch 1; plays R00_start.stb | a | same room: no (continuation (repeatable-arrival)); elsewhere: none | - |
 | `boss/B_ZANT` B_ZANT intro and defeat (boss) | D_MN08D (stage), Zant Arenas | d_a_b_zant.cpp, own camera | unverified | - | b | same room: no (not-a-demo); elsewhere: none | - |
 
 ### Palace of Twilight: NPC and actor events
