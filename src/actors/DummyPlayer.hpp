@@ -84,6 +84,7 @@ struct DummyPlayerDebugInfo {
     // Midna on the wolf's back (DummyMidna).
     bool midnaReady = false;       // her models and idle pose loaded
     uint8_t midnaMode = 0;         // MidnaRideMode posed now
+    uint8_t midnaPoseMode = 0;     // MidnaRideMode of the pose shown
     bool midnaShown = false;       // drawn: posed kMidnaDrawn on a shown wolf body
     uint16_t midnaBodyAnm = 0;     // body clip bound
     uint16_t midnaUpperAnm = 0;    // upper layer shown, 0 for none

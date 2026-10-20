@@ -198,9 +198,11 @@ bool Session::captureLocalMidna(bool inCutscene, RemoteMidnaPose& out) {
     out = RemoteMidnaPose{};
     daAlink_c* link = daAlink_getAlinkActorClass();
     daMidna_c* m = daPy_py_c::getMidnaActor();
-    if (link == nullptr || m == nullptr || link->getClothesChangeWaitTimer() != 0) {
+    if (link == nullptr || m == nullptr) {
         return false;
     }
+    // loadModelDVD swaps the body (a transformation): the wolf's Midna models are being freed
+    const bool swapping = link->getClothesChangeWaitTimer() != 0;
     const u32 demoMode = m->mDemoMode;
     // setMatrix's getWolfMidnaMatrix branch (a transformation's demo leaves her there a while)
     const bool onBack = link->checkWolf() && !m->checkWolfNoPos() && demoMode != 9 &&
@@ -209,34 +211,45 @@ bool Session::captureLocalMidna(bool inCutscene, RemoteMidnaPose& out) {
     if (onBack && (inCutscene || !link->checkMidnaRide())) {
         return false;
     }
-    if (!onBack && (m->mpKago != nullptr || demoMode == 0x200 || m->checkShadowModelDrawSmode())) {
+    if (!onBack && (m->mpKago != nullptr || demoMode == 0x200)) {
         return false;
     }
     // An AlAnm clip, on the wolf's own md.bmd (initMidnaModel) or, off the back, on her shadow
     const uint16_t body = midnaAnmId(m->mBckHeap[0]);
     J3DModel* md = m->mpModel;
-    const bool realBody = md != nullptr && md == link->getMidnaModel() && !m->checkNoDraw() &&
+    J3DModel* wolfMd = swapping ? nullptr : link->getMidnaModel();
+    const bool realBody = md != nullptr && md == wolfMd && !m->checkNoDraw() &&
                           !m->checkShadowModelDrawDemoForce();
-    if (body == 0 || (onBack && (md == nullptr || md != link->getMidnaModel()))) {
+    // Without the wolf's md.bmd (its swap) daMidna_c::draw shows her shadow where setMatrix put it;
+    // on the swap's first tick her execute has not let go of the old model yet.
+    const bool backShadow = onBack && (md == nullptr || swapping);
+    if (body == 0 || (onBack && !backShadow && md != wolfMd)) {
         return false;
     }
-    // daMidna_c::draw's md.bmd branch, and the wolf's real shadow in daAlink_c::draw.
-    const bool visible = !m->checkNoDrawState() && !link->checkPlayerNoDraw();
+    const bool asBack = onBack && !backShadow;
+    // daMidna_c::draw's own early return, its md.bmd branch, and the wolf's shadow in daAlink_c::draw.
+    const bool visible =
+        !m->checkNoDrawState() &&
+        !(!m->checkStateFlg1(static_cast<daMidna_c::daMidna_FLG1>(
+              daMidna_c::FLG1_SHADOW_MODEL_DRAW_DEMO_FORCE | daMidna_c::FLG1_UNK_1)) &&
+          link->checkPlayerNoDraw() &&
+          !m->checkStateFlg0(static_cast<daMidna_c::daMidna_FLG0>(daMidna_c::FLG0_TAG_WAIT |
+                                                                  daMidna_c::FLG0_UNK_100)));
     const bool drawn = visible && realBody;
     const bool shadow = !daAlink_c::checkCloudSea() && !m->checkShadowNoDraw() &&
                         !m->checkShadowModelDraw();
-    if (onBack ? !drawn && !shadow : !visible) {
+    if (asBack ? !drawn && !shadow : !visible) {
         return false;
     }
 
-    out.mode = !onBack ? kMidnaApart : drawn ? kMidnaDrawn : kMidnaShadowOnly;
-    if (!shadow || !onBack) {
+    out.mode = !asBack ? kMidnaApart : drawn ? kMidnaDrawn : kMidnaShadowOnly;
+    if (!shadow || !asBack) {
         out.flags |= kMidnaNoShadow;
     }
-    if (!onBack && !realBody) {
+    if (!asBack && !realBody) {
         out.flags |= kMidnaSilhouette;
     }
-    if (!onBack) {
+    if (!asBack) {
         MtxP base = m->mpShadowModel->getBaseTRMtx();
         csXyz rot;
         mDoMtx_MtxToRot(base, &rot);
@@ -280,7 +293,7 @@ bool Session::captureLocalMidna(bool inCutscene, RemoteMidnaPose& out) {
     out.leftHand = hand(m->mLeftHandShapeIdx);
     out.rightHand = hand(m->mRightHandShapeIdx);
     // setBodyPartMatrix shows one of the hair hand's three materials.
-    J3DModel* hair = link->getMidnaHairHandModel();
+    J3DModel* hair = swapping ? nullptr : link->getMidnaHairHandModel();
     out.hairHand = shapeShown(hair, 2) ? 2 : shapeShown(hair, 1) ? 1 : 0;
     if ((daMidna_c::checkMidnaTired() || m->checkForceTiredColor()) &&
         !m->checkForceNormalColor())

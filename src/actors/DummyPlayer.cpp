@@ -3408,6 +3408,7 @@ void daDummyPlayer_c::getDebugInfo(twili::DummyPlayerDebugInfo& out) const {
     out.baseY = mpLinkModel ? mpLinkModel->getBaseTRMtx()[1][3] : current.pos.y;
     out.midnaReady = mDummyMidna.ready();
     out.midnaMode = mDummyMidna.mode();
+    out.midnaPoseMode = mDummyMidnaPoseMode;
     out.midnaShown = isBodyShown() && ((checkWolf() && out.midnaMode == twili::kMidnaDrawn) ||
                                        out.midnaMode == twili::kMidnaApart);
     out.midnaApartTicks = mDummyMidna.apartTicks();
@@ -3995,6 +3996,7 @@ bool daDummyPlayer_c::applyRemoteState(const LinkPuppetState& state) {
     mPrevAngleY = shape_angle.y;
 
     applyRemoteForm(state.transformStatus != 0, state.clothesItem);
+    mDummyMidnaPoseMode = state.midna.mode;
     const bool wolf = checkWolf() != 0;
     mDummyRider = !wolf && state.horse.present() ? state.horse.rider
                                                   : twili::RemoteHorseRider{};
@@ -4427,6 +4429,10 @@ int daDummyPlayer_c::draw() {
             tevStr.TevColor.b = mDummyTfPlan.silhouetteTev;
             g_env_light.setLightTevColorType_MAJI(mpWlChangeModel, &tevStr);
             mDoExt_modelEntryDL(mpWlChangeModel);
+        }
+        // daMidna_c draws herself through the remote's swap
+        if (checkWolf() || mDummyMidna.mode() == twili::kMidnaApart) {
+            mDummyMidna.draw(tevStr, false);
         }
         return TRUE;
     }
