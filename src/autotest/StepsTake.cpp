@@ -59,11 +59,21 @@ int takeSlotOf(int item) {
     }
 }
 
-// The call the game makes for this take (monkey, Shad, Ilia, the "Item Remove" flow event).
+// The call the game makes for this take (monkey, Shad, Ilia, Talo, the "Item Remove" flow event).
 bool takeItem(const json& step, std::string& why) {
     const int item = step.value("item", -1);
     if (item == dItemNo_TOMATO_PUREE_e || item == dItemNo_TASTE_e) {
         dComIfGs_offItemFirstBit(static_cast<u8>(item));
+        return true;
+    }
+    // Talo's GET_WOODSWD cut.
+    if (item == dItemNo_WOOD_STICK_e) {
+        if (dComIfGs_getSelectEquipSword() != item) {
+            why = fmt::format("takeItem: the sword worn is 0x{:02X}, not the Wooden Sword",
+                dComIfGs_getSelectEquipSword());
+            return false;
+        }
+        dMeter2Info_setSword(dItemNo_NONE_e, false);
         return true;
     }
     const int slot = step.value("slot", takeSlotOf(item));
@@ -112,6 +122,11 @@ std::optional<bool> takeSteps(const std::string& op, StepContext& ctx) {
         return true;
     }
 
+    if (op == "equipSword") {
+        dMeter2Info_setSword(static_cast<u8>(step.value("item", 255)), false);
+        return true;
+    }
+
     // What a game over during the monkey's theft does (d_gameover.cpp).
     if (op == "restoreLantern") {
         if (!dComIfGs_isItemFirstBit(dItemNo_KANTERA_e) ||
@@ -126,7 +141,7 @@ std::optional<bool> takeSteps(const std::string& op, StepContext& ctx) {
     }
 
     // item 255 = empty; forSec: it must stay so.
-    if (op == "expectSlot" || op == "expectFirstBit") {
+    if (op == "expectSlot" || op == "expectFirstBit" || op == "expectSword") {
         static bool sReached = false;
         if (!ctx.begun) {
             sReached = false;
@@ -143,6 +158,10 @@ std::optional<bool> takeSteps(const std::string& op, StepContext& ctx) {
             const int held = dComIfGs_getItem(slot, false);
             ok = held == item;
             have = fmt::format("slot {} holds 0x{:02X} (want 0x{:02X})", slot, held, item);
+        } else if (op == "expectSword") {
+            const int worn = dComIfGs_getSelectEquipSword();
+            ok = worn == item;
+            have = fmt::format("sword worn 0x{:02X} (want 0x{:02X})", worn, item);
         } else {
             const bool want = step.value("set", true);
             const bool set = dComIfGs_isItemFirstBit(static_cast<u8>(item)) != 0;
@@ -202,6 +221,20 @@ std::optional<bool> takeSteps(const std::string& op, StepContext& ctx) {
         }
         if (ctx.seconds > ctx.timeout(30.0)) {
             ctx.fail("publishWorldState: world sync never enabled");
+        }
+        return false;
+    }
+
+    // What Link holds (0x103: the sword drawn).
+    if (op == "expectEquipItem") {
+        daAlink_c* link = local::liveLink();
+        const int want = step.value("item", 0x103);
+        if (link != nullptr && link->mEquipItem == want) {
+            return true;
+        }
+        if (ctx.seconds > ctx.timeout(10.0)) {
+            ctx.fail(fmt::format("expectEquipItem: holds 0x{:X}, want 0x{:X}",
+                link != nullptr ? link->mEquipItem : 0, want));
         }
         return false;
     }

@@ -7,12 +7,17 @@ const { MODS, STAGES, COMMON_CVARS, RANDOMIZER_MODE_CVARS, waitStage, barrier, m
 // dItemNo_* values (include/d/d_item_data.h).
 const I = {
     lantern: 0x48, letter: 0x80, bill: 0x81, memo: 0x90, pumpkin: 0xf4, cheese: 0xf5,
-    woodShield: 0x2a, hyliaShield: 0x2c,
+    woodShield: 0x2a, hyliaShield: 0x2c, woodSword: 0x3f,
 };
 const NONE = 255;
 const SLOT = { lantern: 1, memo: 19, trade: 21 };
 const PAD_A = 0x100;
+const PAD_B = 0x200;
 const PAD_X = 0x400;
+// dSv_event_flag_c::F_0026: gave the Wooden Sword to Talo on the third day.
+const GAVE_TALO_SWORD = 0x0302;
+// No sword worn, so a granted Wooden Sword stays on (a grant keeps the sword already worn).
+const UNARMED_FARON = { ...STAGES.southFaron, status: "new" };
 
 const confirmUnverified = [
     waitStage(STAGES.linksHouse),
@@ -429,6 +434,100 @@ module.exports = [
                     takenToast(I.lantern, "A"),
                     { op: "expectTakeStats", min: { applied: 1 } },
                     ...barrier("b-applied", "A"),
+                    ...barrier("done", "A"),
+                    { op: "quit" },
+                ],
+            },
+        ],
+    },
+    {
+        name: "take-wood-sword",
+        description: "Talo takes A's Wooden Sword: B's is unequipped once B sheathes it; A's item get gives it back to B; B's world state still wearing it does not re-equip A; B re-equipping it loses it to A's world state",
+        timeoutSec: 360,
+        cvars: COMMON_CVARS,
+        instances: [
+            {
+                name: "A",
+                start: UNARMED_FARON,
+                steps: [
+                    ...connect,
+                    ...meetIn(STAGES.southFaron, "B"),
+                    { op: "giveItem", item: I.woodSword },
+                    { op: "expectSword", item: I.woodSword },
+                    ...barrier("given", "B"),
+                    ...barrier("b-drawn", "B"),
+                    // GIVEME_WOODSWD sets the flag, then GET_WOODSWD unequips the sword.
+                    { op: "setEventBit", no: GAVE_TALO_SWORD },
+                    { op: "takeItem", item: I.woodSword },
+                    { op: "expectSword", item: NONE },
+                    { op: "expectTakeStats", min: { sent: 1 } },
+                    ...barrier("took", "B"),
+                    ...barrier("b-lost", "B"),
+                    { op: "giveItem", item: I.woodSword },
+                    { op: "expectSword", item: I.woodSword },
+                    ...barrier("regiven", "B"),
+                    ...barrier("b-holding", "B"),
+                    { op: "takeItem", item: I.woodSword },
+                    { op: "expectTakeStats", min: { sent: 2 } },
+                    ...barrier("took-2", "B"),
+                    { op: "waitSignal", name: "published", from: "B", timeoutSec: 60 },
+                    { op: "expectSword", item: NONE, forSec: 6 },
+                    ...barrier("a-checked", "B"),
+                    ...barrier("b-released", "B"),
+                    ...barrier("b-reequipped", "B"),
+                    { op: "publishWorldState" },
+                    { op: "signal", name: "a-published" },
+                    ...barrier("b-merge-took", "B"),
+                    { op: "expectTakeStats", max: { received: 0 } },
+                    ...barrier("done", "B"),
+                    { op: "quit" },
+                ],
+            },
+            {
+                name: "B",
+                start: UNARMED_FARON,
+                steps: [
+                    ...connect,
+                    ...meetIn(STAGES.southFaron, "A"),
+                    ...barrier("given", "A"),
+                    { op: "expectSword", item: I.woodSword, timeoutSec: 30 },
+                    { op: "walk", frames: 1, stickX: 0, stickY: 0, buttons: PAD_B },
+                    { op: "wait", frames: 45 },
+                    { op: "expectEquipItem", item: 0x103 },
+                    ...barrier("b-drawn", "A"),
+                    ...barrier("took", "A"),
+                    { op: "expectTakeStats", min: { received: 1, deferred: 1 } },
+                    { op: "expectSword", item: I.woodSword },
+                    // A shows "Put away" while the sword is out.
+                    { op: "walk", frames: 8, stickX: 0, stickY: 0, buttons: PAD_A },
+                    { op: "wait", frames: 30 },
+                    { op: "expectSword", item: NONE },
+                    { op: "expectEventBit", no: GAVE_TALO_SWORD },
+                    takenToast(I.woodSword, "A"),
+                    ...barrier("b-lost", "A"),
+                    ...barrier("regiven", "A"),
+                    { op: "expectSword", item: I.woodSword, timeoutSec: 30 },
+                    { op: "expectTakeStats", min: { regrants: 1 } },
+                    // The second take waits here, so our state still wears the sword when it goes out.
+                    { op: "holdTakes", hold: true },
+                    ...barrier("b-holding", "A"),
+                    ...barrier("took-2", "A"),
+                    { op: "expectTakeStats", min: { received: 2, deferred: 2 } },
+                    { op: "publishWorldState" },
+                    { op: "signal", name: "published" },
+                    ...barrier("a-checked", "A"),
+                    { op: "holdTakes", hold: false },
+                    { op: "expectSword", item: NONE },
+                    ...barrier("b-released", "A"),
+                    // As the collection screen would (it hides the sword once F_0026 is set): no return.
+                    { op: "equipSword", item: I.woodSword },
+                    { op: "wait", frames: 10 },
+                    { op: "expectTakeStats", max: { returns: 0, sent: 0 } },
+                    ...barrier("b-reequipped", "A"),
+                    { op: "waitSignal", name: "a-published", from: "A", timeoutSec: 60 },
+                    { op: "expectTakeStats", min: { mergeTakes: 1 } },
+                    { op: "expectSword", item: NONE },
+                    ...barrier("b-merge-took", "A"),
                     ...barrier("done", "A"),
                     { op: "quit" },
                 ],
