@@ -45,6 +45,7 @@ const TEAM_PACKET_TYPES = new Set([
     "UPDATE_WORLD_STATE",
     "REQUEST_WORLD_STATE",
     "LIGHT_DROP",
+    "TAKE_ITEM",
 ]);
 // World packets for the team as it is now: relayed like the others, never queued or cached.
 const TEAM_LIVE_PACKET_TYPES = new Set(["SHARE_PICKUP"]);
@@ -109,6 +110,8 @@ function packetSummary(packet) {
             return `${packet.type} no=0x${hex(packet.no, 4)}`;
         case "GIVE_ITEM":
             return `${packet.type} item=0x${hex(packet.itemNo, 2)}`;
+        case "TAKE_ITEM":
+            return `${packet.type} item=0x${hex(packet.itemNo, 2)} ${packet.firstBit === true ? "firstBit" : `slot=${text(packet.slot)}`}`;
         case "LIGHT_DROP":
             return `${packet.type} area=${text(packet.area)} saveTbl=${text(packet.tbl)} tbox=${text(packet.tbox)}`;
         case "SHARE_PICKUP":
@@ -449,13 +452,19 @@ function queueEpochOf(room, client) {
     return `${room.queueEpoch}:${client.layout}:${client.teamId}:${teamGameKey(room, client)}`;
 }
 
+// A taken pumpkin or cheese is a cleared first-get bit, which a save cannot tell from never had.
+function keptPastStates(packet) {
+    return packet.type === "TAKE_ITEM" && packet.firstBit === true;
+}
+
 // Queued packets a new world state has not seen (its sender's seenSeq in this queue's epoch) stay
 // queued; the sender's own are in the state. A state without seenSeq stands for the whole queue.
 function unseenQueue(room, client, packet) {
-    if (typeof packet.seenEpoch !== "string" || !Number.isInteger(packet.seenSeq)) return [];
+    const queue = room.teamQueues.get(worldKey(room, client)) ?? [];
+    if (typeof packet.seenEpoch !== "string" || !Number.isInteger(packet.seenSeq)) return queue.filter(keptPastStates);
     const seen = packet.seenEpoch === queueEpochOf(room, client) ? packet.seenSeq : 0;
-    return (room.teamQueues.get(worldKey(room, client)) ?? []).filter((p) =>
-        p.queueSeq > seen && p.clientId !== client.clientId && !sameSession(client, p.senderSessionKey));
+    return queue.filter((p) => keptPastStates(p) ||
+        (p.queueSeq > seen && p.clientId !== client.clientId && !sameSession(client, p.senderSessionKey)));
 }
 
 function queueTeamPacket(room, key, packet) {

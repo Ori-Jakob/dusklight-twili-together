@@ -634,6 +634,62 @@ test("LIGHT_DROP is team-scoped, queued and replayed after the cached world stat
     assert.equal(drop.area, 1);
 }));
 
+test("TAKE_ITEM is team-scoped, queued and replayed after the cached world state", () => withServer(async (mk) => {
+    const a = mk();
+    await a.join({ teamId: "t" });
+    const mate = mk();
+    await mate.join({ teamId: "t" });
+    const other = mk();
+    await other.join({ teamId: "u" });
+    a.send({ type: "UPDATE_WORLD_STATE", save: "AAAA", saveTblNo: 3 });
+    a.send({ type: "TAKE_ITEM", itemNo: 0x90, slot: 19, addToQueue: true });
+    const live = await mate.waitType("TAKE_ITEM");
+    assert.equal(live.itemNo, 0x90);
+    assert.equal(live.slot, 19);
+    assert.equal(live.teamId, "t");
+    assert.ok(Number.isInteger(live.queueSeq), "queued packets are numbered");
+    await other.expectNone((p) => p.type === "TAKE_ITEM", "TAKE_ITEM to another team");
+
+    await settle();
+    const b = mk();
+    await b.join({ teamId: "t" });
+    b.send({ type: "REQUEST_WORLD_STATE", catchUp: true });
+    assert.equal((await b.waitType("UPDATE_WORLD_STATE")).fromCache, true);
+    const take = await b.waitType("TAKE_ITEM");
+    assert.equal(take.fromQueue, true);
+    assert.equal(take.itemNo, 0x90);
+}));
+
+test("a world state drops its sender's slot TAKE_ITEM but keeps a first-bit TAKE_ITEM", () => withServer(async (mk) => {
+    const a = mk();
+    await a.join({ teamId: "t", sessionKey: "ka" });
+    a.send({ type: "TAKE_ITEM", itemNo: 0x90, slot: 19, addToQueue: true });
+    a.send({ type: "TAKE_ITEM", itemNo: 0xf4, firstBit: true, addToQueue: true });
+    a.send({ type: "SET_FLAG", flagNo: 1, addToQueue: true });
+    await settle();
+    // The memo's empty slot is in the state; the pumpkin's cleared bit reads as never had.
+    a.send({ type: "UPDATE_WORLD_STATE", save: "A1", seenEpoch: "", seenSeq: 0 });
+    await settle();
+    const b = mk();
+    await b.join({ teamId: "t", sessionKey: "kb" });
+    b.send({ type: "REQUEST_WORLD_STATE", catchUp: true });
+    assert.equal((await b.waitType("UPDATE_WORLD_STATE")).save, "A1");
+    const kept = await b.waitType("TAKE_ITEM");
+    assert.equal(kept.fromQueue, true);
+    assert.equal(kept.itemNo, 0xf4);
+    assert.equal(kept.firstBit, true);
+    await b.expectNone((p) => p.type === "TAKE_ITEM" || p.type === "SET_FLAG", "packets the state holds");
+
+    // A state without seenSeq empties the queue but for it.
+    a.send({ type: "UPDATE_WORLD_STATE", save: "A2" });
+    await settle();
+    const c = mk();
+    await c.join({ teamId: "t", sessionKey: "kc" });
+    c.send({ type: "REQUEST_WORLD_STATE", catchUp: true });
+    assert.equal((await c.waitType("UPDATE_WORLD_STATE")).save, "A2");
+    assert.equal((await c.waitType("TAKE_ITEM")).itemNo, 0xf4);
+}));
+
 test("team packets carry the sender's name and colour, also when replayed after it left", () => withServer(async (mk) => {
     // Players without a team show in their own colour.
     const a = mk();
