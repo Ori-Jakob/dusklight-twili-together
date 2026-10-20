@@ -555,7 +555,8 @@ void PuppetCosmetics::release() {
             svc_texture->unregister(mod_ctx, e.handle);
         }
     }
-    mEntries.clear();
+    // Puppets never run their destructors: give the storage back here.
+    std::vector<Entry>().swap(mEntries);
     mLogged = ~0u;
 }
 
