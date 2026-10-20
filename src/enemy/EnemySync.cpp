@@ -355,9 +355,11 @@ void onActorCreated(fopAc_ac_c* ac) {
     }
     const char* stage = dComIfGp_getStartStageName();
     Record r{};
-    // An extra goes by its original's key; others by the spawn data, readable only now.
+    // An extra goes by its original's key, a spawner's child by its spawner's; others by the spawn
+    // data, readable only now.
     if (stage == nullptr ||
-        (!enemy_count::extraKey(fopAcM_GetID(ac), r.key) && !appendKey(ac, r.key)))
+        (!enemy_count::extraKey(fopAcM_GetID(ac), r.key) && !appendKey(ac, r.key) &&
+            !enemy_count::broodKey(ac, r.key)))
     {
         return;
     }

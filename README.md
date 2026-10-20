@@ -119,7 +119,7 @@ the others see the owner's values, greyed out.
 | Teleport to Player | off | teleport buttons on the Players tab and the players widget |
 | Teleport Across Teams | off | teleport to other teams' players (never between different games) |
 | Enemy Health | 100% | health of regular enemies, 100% to 500% |
-| Enemy Count | 100% | extra copies of the regular enemies placed in an area, 100% to 300% (not bosses, story, twilight or spawned enemies); applies when an area loads |
+| Enemy Count | 100% | extra copies of the regular enemies placed in an area, and more from its enemy spawners, 100% to 300% (not bosses, story or twilight enemies); applies when an area loads |
 
 All settings are stored in the game's `config.json` as `mod.dev_n0ted_twili__together.<name>`
 (for example `server_url`, `team_id`, `sync_world_state`) and can be set from the command line

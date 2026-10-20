@@ -157,9 +157,10 @@ void onStageActorCreatePost(ModContext*, void* args, void*, void*) {
 
 // The append is how the request is matched to the stage's placement.
 void onStdCreateRequestPost(ModContext*, void* args, void* retval, void*) {
-    const void* append = mods::arg<void*>(args, 4);
+    void* append = mods::arg<void*>(args, 4);
     if (append != nullptr && Scope::owner(ScopeKind::StagePlaced) == append && Session::active()) {
-        enemy_count::onPlacedRequested(*static_cast<fpc_ProcID*>(retval));
+        enemy_count::onPlacedRequested(*static_cast<fpc_ProcID*>(retval), mods::arg<s16>(args, 1),
+            static_cast<fopAcM_prm_class*>(append));
     }
 }
 

@@ -7,12 +7,13 @@
 #include <cstdint>
 
 class fopAc_ac_c;
+struct fopAcM_prm_class;
 
 // Enemy count multiplier: each client makes the same extra copies of stage-placed regular enemies.
 namespace twili::enemy_count {
 
-// fpcSCtRq_Request returned for an actor dStage_actorCreate placed.
-void onPlacedRequested(fpc_ProcID id);
+// fpcSCtRq_Request returned for an actor dStage_actorCreate placed; the actor reads `prm` later.
+void onPlacedRequested(fpc_ProcID id, int16_t procName, fopAcM_prm_class* prm);
 // fopAc_Create returned cPhs_COMPLEATE_e; before enemy_sync::onActorCreated.
 void onActorCreated(fopAc_ac_c* actor);
 void onActorDeleted(fopAc_ac_c* actor);
@@ -32,6 +33,17 @@ struct ExtraSpawn {
     bool switchInAngleZ;
 };
 bool extraSpawn(fpc_ProcID id, ExtraSpawn& out);
+// Live extras of the room (autotest checks).
+int extrasInRoom(int roomNo);
+
+// An enemy spawner's (E_Make) child: its spawner's home, with its place in the spawner's list
+// added to kBroodSetId as setId. Readable until the child's create returns.
+inline constexpr uint16_t kBroodSetId = 0xC000;
+bool broodKey(fopAc_ac_c* child, enemy_sync::SpawnKey& out);
+// The child at `index` of a spawner's list, or fpcM_ERROR_PROCESS_ID_e.
+fpc_ProcID broodChild(fpc_ProcID spawnerId, int index);
+// How many children a spawner makes, or -1.
+int broodSize(fpc_ProcID spawnerId);
 
 // Spawns decided extras and removes stuck ones; every update, connected or not.
 void tick();
