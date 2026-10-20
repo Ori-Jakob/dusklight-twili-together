@@ -12,6 +12,7 @@
 #include "d/d_bg_s_gnd_chk.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_event.h"
+#include "m_Do/m_Do_mtx.h"
 #include "SSystem/SComponent/c_math.h"
 
 #include <algorithm>
@@ -495,6 +496,115 @@ bool expectDummyTeleport(StepContext& ctx) {
     return false;
 }
 
+// The angle of mDoMtx_ZXYrotS(x, y, z).
+float zxyTurnDeg(s16 x, s16 y, s16 z) {
+    Mtx m;
+    mDoMtx_ZXYrotS(m, x, y, z);
+    const float trace = m[0][0] + m[1][1] + m[2][2];
+    return std::acos(std::clamp((trace - 1.0f) * 0.5f, -1.0f, 1.0f)) * 180.0f / 3.14159265f;
+}
+
+// What of the step the first peer dummy's body matrix misses, empty when none.
+std::string bodyMismatch(const json& step, const DummyPlayerDebugInfo& d) {
+    const bool xClear = (d.bodyFlags & kBodyRootXClear) != 0;
+    const bool zClear = (d.bodyFlags & kBodyRootZClear) != 0;
+    const std::string have = fmt::format(
+        "flags 0x{:X} tweak {} root target ({:.2f}, {:.2f}) root ({:.2f}, {:.2f}, {:.2f}) up "
+        "({:.2f}, {:.2f}, {:.2f}) turn {:.1f}",
+        d.bodyFlags, d.bodyTweak, d.bodyRootX, d.bodyRootZ, d.rootTrans[0], d.rootTrans[1],
+        d.rootTrans[2], d.baseUp[0], d.baseUp[1], d.baseUp[2], d.baseTurnDeg);
+    if (!(d.bodyFlags & kBodyValid)) {
+        return "no body matrix from the sender; " + have;
+    }
+    if (step.contains("rootX") &&
+        (!xClear || std::fabs(d.bodyRootX - step.value("rootX", 0.0f)) > 0.5f))
+    {
+        return "root X target; " + have;
+    }
+    if (step.contains("rootZ") &&
+        (!zClear || std::fabs(d.bodyRootZ - step.value("rootZ", 0.0f)) > 0.5f))
+    {
+        return "root Z target; " + have;
+    }
+    if (step.value("rootMatch", false)) {
+        const float tol = step.value("rootTol", 0.5f);
+        if ((xClear && std::fabs(d.rootTrans[0] - d.bodyRootX) > tol) ||
+            (zClear && std::fabs(d.rootTrans[2] - d.bodyRootZ) > tol))
+        {
+            return "the root is not where the sender's calc put it; " + have;
+        }
+    }
+    // Not what the dummy pinned before the sender's root was sent (l_waitBaseAnime x and z)
+    if (step.value("notStanding", false) &&
+        !((zClear && std::fabs(d.bodyRootZ - 5.0f) > 1.0f) ||
+          (xClear && std::fabs(d.bodyRootX - 1.24279f) > 1.0f)))
+    {
+        return "the standing root; " + have;
+    }
+    if (step.contains("magne") &&
+        ((d.bodyFlags & kBodyMagne) != 0) != step.value("magne", false))
+    {
+        return "magnet boots; " + have;
+    }
+    if (step.contains("up")) {
+        const auto up = step["up"].get<std::vector<float>>();
+        for (int i = 0; i < 3 && i < static_cast<int>(up.size()); i++) {
+            if (std::fabs(d.baseUp[i] - up[i]) > step.value("upTol", 0.05f)) {
+                return "up axis; " + have;
+            }
+        }
+    }
+    if (step.contains("tweak") && d.bodyTweak != step.value("tweak", 0)) {
+        return "tweak; " + have;
+    }
+    float wantTurn = step.value("turnDeg", -1.0f);
+    if (step.contains("tweakA")) {
+        const s16 a = static_cast<s16>(step.value("tweakA", 0));
+        const s16 b = static_cast<s16>(step.value("tweakB", 0));
+        const float zRate = d.bodyTweak == kTweakBoarRun ? 1.5f : 0.5f;
+        wantTurn = zxyTurnDeg(a, b, static_cast<s16>(zRate * b));
+    }
+    if (wantTurn >= 0.0f && std::fabs(d.baseTurnDeg - wantTurn) > step.value("turnTol", 2.0f)) {
+        return fmt::format("turn, want {:.1f}; {}", wantTurn, have);
+    }
+    return {};
+}
+
+int sBodyTicks = 0;
+int sBodyLastTick = -1;
+
+// Counts the ticks (not only consecutive ones) the first peer's dummy matched.
+bool expectDummyBody(StepContext& ctx) {
+    if (!ctx.begun) {
+        sBodyTicks = 0;
+        sBodyLastTick = -1;
+    }
+    fopAc_ac_c* dummy = firstPeerDummy();
+    DummyPlayerDebugInfo info;
+    std::string why = "no peer dummy";
+    if (dummy != nullptr && GetDummyPlayerDebugInfo(dummy, info) && info.shellReady) {
+        why = bodyMismatch(ctx.step, info);
+    }
+    if (ctx.ticks != sBodyLastTick) {
+        sBodyLastTick = ctx.ticks;
+        if (why.empty()) {
+            sBodyTicks++;
+        }
+    }
+    if (sBodyTicks >= ctx.step.value("minTicks", 1)) {
+        TwiliLog.info("[autotest] dummy body matched on {} ticks: flags 0x{:X} tweak {} root "
+                      "({:.2f}, {:.2f}, {:.2f}) up ({:.2f}, {:.2f}, {:.2f}) turn {:.1f}",
+            sBodyTicks, info.bodyFlags, info.bodyTweak, info.rootTrans[0], info.rootTrans[1],
+            info.rootTrans[2], info.baseUp[0], info.baseUp[1], info.baseUp[2], info.baseTurnDeg);
+        return true;
+    }
+    if (ctx.seconds > ctx.timeout(20.0)) {
+        ctx.fail(fmt::format("expectDummyBody: matched on {} ticks; last: {}", sBodyTicks,
+            why.empty() ? "matched" : why));
+    }
+    return false;
+}
+
 std::optional<bool> motionSteps(const std::string& op, StepContext& ctx) {
     const json& step = ctx.step;
     auto& b = Session::instance();
@@ -664,6 +774,10 @@ std::optional<bool> motionSteps(const std::string& op, StepContext& ctx) {
 
     if (op == "expectDummyAirborne") {
         return expectDummyAirborne(ctx);
+    }
+
+    if (op == "expectDummyBody") {
+        return expectDummyBody(ctx);
     }
 
     return std::nullopt;
