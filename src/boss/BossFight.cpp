@@ -238,7 +238,10 @@ bool fromArena(const nlohmann::json& packet) {
     if (stage == packet.end() || !stage->is_string()) {
         return false;
     }
-    return inArena(stage->get_ref<const std::string&>().c_str(), packet.value("roomNo", -1));
+    // Memory switches and items carry no room: the arena's stage is enough.
+    const int room = packet.value("roomNo", -1);
+    const char* name = stage->get_ref<const std::string&>().c_str();
+    return inArena(name, room < 0 && sameStage(s_arena.stage, name) ? s_arena.room : room);
 }
 
 bool isBossProfile(int16_t profile) {
