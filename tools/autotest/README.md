@@ -201,6 +201,28 @@ World sync (`StepsWorld.cpp`):
 | `expectNoItem` | `item`, `forSec` (5) | fails if the item's first-get bit gets set within `forSec` |
 | `expectMerges` | `min`, `max`, `timeoutSec` | world-state merges applied so far: waits for `min`, fails above `max` |
 
+Items the game takes away (`StepsTake.cpp`, scenarios in `scenarios/take.js`). The take steps use
+the game's own calls outside any remote apply, so the take poller sees them:
+
+| op | fields | does |
+| --- | --- | --- |
+| `takeItem` | `item`, `slot` (default: the item's) | what the game does to take it: `dComIfGs_setItem(slot, NONE)` (the lantern also backs up its oil, as the monkey does), `dComIfGs_setWarashibeItem(NONE)` for slot 21, `dComIfGs_offItemFirstBit` for the pumpkin (0xF4) and cheese (0xF5) |
+| `setTradeItem` | `item` | the "Trade Item Set" flow event: `dComIfGs_setWarashibeItem(item)`, no item get |
+| `restoreLantern` | | what a game over during the monkey's theft does: the lantern back in slot 1 with its backed-up oil |
+| `equipShield` | `item` | equips that shield (`dMeter2Info_setShield`), so `burnShield` removes it |
+| `expectSlot` | `slot` (default: `item`'s), `item` (255 = empty), `forSec`, `timeoutSec` | until the slot holds the item (and, with `forSec`, keeps it that long) |
+| `expectFirstBit` | `item`, `set` (true), `forSec`, `timeoutSec` | the same for a first-get bit |
+| `expectTakeStats` | `min`, `max` (`{sent, received, applied, skipped, mergeTakes, deferred, regrants, returns}`), `timeoutSec` | waits until every `min` count is reached, fails at once above a `max` count. `applied`: a teammate's take removed our item; `mergeTakes`: a world state showed one taken; `deferred`: takes that had to wait; `regrants`: a taken item granted again; `returns`: items back without an item get, sent as `GIVE_ITEM` |
+| `holdTakes` | `hold` (true) | teammates' takes wait as if it were never safe, until released |
+| `publishWorldState` | `timeoutSec` | once world sync is on, sends our world state as an autosave does (the relay caches it and drops the queued packets it holds) |
+| `expectLantern` | `inHand`, `lit`, `timeoutSec` | our lantern is held out (`mEquipItem`) / lit (on the belt too) |
+
+`take-offline-join` launches B 45 s ahead of A: B takes Auru's memo and publishes its state before
+A exists. `take-lantern-in-hand` puts the lit lantern away with A ("Put away"); it then hangs lit on
+the belt, and the take puts it out. Written for the item takes, **not run yet** (the machine was in
+use): `take-live`, `take-lantern`, `take-first-bits`, `take-offline-join`, `take-shields`,
+`take-randomizer`, `take-lantern-in-hand`.
+
 Chests, freestanding items, shared pickups and traps (`StepsPickups.cpp`):
 
 | op | fields | does |
@@ -514,7 +536,7 @@ Item toasts (`StepsItemToast.cpp`), checked through the toast history:
 | `itemToastOption` | `name` (`item_toasts`, `item_toasts_own`), `value` | |
 | `clearItemToasts` | | forgets the history and what waits |
 | `testItemToast` | `item`, `name`, `r`, `g`, `b`, `count`, `saveTbl` | a live toast as if a teammate picked the item up |
-| `expectItemToast` / `expectNoItemToast` | `kind` (`item`, `own`, `summary`, `merged`), `from`, `item`, `textContains`, `minCount`, `fromPacket`, `hold`, `pushed`, `rendered`, `timeoutSec` / `forSec` | a matching toast (`rendered`: pushed with that item's `item://` icon) |
+| `expectItemToast` / `expectNoItemToast` | `kind` (`item`, `own`, `summary`, `merged`, `taken`: a teammate's take removed ours), `from`, `item`, `textContains`, `minCount`, `fromPacket`, `hold`, `pushed`, `rendered`, `timeoutSec` / `forSec` | a matching toast (`rendered`: pushed with that item's `item://` icon) |
 | `expectItemToastCount` / `expectItemToastItems` | the same fields and `count` or `min`/`max`; `from`, `count` | how many toasts / items counted |
 | `dumpItemToasts` | | logs the history |
 
