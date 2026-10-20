@@ -329,35 +329,55 @@ void drawHorseshoe(Vec2 c, f32 outer, f32 width, const u8 fill[4], const u8 outl
     ring(outer, inner, kHorseGapDeg, fill);
 }
 
+// A remote Epona's map position (room-origin corrected like the players') and its icon's colours.
+bool horseMapPos(uint32_t id, const Client& c, u8 alpha, Vec& pos, HorseIcon& h) {
+    horse::TagInfo info;
+    if (c.self || !horse::tagInfo(id, info)) {
+        return false;
+    }
+    const char* stage = dComIfGp_getStartStageName();
+    const int8_t layer = static_cast<int8_t>(dComIfG_play_c::getLayerNo(0));
+    const bool ownerHere = stage != nullptr &&
+                           std::strncmp(c.stageName, stage, sizeof(c.stageName)) == 0 &&
+                           c.layerNo == layer && c.hasPlayerUpdate;
+    const int8_t room = ownerHere ? c.roomNo : c.horsePlace.room;
+    BE(Vec) corrected;
+    corrected.x = info.pos[0];
+    corrected.y = info.pos[1];
+    corrected.z = info.pos[2];
+    if (room >= 0 && room < 64) {
+        dMapInfo_n::correctionOriginPos(room, &corrected);
+    }
+    pos = corrected;
+    h = HorseIcon{};
+    h.clientId = id;
+    h.ridden = info.ridden;
+    h.ownerAway = !ownerHere;
+    Source s;
+    s.r = c.colorR;
+    s.g = c.colorG;
+    s.b = c.colorB;
+    Drawn d;
+    pickColours(s, alpha, false, d);
+    std::copy(std::begin(d.fill), std::end(d.fill), h.fill);
+    std::copy(std::begin(d.outline), std::end(d.outline), h.outline);
+    return std::isfinite(pos.x) && std::isfinite(pos.z);
+}
+
 // Every remote Epona shown here, on the minimap under the players' arrows.
 void gatherHorses(Frame& f, const MinimapXform& t, u8 alpha) {
     f.horses.clear();
     if (!Session::active()) {
         return;
     }
-    const char* stage = dComIfGp_getStartStageName();
-    const int8_t layer = static_cast<int8_t>(dComIfG_play_c::getLayerNo(0));
     const f32 unitsPerTexel = t.rectW / t.texW;
     const f32 size = arrowHeight(t.cursorSize, unitsPerTexel) * kHorseSize;
     for (const auto& [id, c] : Session::instance().clients()) {
-        horse::TagInfo info;
-        if (c.self || !horse::tagInfo(id, info)) {
+        Vec v;
+        HorseIcon h;
+        if (!horseMapPos(id, c, alpha, v, h)) {
             continue;
         }
-        const bool ownerHere = stage != nullptr &&
-                               std::strncmp(c.stageName, stage, sizeof(c.stageName)) == 0 &&
-                               c.layerNo == layer && c.hasPlayerUpdate;
-        const int8_t room = ownerHere ? c.roomNo : c.horsePlace.room;
-        BE(Vec) pos;
-        pos.x = info.pos[0];
-        pos.y = info.pos[1];
-        pos.z = info.pos[2];
-        if (room >= 0 && room < 64) {
-            dMapInfo_n::correctionOriginPos(room, &pos);
-        }
-        const Vec v = pos;
-        HorseIcon h;
-        h.clientId = id;
         h.anchor = projectMinimap(t, v.x, v.z);
         if (h.anchor.x < t.rectX || h.anchor.x > t.rectX + t.rectW || h.anchor.y < t.rectY ||
             h.anchor.y > t.rectY + t.rectH)
@@ -366,16 +386,6 @@ void gatherHorses(Frame& f, const MinimapXform& t, u8 alpha) {
         }
         h.size = size;
         h.outlineW = outlineWidth(unitsPerTexel);
-        h.ridden = info.ridden;
-        h.ownerAway = !ownerHere;
-        Source s;
-        s.r = c.colorR;
-        s.g = c.colorG;
-        s.b = c.colorB;
-        Drawn d;
-        pickColours(s, alpha, false, d);
-        std::copy(std::begin(d.fill), std::end(d.fill), h.fill);
-        std::copy(std::begin(d.outline), std::end(d.outline), h.outline);
         f.horses.push_back(h);
     }
 }
@@ -423,6 +433,7 @@ struct PauseList {
     std::vector<Skipped> skipped;
     std::vector<PauseEntry> entries;
     Vec2 local;  // the local player, placed the same way (field map)
+    std::vector<HorseIcon> horses;  // field map: anchors on the map pane
 };
 PauseList sPause;
 // The same for the field map (collectPauseFmap, drawPauseFmap).
@@ -677,6 +688,7 @@ void collectPauseFmap(dMenu_Fmap2DBack_c& back, const char* stageName) {
     sFmap.valid = true;
     sFmap.tick = tick;
     sFmap.entries.clear();
+    sFmap.horses.clear();
     gatherSources(sFmap.sources, sFmap.skipped, sFmap.gate);
     if (sFmap.gate != Gate::Drawn) {
         return;
@@ -711,6 +723,14 @@ void collectPauseFmap(dMenu_Fmap2DBack_c& back, const char* stageName) {
                                    s.pose.z + cM_scos(s.pose.angle) * 1000.0f);
         e.drawn.dir = normalized(ahead - e.pos);
         sFmap.entries.push_back(e);
+    }
+    for (const auto& [id, c] : Session::instance().clients()) {
+        Vec v;
+        HorseIcon h;
+        if (horseMapPos(id, c, 255, v, h)) {
+            h.anchor = project(v.x, v.z);
+            sFmap.horses.push_back(h);
+        }
     }
     if (daPy_getPlayerActorClass() != nullptr) {
         const Vec local = dMapInfo_n::getMapPlayerPos();
@@ -766,11 +786,26 @@ void drawPauseFmap(dMenuMapCommon_c& common, f32 originX, f32 originY, f32 alpha
         pickColours(s, scaled(255, alpha), false, d);
         f.cursors.push_back(d);
     }
-    if (f.cursors.empty()) {
+    // The minimap's horseshoes, sized against the arrows here
+    for (const HorseIcon& src : sFmap.horses) {
+        HorseIcon h = src;
+        h.anchor = {originX + src.anchor.x, originY + src.anchor.y};
+        if (mirror) {
+            h.anchor.x = common.getMirrorCenterPosX(h.anchor.x, 0.0f);
+        }
+        h.size = height * kHorseSize;
+        h.outlineW = outline;
+        h.fill[3] = h.outline[3] = scaled(255, alpha);
+        f.horses.push_back(h);
+    }
+    if (f.cursors.empty() && f.horses.empty()) {
         return;
     }
     GXPushDebugGroup("twili field map cursors");
     beginPrims();
+    for (const HorseIcon& h : f.horses) {
+        drawHorseshoe(h.anchor, h.size, h.outlineW, h.fill, h.outline);
+    }
     for (const Drawn& d : f.cursors) {
         drawMarker(d);
     }

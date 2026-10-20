@@ -70,7 +70,7 @@ struct Drawn {
     bool injected = false;  // an autotest client
 };
 
-// A remote player's Epona on the minimap, ridden or parked.
+// A remote player's Epona on the minimap or the field map, ridden or parked.
 struct HorseIcon {
     uint32_t clientId = 0;
     Vec2 anchor;
@@ -104,7 +104,7 @@ struct Frame {
     bool rectOnScreen = false;
     std::vector<Drawn> cursors;
     std::vector<Skipped> skipped;
-    std::vector<HorseIcon> horses;  // minimap only
+    std::vector<HorseIcon> horses;  // minimap and field map
     // Field map: where the menu drew its Link icon, for localAnchor (placed the remotes' way)
     Vec2 linkIcon;
     bool linkIconValid = false;
