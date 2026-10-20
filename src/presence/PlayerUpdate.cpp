@@ -417,6 +417,58 @@ static void captureGround(RemoteGround& out) {
         link->field_0x2b9c + link->field_0x2ba0 + (link->checkBoardRide() ? 13.0f : 0.0f);
 }
 
+// setMatrix's extras and jointControll's root X and Z, as this tick's calc used them
+static void captureBodyMatrix(RemoteBodyMatrix& out) {
+    out = RemoteBodyMatrix{};
+    daAlink_c* link = daAlink_getAlinkActorClass();
+    if (link == nullptr) {
+        return;
+    }
+    out.flags = kBodyValid;
+    const bool toolDemo = link->mProcID == daAlink_c::PROC_TOOL_DEMO ||
+                          (!link->checkWolf() && link->mProcID == daAlink_c::PROC_GANON_FINISH);
+    if (toolDemo) {
+        out.flags |= kBodyRootXClear | kBodyRootZClear;
+    } else {
+        if (link->checkRootTransXClearMode()) {
+            out.flags |= kBodyRootXClear;
+            out.rootX = link->field_0x3588.x;
+        }
+        if (link->checkRootTransZClearMode()) {
+            out.flags |= kBodyRootZClear;
+            out.rootZ = link->field_0x3588.z;
+        }
+    }
+    if (link->checkMagneBootsOn()) {
+        out.flags |= kBodyMagne;
+        out.magneTilt = link->field_0x3114;
+        out.magneDir = link->field_0x3116;
+    }
+    switch (link->mProcID) {
+    case daAlink_c::PROC_BOAR_RUN:
+    case daAlink_c::PROC_ZORA_MOVE:
+        out.tweak = kTweakBoarRun;
+        break;
+    case daAlink_c::PROC_HORSE_RUN:
+        out.tweak = kTweakHorseRun;
+        break;
+    case daAlink_c::PROC_WOLF_CHAIN_WAIT:
+        out.tweak = kTweakWolfChain;
+        break;
+    case daAlink_c::PROC_MAGNE_BOOTS_FLY:
+        out.tweak = kTweakMagneFly;
+        out.tweakA = link->mProcVar2.field_0x300c;
+        break;
+    default:
+        break;
+    }
+    if (out.tweak == kTweakBoarRun || out.tweak == kTweakHorseRun) {
+        out.tweakA = link->mProcVar4.field_0x3010;
+        out.tweakB = link->mProcVar5.field_0x3012;
+    }
+    out.climbYaw = link->field_0x308c;
+}
+
 // setPlayerUpdateTestPatch
 static nlohmann::json s_testPatch;
 static int s_testPatchPackets = 0;
@@ -439,6 +491,17 @@ static void encodeGround(const RemoteGround& g, int32_t (&out)[4]) {
     out[1] = quantize(g.stepOffset, kPosScale);
     out[2] = quantize(g.extraOffset, kPosScale);
     out[3] = (g.flags & kGroundRootYClear) ? quantize(g.rootBaseY, kPosScale) : 0;
+}
+
+static void encodeBodyMatrix(const RemoteBodyMatrix& b, int32_t (&out)[8]) {
+    out[0] = b.flags | (b.tweak << kBodyTweakShift);
+    out[1] = (b.flags & kBodyRootXClear) ? quantize(b.rootX, kPosScale) : 0;
+    out[2] = (b.flags & kBodyRootZClear) ? quantize(b.rootZ, kPosScale) : 0;
+    out[3] = b.tweakA;
+    out[4] = b.tweakB;
+    out[5] = b.magneTilt;
+    out[6] = b.magneDir;
+    out[7] = b.climbYaw;
 }
 
 template <size_t N>
@@ -667,6 +730,9 @@ void Session::sendPlayerUpdate(float posX, float posY, float posZ,
     RemoteGround ground;
     captureGround(ground);
     encodeGround(ground, cur.yo);
+    RemoteBodyMatrix body;
+    captureBodyMatrix(body);
+    encodeBodyMatrix(body, cur.ym);
 
     uint8_t flags = 0;
     if (attentionLock) flags |= kPresenceAttentionLock;
@@ -800,6 +866,9 @@ static void sendPose(Session& session, PoseSender& tx, const WirePose& cur, uint
     if (!keyframe || anyNonZero(cur.yo)) {
         putField(packet, "yo", cur.yo, o.yo, keyframe, changed);
     }
+    if (!keyframe || anyNonZero(cur.ym)) {
+        putField(packet, "ym", cur.ym, o.ym, keyframe, changed);
+    }
     if (keyframe) {
         packet["xv"] = 1;
     }
@@ -870,6 +939,24 @@ static RemoteGround decodeGround(const int32_t (&in)[4]) {
         g.rootBaseY = std::clamp(in[3] / kPosScale, -kMaxRootBaseY, kMaxRootBaseY);
     }
     return g;
+}
+
+static RemoteBodyMatrix decodeBodyMatrix(const int32_t (&in)[8]) {
+    RemoteBodyMatrix b;
+    b.flags = static_cast<uint8_t>(in[0] & 0x0F);
+    if (!b.valid()) {
+        return RemoteBodyMatrix{};
+    }
+    const uint8_t tweak = static_cast<uint8_t>((in[0] >> kBodyTweakShift) & 7);
+    b.tweak = tweak < kTweakCount ? tweak : kTweakNone;
+    b.rootX = std::clamp(in[1] / kPosScale, -kMaxGroundOffset, kMaxGroundOffset);
+    b.rootZ = std::clamp(in[2] / kPosScale, -kMaxGroundOffset, kMaxGroundOffset);
+    b.tweakA = static_cast<int16_t>(in[3]);
+    b.tweakB = static_cast<int16_t>(in[4]);
+    b.magneTilt = static_cast<int16_t>(in[5]);
+    b.magneDir = static_cast<int16_t>(in[6]);
+    b.climbYaw = static_cast<int16_t>(in[7]);
+    return b;
 }
 
 // Ids are only range-checked here
@@ -1167,6 +1254,7 @@ void Session::handlePlayerUpdate(const nlohmann::json& packet) {
     c.horse = horse::decode(w);
     c.getItem = getitem::decode(w.gi);
     c.ground = decodeGround(w.yo);
+    c.body = decodeBodyMatrix(w.ym);
     c.hasPlayerUpdate = true;
 
     RemotePoseSample sample;

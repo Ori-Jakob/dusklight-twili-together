@@ -470,6 +470,39 @@ struct RemoteGround {
     float rootBaseY = 0.0f;    // field_0x33b0 while kGroundRootYClear
 };
 
+// PLAYER_UPDATE "ym"[0] bits 0-3 (bits 4-6: BodyTweak)
+enum BodyMatrixFlag : uint8_t {
+    kBodyValid = 1 << 0,       // the sender sends this group (older ones pin the root)
+    kBodyRootXClear = 1 << 1,  // jointControll sets the root's X to rootX (checkRootTransXClearMode)
+    kBodyRootZClear = 1 << 2,  // ...and its Z to rootZ
+    kBodyMagne = 1 << 3,       // FLG0_MAGNE_BOOTS_ON: mMagneBootMtx turns the body
+    kBodyTweakShift = 4,
+};
+
+// setMatrix's per-proc turns after the shape angle.
+enum BodyTweak : uint8_t {
+    kTweakNone = 0,
+    kTweakBoarRun = 1,    // PROC_BOAR_RUN, PROC_ZORA_MOVE: about (0, 50, 100), z 1.5 times y
+    kTweakHorseRun = 2,   // PROC_HORSE_RUN: about (0, 20, 70), z half of y
+    kTweakWolfChain = 3,  // PROC_WOLF_CHAIN_WAIT: moved by (0, 5, -3)
+    kTweakMagneFly = 4,   // PROC_MAGNE_BOOTS_FLY: turned by a about Y
+    kTweakCount,
+};
+
+// The sender's body matrix beyond position and shape angle (setMatrix, jointControll's root).
+struct RemoteBodyMatrix {
+    uint8_t flags = 0;       // BodyMatrixFlag
+    uint8_t tweak = kTweakNone;
+    float rootX = 0.0f;      // field_0x3588.x while kBodyRootXClear (0 in PROC_TOOL_DEMO)
+    float rootZ = 0.0f;
+    int16_t tweakA = 0;      // mProcVar4.field_0x3010 (runs), mProcVar2.field_0x300c (fly)
+    int16_t tweakB = 0;      // mProcVar5.field_0x3012
+    int16_t magneTilt = 0;   // field_0x3114
+    int16_t magneDir = 0;    // field_0x3116
+    int16_t climbYaw = 0;    // field_0x308c, the climbing wall's turn
+    bool valid() const { return (flags & kBodyValid) != 0; }
+};
+
 struct LinkPuppetState {
     float posX = 0.0f, posY = 0.0f, posZ = 0.0f;
     int16_t angleX = 0, angleY = 0, angleZ = 0;
@@ -532,6 +565,7 @@ struct LinkPuppetState {
     RemoteHorsePose horse;  // its Epona, posed by the dummy on its puppet (DummyHorse.cpp)
     RemoteGetItem getItem;
     RemoteGround ground;
+    RemoteBodyMatrix body;
 };
 
 // The latest received pose of `client` (LinkPuppetState.cpp).

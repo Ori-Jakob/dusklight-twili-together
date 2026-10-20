@@ -313,6 +313,50 @@ private:
     f32 mOldHatScale;
 };
 
+// setMatrix's per-proc turns come from the proc: the remote's, for that call (the dummy has none).
+class ScopedRemoteBodyTweak {
+public:
+    ScopedRemoteBodyTweak(daAlink_c& link, const twili::RemoteBodyMatrix& body)
+        : mLink(link), mOldProcID(link.mProcID), mOldVar2(link.mProcVar2.field_0x300c),
+          mOldVar4(link.mProcVar4.field_0x3010), mOldVar5(link.mProcVar5.field_0x3012) {
+        switch (body.tweak) {
+        case twili::kTweakBoarRun:
+            mLink.mProcID = daAlink_c::PROC_BOAR_RUN;
+            break;
+        case twili::kTweakHorseRun:
+            mLink.mProcID = daAlink_c::PROC_HORSE_RUN;
+            break;
+        case twili::kTweakWolfChain:
+            mLink.mProcID = daAlink_c::PROC_WOLF_CHAIN_WAIT;
+            break;
+        case twili::kTweakMagneFly:
+            mLink.mProcID = daAlink_c::PROC_MAGNE_BOOTS_FLY;
+            mLink.mProcVar2.field_0x300c = body.tweakA;
+            break;
+        default:
+            break;
+        }
+        if (body.tweak == twili::kTweakBoarRun || body.tweak == twili::kTweakHorseRun) {
+            mLink.mProcVar4.field_0x3010 = body.tweakA;
+            mLink.mProcVar5.field_0x3012 = body.tweakB;
+        }
+    }
+
+    ~ScopedRemoteBodyTweak() {
+        mLink.mProcID = mOldProcID;
+        mLink.mProcVar2.field_0x300c = mOldVar2;
+        mLink.mProcVar4.field_0x3010 = mOldVar4;
+        mLink.mProcVar5.field_0x3012 = mOldVar5;
+    }
+
+private:
+    daAlink_c& mLink;
+    u16 mOldProcID;
+    s16 mOldVar2;
+    s16 mOldVar4;
+    s16 mOldVar5;
+};
+
 class ScopedCameraAttentionMask {
 public:
     ScopedCameraAttentionMask(int cameraId, u32 mask) : mCameraId(cameraId), mMask(mask) {
@@ -1968,7 +2012,8 @@ bool daDummyPlayer_c::setRemoteAnimations(const LinkPuppetState& state) {
     return true;
 }
 
-void daDummyPlayer_c::modelCalcRemoteBody(bool attentionLock, const twili::RemoteGround& ground) {
+void daDummyPlayer_c::modelCalcRemoteBody(bool attentionLock, const twili::RemoteGround& ground,
+                                          const twili::RemoteBodyMatrix& body) {
     const u8 oldRootTransMode = field_0x2f99;
     const cXyz oldRootTransBase = field_0x3588;
     const f32 oldRootTransBaseY = field_0x33b0;
@@ -1995,6 +2040,12 @@ void daDummyPlayer_c::modelCalcRemoteBody(bool attentionLock, const twili::Remot
             }
         }
         mBodyAngle.x = bodyX;
+    } else if (body.valid()) {
+        // jointControll's root clears as the remote's calc had them (ladders, climbing)
+        field_0x2f99 = ((body.flags & twili::kBodyRootXClear) ? 1 : 0) |
+                       ((body.flags & twili::kBodyRootZClear) ? 4 : 0);
+        field_0x3588.x = body.rootX;
+        field_0x3588.z = body.rootZ;
     } else if (checkWolf()) {
         field_0x3588.x = kDummyWolfRootTransX;
         field_0x3588.z = kDummyWolfRootTransZ;
@@ -2016,6 +2067,10 @@ void daDummyPlayer_c::modelCalcRemoteBody(bool attentionLock, const twili::Remot
         root->mTranslate.z += kDummyHorseBaseAnime.z;
     }
     modelCalc(mpLinkModel);
+    const Vec& rootTrans = field_0x2060->getOldFrameTransInfo(0)->mTranslate;
+    mDummyRootTrans[0] = rootTrans.x;
+    mDummyRootTrans[1] = rootTrans.y;
+    mDummyRootTrans[2] = rootTrans.z;
     mDummyCalcRootMode = saddle ? 0x60 : field_0x2f99 & 7;
     mDummyCalcShapeY = shape_angle.y;
     mDummyCalcValid = true;
@@ -2030,6 +2085,43 @@ void daDummyPlayer_c::modelCalcRemoteBody(bool attentionLock, const twili::Remot
     field_0x384c = oldRideBase;
     mBodyAngle.x = oldBodyAngleX;
     mRideStatus = oldRideStatus;
+}
+
+// The magnetic boots' matrix (setMagneBootsMtx's end) and the climbing wall's turn of the remote.
+void daDummyPlayer_c::applyRemoteBodyMatrix(const twili::RemoteBodyMatrix& body) {
+    field_0x308c = body.climbYaw;
+    if (body.flags & twili::kBodyMagne) {
+        field_0x3114 = body.magneTilt;
+        field_0x3116 = body.magneDir;
+        mDoMtx_YrotS(mMagneBootMtx, field_0x3116);
+        mDoMtx_XrotM(mMagneBootMtx, field_0x3114);
+        mDoMtx_YrotM(mMagneBootMtx, -field_0x3116);
+        mDoMtx_inverse(mMagneBootMtx, mMagneBootInvMtx);
+        mDoMtx_multVec(mMagneBootMtx, &cXyz::BaseY, &mMagneBootsTopVec);
+        onNoResetFlg0(FLG0_MAGNE_BOOTS_ON);
+    } else if (checkMagneBootsOn()) {
+        offNoResetFlg0(FLG0_MAGNE_BOOTS_ON);
+        field_0x3114 = 0;
+        field_0x3116 = 0;
+        mMagneBootsTopVec = cXyz::BaseY;
+    }
+    mDummyBody = body;
+}
+
+// The angle between the rotations of `a` and `b`, columns normalised against scale.
+static f32 rotationDeltaDeg(const Mtx a, const Mtx b) {
+    f32 trace = 0.0f;
+    for (int k = 0; k < 3; k++) {
+        f32 dot = 0.0f, la = 0.0f, lb = 0.0f;
+        for (int r = 0; r < 3; r++) {
+            dot += a[r][k] * b[r][k];
+            la += a[r][k] * a[r][k];
+            lb += b[r][k] * b[r][k];
+        }
+        const f32 norm = std::sqrt(la * lb);
+        trace += norm > 1e-6f ? dot / norm : 1.0f;
+    }
+    return std::acos(std::clamp((trace - 1.0f) * 0.5f, -1.0f, 1.0f)) * 180.0f / 3.14159265f;
 }
 
 // How far joint `jnt` is turned beyond its clips' pose (jointControll's extras), in degrees.
@@ -3397,6 +3489,22 @@ void daDummyPlayer_c::getDebugInfo(twili::DummyPlayerDebugInfo& out) const {
     out.fishing = mDummyFishing.debug();
     out.bowTiltTicks = mDummyBowTiltTicks;
     out.bowTiltDeg = mDummyBowTiltDeg;
+    out.bodyFlags = mDummyBody.flags;
+    out.bodyTweak = mDummyBody.tweak;
+    out.bodyRootX = mDummyBody.rootX;
+    out.bodyRootZ = mDummyBody.rootZ;
+    for (int i = 0; i < 3; i++) {
+        out.rootTrans[i] = mDummyRootTrans[i];
+    }
+    if (mpLinkModel != nullptr) {
+        MtxP base = mpLinkModel->getBaseTRMtx();
+        const f32 len =
+            std::sqrt(base[0][1] * base[0][1] + base[1][1] * base[1][1] + base[2][1] * base[2][1]);
+        for (int i = 0; i < 3; i++) {
+            out.baseUp[i] = len > 1e-6f ? base[i][1] / len : 0.0f;
+        }
+    }
+    out.baseTurnDeg = mDummyBaseTurnDeg;
     std::copy(std::begin(mDummySfxRecent), std::end(mDummySfxRecent), std::begin(out.sfxRecent));
     std::copy(std::begin(mDummyVoiceRecent), std::end(mDummyVoiceRecent),
         std::begin(out.voiceRecent));
@@ -3976,7 +4084,17 @@ bool daDummyPlayer_c::applyRemoteState(const LinkPuppetState& state) {
     field_0x2b98 = onHorse ? 0.0f : state.ground.stepOffset;
     field_0x2b9c = onHorse ? 0.0f : state.ground.extraOffset;
     field_0x2ba0 = 0.0f;
-    setMatrix();
+    applyRemoteBodyMatrix(state.body);
+    {
+        ScopedRemoteBodyTweak tweak(*this, state.body);
+        setMatrix();
+    }
+    {
+        // Autotest: how far the matrix turns beyond the shape angle
+        Mtx plain;
+        mDoMtx_ZXYrotS(plain, shape_angle.x, shape_angle.y, shape_angle.z);
+        mDummyBaseTurnDeg = rotationDeltaDeg(plain, mpLinkModel->getBaseTRMtx());
+    }
     mSinkShapeOffset = state.status.sinkOffset;
     if (mSinkShapeOffset != 0.0f) {
         setMatrixOffset(&mSinkShapeOffset, mSinkShapeOffset);
@@ -3985,7 +4103,7 @@ bool daDummyPlayer_c::applyRemoteState(const LinkPuppetState& state) {
     field_0x2fb6 = state.upperBlendMode;
     field_0x3444 = clampRatio(state.upperBlendRatio);
     traceInitialApply(mDummyClientId, trace, "applyRemoteState modelCalc");
-    modelCalcRemoteBody(state.attentionLock, state.ground);
+    modelCalcRemoteBody(state.attentionLock, state.ground, state.body);
     if (onHorse) {
         // setHorseStirrup's order
         horse::applyRider(mDummyClientId, *this, state.horse);

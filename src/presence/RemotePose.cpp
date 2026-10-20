@@ -246,6 +246,25 @@ void blendPose(const LinkPuppetState& a, const LinkPuppetState& b, float t, Link
     if (a.ground.flags & b.ground.flags & kGroundRootYClear) {
         out.ground.rootBaseY = lerp(a.ground.rootBaseY, b.ground.rootBaseY, t);
     }
+    // The body's matrix extras while the sender stays in the same case
+    const RemoteBodyMatrix& ma = a.body;
+    const RemoteBodyMatrix& mb = b.body;
+    if (ma.valid() && mb.valid()) {
+        RemoteBodyMatrix& bo = out.body;
+        if (ma.flags == mb.flags) {
+            bo.rootX = lerp(ma.rootX, mb.rootX, t);
+            bo.rootZ = lerp(ma.rootZ, mb.rootZ, t);
+            if (ma.flags & kBodyMagne) {
+                bo.magneTilt = lerpAngle(ma.magneTilt, mb.magneTilt, t);
+                bo.magneDir = lerpAngle(ma.magneDir, mb.magneDir, t);
+            }
+        }
+        if (ma.tweak == mb.tweak) {
+            bo.tweakA = lerpAngle(ma.tweakA, mb.tweakA, t);
+            bo.tweakB = lerpAngle(ma.tweakB, mb.tweakB, t);
+        }
+        bo.climbYaw = lerpAngle(ma.climbYaw, mb.climbYaw, t);
+    }
     out.frameAlpha = t;
 }
 

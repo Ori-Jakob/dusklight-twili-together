@@ -95,6 +95,7 @@ struct Client {
     RemoteHorsePose horse;
     RemoteGetItem getItem;
     RemoteGround ground;
+    RemoteBodyMatrix body;
 
     // Deltas apply on top of `wire`.
     WirePose wire;

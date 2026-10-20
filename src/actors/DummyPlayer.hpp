@@ -155,6 +155,13 @@ struct DummyPlayerDebugInfo {
     // A rider aiming the bow: ticks jointControll turned joint 5, and by how much last time
     uint32_t bowTiltTicks = 0;
     float bowTiltDeg = 0.0f;
+    // The remote's body matrix extras (RemoteBodyMatrix) shown, and what the calc made of them
+    uint8_t bodyFlags = 0;
+    uint8_t bodyTweak = 0;
+    float bodyRootX = 0.0f, bodyRootZ = 0.0f;
+    float rootTrans[3] = {};   // the root joint's translation after jointControll
+    float baseUp[3] = {};      // the body matrix's up axis
+    float baseTurnDeg = 0.0f;  // its turn beyond the shape angle (magnet boots, tweaks, climbing)
 };
 
 // A remote player: a daAlink_c posed from the received stream, never controlled.
@@ -218,7 +225,9 @@ private:
     J3DAnmTransform* loadRemoteAnimationPack(bool upper, int idx, uint16_t anmId, float frame,
                                              float frameNext = 0.0f, float frameAlpha = 0.0f);
     bool setRemoteBasAnime(bool upper, int idx);
-    void modelCalcRemoteBody(bool attentionLock, const twili::RemoteGround& ground);
+    void modelCalcRemoteBody(bool attentionLock, const twili::RemoteGround& ground,
+                             const twili::RemoteBodyMatrix& body);
+    void applyRemoteBodyMatrix(const twili::RemoteBodyMatrix& body);
     f32 jointExtraTurnDeg(u16 jnt) const;
     void applyRemoteClothes(uint8_t clothesItem);
     void bindRemoteMagicArmorBrk(int status, bool fromStart = false);
@@ -359,6 +368,11 @@ private:
     bool mDummyFeetReset = true;
     bool mDummyFeetContact = false;  // autotest
     uint8_t mDummyGroundFlags = 0;   // autotest
+    uint8_t mDummyMidnaPoseMode = 0;  // autotest
+    // Autotest: the body matrix extras shown, the root's translation and the matrix's extra turn
+    twili::RemoteBodyMatrix mDummyBody;
+    float mDummyRootTrans[3] = {};
+    float mDummyBaseTurnDeg = 0.0f;
     // The root mode (0x60 in the saddle) and facing of the last body calc
     u8 mDummyCalcRootMode = 0;
     s16 mDummyCalcShapeY = 0;
