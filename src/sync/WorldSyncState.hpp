@@ -158,6 +158,10 @@ void handleUpdateDungeonItems(const nlohmann::json& packet);
 inline constexpr int kTakeSlots[] = {SLOT_1, SLOT_19, SLOT_21, SLOT_22};
 // The pumpkin and cheese have no slot: their first-get bit is the item.
 inline constexpr uint8_t kTakeFirstBits[] = {dItemNo_TOMATO_PUREE_e, dItemNo_TASTE_e};
+// Take "slots" that are not item slots: a first-get bit, and the equipped sword (Talo takes the
+// Wooden Sword).
+inline constexpr int kTakeFirstBit = -1;
+inline constexpr int kTakeSword = -2;
 // The items the game takes from this slot (the lantern, Auru's memo, the trade line, the Sky Book).
 bool isTakeableSlotItem(int slot, uint8_t itemNo);
 bool isTakeableFirstBit(uint8_t itemNo);
@@ -169,12 +173,13 @@ bool mayGrantAgain(uint8_t itemNo);
 struct TakeSnapshot {
     uint8_t slots[std::size(kTakeSlots)] = {};
     bool bits[std::size(kTakeFirstBits)] = {};
+    uint8_t sword = dItemNo_NONE_e;
 };
 TakeSnapshot takeSnapshot();
 void shiftTakeBaseline(const TakeSnapshot& before);
 // A merge found this item taken from the sender (its slot empty, its first-get bit set).
 struct SlotTake {
-    int slot = -1;
+    int slot = kTakeFirstBit;
     uint8_t itemNo = 0;
 };
 void queueMergeTakes(const std::vector<SlotTake>& takes, const nlohmann::json& packet);

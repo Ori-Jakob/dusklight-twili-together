@@ -111,7 +111,8 @@ function packetSummary(packet) {
         case "GIVE_ITEM":
             return `${packet.type} item=0x${hex(packet.itemNo, 2)}`;
         case "TAKE_ITEM":
-            return `${packet.type} item=0x${hex(packet.itemNo, 2)} ${packet.firstBit === true ? "firstBit" : `slot=${text(packet.slot)}`}`;
+            return `${packet.type} item=0x${hex(packet.itemNo, 2)} ${packet.firstBit === true ? "firstBit" :
+                "equip" in packet ? `equip=${text(packet.equip)}` : `slot=${text(packet.slot)}`}`;
         case "LIGHT_DROP":
             return `${packet.type} area=${text(packet.area)} saveTbl=${text(packet.tbl)} tbox=${text(packet.tbox)}`;
         case "SHARE_PICKUP":

@@ -643,11 +643,13 @@ test("TAKE_ITEM is team-scoped, queued and replayed after the cached world state
     await other.join({ teamId: "u" });
     a.send({ type: "UPDATE_WORLD_STATE", save: "AAAA", saveTblNo: 3 });
     a.send({ type: "TAKE_ITEM", itemNo: 0x90, slot: 19, addToQueue: true });
+    a.send({ type: "TAKE_ITEM", itemNo: 0x3f, equip: "sword", addToQueue: true });
     const live = await mate.waitType("TAKE_ITEM");
     assert.equal(live.itemNo, 0x90);
     assert.equal(live.slot, 19);
     assert.equal(live.teamId, "t");
     assert.ok(Number.isInteger(live.queueSeq), "queued packets are numbered");
+    assert.equal((await mate.waitType("TAKE_ITEM", (p) => p.itemNo === 0x3f)).equip, "sword");
     await other.expectNone((p) => p.type === "TAKE_ITEM", "TAKE_ITEM to another team");
 
     await settle();
@@ -658,6 +660,9 @@ test("TAKE_ITEM is team-scoped, queued and replayed after the cached world state
     const take = await b.waitType("TAKE_ITEM");
     assert.equal(take.fromQueue, true);
     assert.equal(take.itemNo, 0x90);
+    const sword = await b.waitType("TAKE_ITEM", (p) => p.itemNo === 0x3f);
+    assert.equal(sword.fromQueue, true);
+    assert.equal(sword.equip, "sword");
 }));
 
 test("a world state drops its sender's slot TAKE_ITEM but keeps a first-bit TAKE_ITEM", () => withServer(async (mk) => {

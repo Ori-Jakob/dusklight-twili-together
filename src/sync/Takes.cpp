@@ -1,5 +1,6 @@
-// TAKE_ITEM: an item the game takes from us (the monkey's lantern, a trade item handed over) is
-// taken from every teammate too. Polled per tick; never in randomizer games, shields never tracked.
+// TAKE_ITEM: an item the game takes from us (the monkey's lantern, a trade item handed over, the
+// Wooden Sword Talo grabs) is taken from every teammate too. Polled per tick; never in randomizer
+// games, shields never tracked.
 
 #include "sync/WorldSyncState.hpp"
 
@@ -21,7 +22,7 @@ namespace detail {
 namespace {
 
 struct PendingTake {
-    int slot = -1;  // -1: a first-get bit
+    int slot = kTakeFirstBit;
     uint8_t itemNo = 0;
     item_toasts::Sender from;
     bool merge = false;
@@ -56,6 +57,10 @@ bool rawFirstBit(uint8_t itemNo) {
                1u) != 0;
 }
 
+uint8_t rawSword() {
+    return player().getPlayerStatusA().getSelectEquip(COLLECT_SWORD);
+}
+
 int takeSlotOf(uint8_t itemNo) {
     for (const int slot : kTakeSlots) {
         if (isTakeableSlotItem(slot, itemNo)) {
@@ -75,7 +80,9 @@ void sendTake(int slot, uint8_t itemNo) {
         {"type", "TAKE_ITEM"},
         {"itemNo", static_cast<unsigned>(itemNo)},
     };
-    if (slot >= 0) {
+    if (slot == kTakeSword) {
+        packet["equip"] = "sword";
+    } else if (slot >= 0) {
         packet["slot"] = slot;
     } else {
         packet["firstBit"] = true;
@@ -128,10 +135,15 @@ void noteChanges(const TakeSnapshot& was, const TakeSnapshot& now) {
     }
     for (size_t i = 0; i < std::size(kTakeFirstBits); i++) {
         if (was.bits[i] && !now.bits[i]) {
-            onLocalTake(-1, kTakeFirstBits[i]);
+            onLocalTake(kTakeFirstBit, kTakeFirstBits[i]);
         } else if (!was.bits[i] && now.bits[i]) {
             onLocalReturn(kTakeFirstBits[i]);
         }
+    }
+    // Talo's grab; the collection menu only switches between swords, never to none. Equipping one
+    // gains nothing (it was owned), so that sends no return.
+    if (was.sword == dItemNo_WOOD_STICK_e && now.sword == dItemNo_NONE_e) {
+        onLocalTake(kTakeSword, dItemNo_WOOD_STICK_e);
     }
 }
 
@@ -172,6 +184,10 @@ const char* takeBlocker(const PendingTake& take) {
     if (link->mEquipItem == take.itemNo) {
         return "in-hand";
     }
+    // 0x103: the sword in hand (drawn or swinging).
+    if (take.slot == kTakeSword && link->mEquipItem == 0x103) {
+        return "drawn";
+    }
     if (take.itemNo == dItemNo_KANTERA_e) {
         switch (link->mProcID) {
         case daAlink_c::PROC_KANDELAAR_SWING:
@@ -188,7 +204,15 @@ const char* takeBlocker(const PendingTake& take) {
 
 // The game's own calls for this take; false if we do not hold the item.
 bool removeHeld(const PendingTake& take) {
-    if (take.slot < 0) {
+    if (take.slot == kTakeSword) {
+        if (rawSword() != take.itemNo) {
+            return false;
+        }
+        // As Talo's cut does: unequipped, still collected (the menu hides it by F_0026).
+        dMeter2Info_setSword(dItemNo_NONE_e, false);
+        return true;
+    }
+    if (take.slot == kTakeFirstBit) {
         if (!rawFirstBit(take.itemNo)) {
             return false;
         }
@@ -224,7 +248,7 @@ void applyTake(const PendingTake& take) {
     }
     shiftTakeBaseline(before);
     // Gone either way (we had it): a teammate's later give brings it back.
-    if (removed || (take.slot >= 0 && rawFirstBit(take.itemNo))) {
+    if (removed || (take.slot != kTakeFirstBit && rawFirstBit(take.itemNo))) {
         s_takes.records.insert(take.itemNo);
     }
     const char* how = take.merge ? "world state" : "TAKE_ITEM";
@@ -304,6 +328,9 @@ bool mayGrantAgain(uint8_t itemNo) {
     if (isTakeableFirstBit(itemNo)) {
         return !rawFirstBit(itemNo);
     }
+    if (itemNo == dItemNo_WOOD_STICK_e) {
+        return rawSword() == dItemNo_NONE_e;
+    }
     // Into its empty slot only: a trade slot that moved on keeps its newer item.
     const int slot = takeSlotOf(itemNo);
     return slot >= 0 && rawSlot(slot) == dItemNo_NONE_e;
@@ -320,6 +347,7 @@ TakeSnapshot takeSnapshot() {
     for (size_t i = 0; i < std::size(kTakeFirstBits); i++) {
         snap.bits[i] = rawFirstBit(kTakeFirstBits[i]);
     }
+    snap.sword = rawSword();
     return snap;
 }
 
@@ -337,6 +365,9 @@ void shiftTakeBaseline(const TakeSnapshot& before) {
         if (now.bits[i] != before.bits[i]) {
             s_takes.baseline.bits[i] = now.bits[i];
         }
+    }
+    if (now.sword != before.sword) {
+        s_takes.baseline.sword = now.sword;
     }
 }
 
@@ -398,10 +429,13 @@ void handleTakeItem(const nlohmann::json& packet) {
     }
     const int itemNo = packet.value("itemNo", -1);
     const bool firstBit = packet.value("firstBit", false);
-    const int slot = firstBit ? -1 : packet.value("slot", -1);
+    const bool sword = packet.value("equip", std::string{}) == "sword";
+    const int slot = sword ? kTakeSword : firstBit ? kTakeFirstBit : packet.value("slot", -1);
+    const auto item = static_cast<uint8_t>(itemNo);
     const bool valid = itemNo >= 0 && itemNo <= 0xFF &&
-                       (firstBit ? isTakeableFirstBit(static_cast<uint8_t>(itemNo)) :
-                                   isTakeableSlotItem(slot, static_cast<uint8_t>(itemNo)));
+                       (sword      ? item == dItemNo_WOOD_STICK_e :
+                           firstBit ? isTakeableFirstBit(item) :
+                                      isTakeableSlotItem(slot, item));
     if (!valid) {
         TwiliLog.warn("[sync] ignored TAKE_ITEM from client {}: item {} slot {}", from, itemNo, slot);
         return;
