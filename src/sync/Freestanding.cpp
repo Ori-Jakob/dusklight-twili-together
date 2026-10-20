@@ -710,4 +710,24 @@ bool blockTakenPickup(void* item) {
     return true;
 }
 
+bool blockTakenSpawn(void* life) {
+    auto* actor = static_cast<fopAc_ac_c*>(life);
+    if (kindOf(actor) != Kind::Life) {
+        return false;
+    }
+    // Its own create already refused one whose flag reached us; the check comes earlier.
+    const PlacedCheck check = checkOfActor(actor, Kind::Life);
+    if (check.kind != CheckKind::GoldenWolf && (check.no == kNoBit || isZoneBit(check.no))) {
+        return false;
+    }
+    const std::string key = checkKey(check);
+    if (s_teamChecks.count(key) == 0) {
+        return false;
+    }
+    TwiliLog.info("[sync] item {} ({}) was taken by a teammate: not placed",
+        fopAcM_GetParam(actor) & 0xFF, key);
+    state().stats.spawnsBlocked++;
+    return true;
+}
+
 }  // namespace twili::sync

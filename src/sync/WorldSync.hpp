@@ -70,6 +70,9 @@ void leaveBottleFairy();
 // daItem_c::itemGetNextExecute / daObjLife_c::initActionOrderGetDemo pre: true if a teammate
 // already took this item (it is removed, nothing given; skip the original).
 bool blockTakenPickup(void* item);
+// daObjLife_Create post, on a finished create: true if a teammate took this heart piece or
+// container's check (the create fails, nothing is placed).
+bool blockTakenSpawn(void* life);
 
 // GIVE_ITEM's filter: progression items, no consumables or dungeon items.
 bool isSyncedItemNo(int itemNo);
@@ -113,10 +116,12 @@ struct Stats {
     uint32_t trapsSent = 0;
     uint32_t trapsReceived = 0;
     uint32_t trapsApplied = 0;
-    // Freestanding items a teammate took: removed here, pickups stopped, GIVE_ITEMs dropped.
+    // Freestanding items a teammate took: removed here, pickups stopped, GIVE_ITEMs dropped, heart
+    // pieces and containers never placed.
     uint32_t freestandingRemoved = 0;
     uint32_t freestandingBlocked = 0;
     uint32_t grantsDeduped = 0;
+    uint32_t spawnsBlocked = 0;
     // Poes and golden wolves a teammate's flag or check took, removed here.
     uint32_t actorsRemoved = 0;
     // TAKE_ITEM: our takes sent, teammates' received, removed here or already gone, takes a merge

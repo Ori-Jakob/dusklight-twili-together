@@ -124,6 +124,9 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     // Optional: without it blocks and chains move only for whoever moves them.
     std::string pushError;
     hooks::install(hooks::Group::Push, pushError);
+    // Optional: without it a heart piece a teammate took can still appear until its flag arrives.
+    std::string checksError;
+    hooks::install(hooks::Group::Checks, checksError);
 
     ui::init();
 

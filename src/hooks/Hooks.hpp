@@ -24,6 +24,7 @@ enum class Group : uint8_t {
     Map,
     Chests,
     Push,
+    Checks,
     Autotest,
     Count,
 };

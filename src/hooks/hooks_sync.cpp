@@ -6,6 +6,7 @@
 #include "sync/RemoteApplyGuard.hpp"
 #include "sync/WorldSync.hpp"
 
+#include "SSystem/SComponent/c_phase.h"
 #include "d/actor/d_a_alink.h"
 #include "d/actor/d_a_obj_item.h"
 #include "d/actor/d_a_obj_life_container.h"
@@ -42,6 +43,7 @@ DEFINE_HOOK(&daTbox2_c::action, Tbox2Action);
 DEFINE_HOOK(&daAlink_c::makeFairy, AlinkMakeFairy);
 DEFINE_HOOK(&daItem_c::itemGetNextExecute, ItemGetNextExecute);
 DEFINE_HOOK(&daObjLife_c::initActionOrderGetDemo, LifeOrderGetDemo);
+DEFINE_HOOK_SYMBOL("src/d/actor/d_a_obj_life_container.cpp#daObjLife_Create", int(void*), LifeCreate);
 
 namespace {
 
@@ -368,6 +370,16 @@ HookAction onLifeOrderGetDemoPre(ModContext*, void* args, void* retval, void*) {
     return HOOK_CONTINUE;
 }
 
+// Only a finished create may fail: a resource load still running must end first.
+void onLifeCreatePost(ModContext*, void* args, void* retval, void*) {
+    int& result = *static_cast<int*>(retval);
+    if (result == cPhs_COMPLEATE_e && Session::active() &&
+        sync::blockTakenSpawn(mods::arg<void*>(args, 0)))
+    {
+        result = cPhs_ERROR_e;
+    }
+}
+
 template <class Entry>
 ModResult addObserver(HookPreFn pre, HookPostFn post, const char* what, std::string& error) {
     ModResult result = addPre<Entry>(pre, kObserve, what, error);
@@ -414,6 +426,10 @@ ModResult installSync(std::string& error) {
         }
     }
     return MOD_OK;
+}
+
+ModResult installChecks(std::string& error) {
+    return addPost<LifeCreate>(onLifeCreatePost, kDefault, "daObjLife_Create", error);
 }
 
 ModResult installChests(std::string& error) {
