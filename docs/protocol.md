@@ -228,22 +228,21 @@ hex. Every one of them, and every randomizer check at these places, reaches each
 | Goron springwater rush | F_SP121 r0 `grA` | 0x80 (table 6), check `goron_springwater_rush` | dropped by the Goron once `M_070` and `F_0377` are set |
 | Fado, Talo, Charlo, Plumm, Yeta | F_SP00, F_SP109, F_SP116, F_SP115, F_SP114 | event bit `F_0539`, `M_042`, `F_0294`, `F_286`, `F_0483` | the NPC's reward event; the giver checks its bit |
 
-Before this was fixed: chests were covered (bit synced and merged, open on load, the lid opens live,
-a second open refused, two at once each got one). The placed heart pieces and the boar had their bit
-synced and vanished live, but the bit is set only when the item message closes, so in that window
-a teammate entering the room still found one. The springwater heart piece's grant carried no check,
-so the receiver's copy stayed until the bit and two takes counted twice. The NPC rewards gave a
-second piece to a teammate who won the same reward before the bit arrived (offline or at the same
-time), and a restart could replay the grant. Now the receiver keeps a check it got from a teammate:
-a heart piece or container of that check is never placed (`daObjLife_Create` fails, Checks hooks),
-the NPC rewards and the springwater rush are checks, and a second piece of one is taken back.
+Before this was fixed: chests and the placed heart pieces were covered (bit synced and merged, gone
+on load, the lid opens or the piece vanishes live, a second take refused, two at once each got one;
+the grant goes out when the item message closes, with the bit). The springwater heart piece's grant
+carried no check, so two takes of it counted twice. The NPC rewards gave a second piece to a
+teammate who won the same reward before the bit arrived (offline or at the same time), and a
+restart could replay the grant. Now the NPC rewards and the springwater rush are checks, a second
+piece of one is taken back, and a heart piece or container whose check reached the receiver is
+never placed even where its flag did not (`daObjLife_Create` fails, Checks hooks).
 
 Boss heart containers (`UTAWA_HEART`, bit 0x9F of the dungeon's table and its `STAGE_LIFE`; Zant's is
 placed in D_MN08A r10, bit 0x80): the teammate's grant, bit and `STAGE_LIFE` reach a receiver in its
 own fight, elsewhere (into that table's save slot) or offline (merged), so its own kill drops none
 (the bosses check `STAGE_LIFE`, the container its bit). A grant taken in the receiver's own table keeps
 the `STAGE_LIFE` its item function sets. In a randomizer game the container is the check's item and
-ignores `STAGE_LIFE`; the check itself stops it until the bit arrives.
+ignores `STAGE_LIFE`; its bit or, without it, the check stops it.
 
 ### Kills and story (teammates only)
 

@@ -715,7 +715,7 @@ bool blockTakenSpawn(void* life) {
     if (kindOf(actor) != Kind::Life) {
         return false;
     }
-    // Its own create already refused one whose flag reached us; the check comes earlier.
+    // Its own create refuses one whose flag reached us; this one only its check did.
     const PlacedCheck check = checkOfActor(actor, Kind::Life);
     if (check.kind != CheckKind::GoldenWolf && (check.no == kNoBit || isZoneBit(check.no))) {
         return false;
