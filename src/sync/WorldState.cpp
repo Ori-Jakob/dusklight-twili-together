@@ -133,6 +133,8 @@ struct TakeRules {
     bool active = false;
     // The monkey holds the team's lantern: stolen (F_0224/F_0225) and not returned (F_0226).
     bool lanternWithMonkey = false;
+    // Talo has the Wooden Sword for good (F_0026, given on the third day).
+    bool swordWithTalo = false;
 };
 
 // Event bit `no` as this merge leaves it.
@@ -157,10 +159,23 @@ void mergePlayer(dSv_player_c& local, dSv_player_c& remote, bool shareWoodenShie
     la.mWalletSize = maxOf<u8>(la.mWalletSize, ra.mWalletSize);
     la.mMaxMagic = maxOf<u8>(la.mMaxMagic, ra.mMaxMagic);
     la.mMagicFlag |= ra.mMagicFlag;
+    // Their save no longer wears the Wooden Sword Talo took: ours goes too.
+    if (takes.active && takes.swordWithTalo &&
+        la.mSelectEquip[COLLECT_SWORD] == dItemNo_WOOD_STICK_e &&
+        ra.mSelectEquip[COLLECT_SWORD] != dItemNo_WOOD_STICK_e &&
+        rawFirstBit(remote.getGetItem(), dItemNo_WOOD_STICK_e))
+    {
+        mergeTakes.push_back({kTakeSword, dItemNo_WOOD_STICK_e});
+    }
     for (int i = 0; i < MAX_EQUIPMENT; i++) {
         if (la.mSelectEquip[i] == dItemNo_NONE_e && ra.mSelectEquip[i] != dItemNo_NONE_e &&
             (shareWoodenShield || !isWoodenShield(ra.mSelectEquip[i])))
         {
+            if (takes.active && i == COLLECT_SWORD && ra.mSelectEquip[i] == dItemNo_WOOD_STICK_e &&
+                (takes.swordWithTalo || hasTakeRecord(dItemNo_WOOD_STICK_e)))
+            {
+                continue;
+            }
             la.mSelectEquip[i] = ra.mSelectEquip[i];
         }
     }
@@ -440,6 +455,7 @@ void handleUpdateWorldState(const nlohmann::json& packet) {
         (mergedEventBit(local, remote, dSv_event_flag_c::F_0224, st.cleared) ||
             mergedEventBit(local, remote, dSv_event_flag_c::F_0225, st.cleared)) &&
         !mergedEventBit(local, remote, dSv_event_flag_c::F_0226, st.cleared);
+    takeRules.swordWithTalo = mergedEventBit(local, remote, dSv_event_flag_c::F_0026, st.cleared);
     std::vector<SlotTake> mergeTakes;
     mergePlayer(local.getPlayer(), remote.getPlayer(), session.roomState().shareWoodenShield,
         takeRules, mergeTakes);
