@@ -13,5 +13,7 @@ bool resizeWindow(int width, int height);
 // left button press or release.
 bool mouseMove(int x, int y, bool leftDown);
 bool mouseButton(int x, int y, bool down);
+// The game window's size in the window coordinates of the mouse events.
+bool windowSize(int& width, int& height);
 
 }  // namespace twili::autotest::input

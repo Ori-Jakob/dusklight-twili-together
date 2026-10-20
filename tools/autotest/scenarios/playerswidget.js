@@ -18,7 +18,7 @@ const reconnect = (team) => [
 ];
 // On the header while the widget sits in the top left corner (UI scales 1 to 1.5).
 const header = [40, 30];
-// The first row's teleport button with the widget in the top right corner of an 800x450 window
+// The first row's teleport button with the widget in the top right corner of an 800 wide window
 // (UI scale 1): 12 inset, 1 border, 6 padding, half the 18 wide button; rows start below the header.
 const tpButton = [772, 45];
 // Long names and three areas, for the widget's size; it shows 12 characters of a name and "...".
@@ -27,10 +27,10 @@ const TRIO = [
     { name: "B", peer: "Émilie-Françoise Noé", label: "Émilie-Franç...", start: STAGES.southFaron, area: "South Faron Woods" },
     { name: "C", peer: "Cy", label: "Cy", start: STAGES.faronField, area: "Hyrule Field" },
 ];
-// A real drag out of the top left corner works out the widget's size (UI scale 1, 800x450 window:
-// 776x426 of free space); `grab` is on its header at that size setting.
+// A real drag out of the top left corner works out the widget's size against the window's free
+// space (UI scale 1); `grab` is on its header at that size setting.
 const measure = (scale, more) => ({
-    op: "measurePlayersWidget", grab: [12 + 0.2 * scale, 12 + 0.13 * scale], by: [100, 50], area: [776, 426], ...more,
+    op: "measurePlayersWidget", grab: [12 + 0.2 * scale, 12 + 0.13 * scale], by: [100, 50], ...more,
 });
 const widgetScale = (value) => [
     { op: "playersWidgetOption", name: "players_widget_scale", value },
@@ -160,7 +160,8 @@ module.exports = [
                             { op: "mark", msg: "PW_SHOT trio-open" },
                             { op: "wait", sec: 3 },
                             // The size setting zooms the whole widget; its spot on screen stays put.
-                            measure(100, { as: "base" }),
+                            // A header and two rows of 14 dp text, the longest about 17 em wide.
+                            measure(100, { as: "base", min: [200, 55] }),
                             ...widgetScale(200),
                             { op: "expectPlayersWidget", x: 1000, y: 500 },
                             measure(200, { of: "base", ratio: [1.8, 2.2] }),

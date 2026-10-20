@@ -112,21 +112,26 @@ Fn sdlProc(const char* name) {
     return sdl != nullptr ? reinterpret_cast<Fn>(GetProcAddress(sdl, name)) : nullptr;
 }
 
-uint32_t sdlWindowId() {
+void* sdlWindow() {
     using GetWindowsFn = void** (*)(int*);
-    using GetWindowIdFn = uint32_t (*)(void*);
     using FreeFn = void (*)(void*);
     static const auto getWindows = sdlProc<GetWindowsFn>("SDL_GetWindows");
-    static const auto getWindowId = sdlProc<GetWindowIdFn>("SDL_GetWindowID");
     static const auto sdlFree = sdlProc<FreeFn>("SDL_free");
-    if (getWindows == nullptr || getWindowId == nullptr || sdlFree == nullptr) {
-        return 0;
+    if (getWindows == nullptr || sdlFree == nullptr) {
+        return nullptr;
     }
     int count = 0;
     void** windows = getWindows(&count);
-    const uint32_t id = windows != nullptr && count > 0 ? getWindowId(windows[0]) : 0;
+    void* window = windows != nullptr && count > 0 ? windows[0] : nullptr;
     sdlFree(windows);
-    return id;
+    return window;
+}
+
+uint32_t sdlWindowId() {
+    using GetWindowIdFn = uint32_t (*)(void*);
+    static const auto getWindowId = sdlProc<GetWindowIdFn>("SDL_GetWindowID");
+    void* window = sdlWindow();
+    return getWindowId != nullptr && window != nullptr ? getWindowId(window) : 0;
 }
 
 bool pushSdlEvent(SdlEvent& event) {
@@ -163,6 +168,13 @@ bool mouseButton(int x, int y, bool down) {
     return pushSdlEvent(event);
 }
 
+bool windowSize(int& width, int& height) {
+    using GetWindowSizeFn = bool (*)(void*, int*, int*);
+    static const auto getSize = sdlProc<GetWindowSizeFn>("SDL_GetWindowSize");
+    void* window = sdlWindow();
+    return getSize != nullptr && window != nullptr && getSize(window, &width, &height);
+}
+
 bool resizeWindow(int width, int height) {
     const HWND hwnd = gameWindow();
     if (hwnd == nullptr) {
@@ -194,6 +206,10 @@ bool mouseMove(int, int, bool) {
 }
 
 bool mouseButton(int, int, bool) {
+    return false;
+}
+
+bool windowSize(int&, int&) {
     return false;
 }
 

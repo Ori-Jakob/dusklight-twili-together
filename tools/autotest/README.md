@@ -531,7 +531,7 @@ disturbs them:
 | `clickPlayersWidget` | `target`, `at` (`[x, y]`), `expect`, `reason`, `timeoutSec` | presses the target's teleport button (the host's click callback, or with `at` a real click there) and waits for the teleport's result |
 | `movePlayersWidget` | `x`, `y` (0 to 1) | moves the widget there as a drag would |
 | `mouseDrag` / `mouseMove` | `from`, `to`, `frames` / `x`, `y` | a left-button drag / a pointer move |
-| `measurePlayersWidget` | `grab` (a point on the header with the widget in the top left corner), `by` (`[dx, dy]`), `area` (the overlay's free space, `[776, 426]`), `as`, `of`, `ratio` (`[min, max]`) | drags the widget out of the corner by `by` (menu open) and works out its size in dp from where the host left it; remembers it `as` a name, or checks both sides against the size measured `of` a name, then puts the widget back |
+| `measurePlayersWidget` | `grab` (a point on the header with the widget in the top left corner), `by` (`[dx, dy]`), `area` (the overlay's free space; default the window size less 24, the overlay's insets at UI scale 1), `min` (`[w, h]`), `as`, `of`, `ratio` (`[min, max]`) | drags the widget out of the corner by `by` (menu open) and works out its size in dp from where the host left it, dragging again until two drags agree; fails below `min`, remembers it `as` a name, or checks both sides against the size measured `of` a name, then puts the widget back |
 | `playersWidgetOption` | `name` (`players_widget`, `players_widget_opacity`, `players_widget_scale`), `value` | |
 
 ## Adding a scenario

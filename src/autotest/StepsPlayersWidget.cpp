@@ -32,6 +32,10 @@ struct Measure {
     int origX = 0;
     int origY = 0;
     uint32_t moves = 0;
+    // Drags so far and the size the last one read: two drags must agree.
+    int drags = 0;
+    float lastW = 0.0f;
+    float lastH = 0.0f;
 };
 Measure sMeasure;
 // Measured widths and heights in dp, by the step's `as` name.
@@ -274,10 +278,14 @@ std::optional<bool> mouseDrag(StepContext& ctx) {
 }
 
 // Drags the widget out of the top left corner by `by` and works out its size from where the host
-// left it: the host spreads 0..1 over the free space, so x = by.x / (area.w - width).
+// left it: the host spreads 0..1 over the free space, so x = by.x / (area.w - width). The area is
+// the window less the overlay's 12 dp inset on each side (UI scale 1) unless the step gives one.
+// The drag repeats until two in a row read the same size: a lost pointer event skews one.
 std::optional<bool> measurePlayersWidget(StepContext& ctx) {
     constexpr int kSettle = 3;
     constexpr int kFrames = 8;
+    constexpr int kMaxDrags = 4;
+    constexpr float kAgree = 2.0f;
     const json& step = ctx.step;
     const float gx = step.value("grab", json::array({20, 20}))[0].get<float>();
     const float gy = step.value("grab", json::array({20, 20}))[1].get<float>();
@@ -320,12 +328,46 @@ std::optional<bool> measurePlayersWidget(StepContext& ctx) {
                 p.movedX, p.movedY));
             return false;
         }
-        const json area = step.value("area", json::array({776, 426}));
-        const float w = area[0].get<float>() - dx / p.movedX;
-        const float h = area[1].get<float>() - dy / p.movedY;
+        float areaW = 0.0f;
+        float areaH = 0.0f;
+        if (step.contains("area")) {
+            areaW = step["area"][0].get<float>();
+            areaH = step["area"][1].get<float>();
+        } else if (int winW = 0, winH = 0; input::windowSize(winW, winH)) {
+            areaW = static_cast<float>(winW - 24);
+            areaH = static_cast<float>(winH - 24);
+        } else {
+            ctx.fail("measurePlayersWidget: no game window");
+            return false;
+        }
+        const float w = areaW - dx / p.movedX;
+        const float h = areaH - dy / p.movedY;
+        TwiliLog.info("[autotest] players widget measured {:.1f}x{:.1f} at {}% (area {:.0f}x{:.0f})",
+            w, h, p.scale, areaW, areaH);
+        const bool agree = sMeasure.drags > 0 && std::fabs(w - sMeasure.lastW) <= kAgree &&
+                           std::fabs(h - sMeasure.lastH) <= kAgree;
+        if (!agree) {
+            if (++sMeasure.drags >= kMaxDrags) {
+                ctx.fail(fmt::format(
+                    "measurePlayersWidget: {} drags never read the same size twice", kMaxDrags));
+                return false;
+            }
+            sMeasure.lastW = w;
+            sMeasure.lastH = h;
+            sMeasure.start = ctx.ticks;
+            widget::moveForTest(0.0f, 0.0f);
+            sMeasure.moves = widget::probe().moves;
+            return false;
+        }
         widget::moveForTest(static_cast<float>(sMeasure.origX) / 1000.0f,
             static_cast<float>(sMeasure.origY) / 1000.0f);
-        TwiliLog.info("[autotest] players widget measured {:.1f}x{:.1f} at {}%", w, h, p.scale);
+        if (step.contains("min") &&
+            (w < step["min"][0].get<float>() || h < step["min"][1].get<float>()))
+        {
+            ctx.fail(fmt::format("measurePlayersWidget: {:.1f}x{:.1f} is below {}", w, h,
+                step["min"].dump()));
+            return false;
+        }
         if (step.contains("as")) {
             sSizes[step.value("as", std::string{})] = {w, h};
         }
