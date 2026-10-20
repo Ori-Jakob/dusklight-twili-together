@@ -95,6 +95,17 @@ void blendHorse(const RemoteHorsePose& a, const RemoteHorsePose& b, float t,
             out.rider.off[i] = lerp(ra.off[i], rb.off[i], t);
         }
     }
+    const RemoteHorseZelda& za = a.zelda;
+    const RemoteHorseZelda& zb = b.zelda;
+    if (za.look && zb.look) {
+        for (int i = 0; i < 2; i++) {
+            out.zelda.neck[i] = lerpAngle(za.neck[i], zb.neck[i], t);
+            out.zelda.body[i] = lerpAngle(za.body[i], zb.body[i], t);
+        }
+        for (int i = 0; i < 4; i++) {
+            out.zelda.eyeOffset[i] = lerp(za.eyeOffset[i], zb.eyeOffset[i], t);
+        }
+    }
 }
 
 void blendPose(const LinkPuppetState& a, const LinkPuppetState& b, float t, LinkPuppetState& out) {

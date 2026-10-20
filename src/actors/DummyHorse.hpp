@@ -47,6 +47,7 @@ struct DummyHorseDebugInfo {
     bool zeldaShown = false;      // the sender's Zelda sits behind its rider
     uint16_t zeldaAnm = 0xFFFF;   // her pack 0 clip
     float zeldaPos[3] = {};
+    DummyHoZeldaLook zeldaLook;   // her look as applied, while shown
 };
 bool GetDummyHorseDebugInfo(fopAc_ac_c* actor, DummyHorseDebugInfo& out);
 // Looked up by process id every call: the manager may delete the puppet between two phases.

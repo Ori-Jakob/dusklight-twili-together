@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <initializer_list>
 
 namespace twili::horse {
 namespace {
@@ -66,6 +67,16 @@ uint16_t zeldaAnmFrom(int32_t v) {
     return v <= 0 || v > 0x100 ? 0xFFFF : static_cast<uint16_t>(v - 1);
 }
 
+// setEyeBtp / setEyeBtk's resource, which the actor does not keep
+uint16_t zeldaTexId(const void* anm, std::initializer_list<uint16_t> ids) {
+    for (const uint16_t id : ids) {
+        if (anm != nullptr && dComIfG_getObjectRes("HoZelda", id) == anm) {
+            return id;
+        }
+    }
+    return 0xFFFF;
+}
+
 void captureZelda(daHorse_c* h, RemoteHorsePose& out) {
     daHoZelda_c* z = h->getZeldaActor();
     if (z == nullptr || z->mpZeldaModel == nullptr) {
@@ -82,6 +93,24 @@ void captureZelda(daHorse_c* h, RemoteHorsePose& out) {
     r.upper = z->mBowMode != 0 || z->field_0x6da != 0;
     r.bowAnm = z->mBowAnmID;
     r.bowFrame = z->mBowBck.getFrame();
+    r.look = true;
+    r.neck[0] = z->mNeckAngle.x;
+    r.neck[1] = z->mNeckAngle.y;
+    r.body[0] = z->mBodyAngle.x;
+    r.body[1] = z->mBodyAngle.y;
+    r.btp = zeldaTexId(z->mEyeBtp.getBtpAnm(), {0x2F, 0x2E, 0x2D, 0x2C});
+    r.btk = zeldaTexId(z->mEyeBtk.getBtkAnm(), {0x26, 0x27, 0x28});
+    r.btpFrame = z->mEyeBtp.getFrame();
+    r.btkFrame = z->mEyeBtk.getFrame();
+    r.eyeFlags = static_cast<uint8_t>(
+        (daHoZelda_matAnm_c::getEyeMoveFlg() ? kMidnaEyeMove : 0) |
+        (std::min<u8>(daHoZelda_matAnm_c::getMorfFrame(), 7) << kMidnaEyeMorfShift));
+    for (int i = 0; i < 2; i++) {
+        if (z->mpMatAnm[i] != nullptr) {
+            r.eyeOffset[i * 2] = z->mpMatAnm[i]->mNowOffsetX;
+            r.eyeOffset[i * 2 + 1] = z->mpMatAnm[i]->mNowOffsetY;
+        }
+    }
 }
 
 // daHorse_c::create's refusal
@@ -238,6 +267,19 @@ void encode(const RemoteHorsePose& h, WirePose& w) {
         w.hsz[5] = quantize(z.ratio, kRatioScale);
         w.hsz[6] = quantize(z.bowFrame, kFrameScale);
         w.hsz[7] = z.upper ? 1 : 0;
+        if (z.look) {
+            w.hsy[0] = 1 | (z.eyeFlags << 8);
+            w.hsy[1] = z.neck[0];
+            w.hsy[2] = z.neck[1];
+            w.hsy[3] = z.body[0];
+            w.hsy[4] = z.body[1];
+            w.hsy[5] = zeldaAnm(z.btp) | (zeldaAnm(z.btk) << 16);
+            w.hsy[6] = quantize(z.btpFrame, kFrameScale);
+            w.hsy[7] = quantize(z.btkFrame, kFrameScale);
+            for (int i = 0; i < 4; i++) {
+                w.hsy[8 + i] = quantize(z.eyeOffset[i], kRatioScale);
+            }
+        }
     }
 }
 
@@ -298,6 +340,25 @@ RemoteHorsePose decode(const WirePose& w) {
         z.ratio = std::clamp(w.hsz[5] / kRatioScale, 0.0f, 1.0f);
         z.bowFrame = w.hsz[6] / kFrameScale;
         z.upper = (w.hsz[7] & 1) != 0;
+        // A sender without the look leaves her eyes and turns as the clips have them.
+        if (w.hsy[0] & 1) {
+            z.look = true;
+            z.eyeFlags = static_cast<uint8_t>((w.hsy[0] >> 8) & 0x0F);
+            z.neck[0] = static_cast<int16_t>(w.hsy[1]);
+            z.neck[1] = static_cast<int16_t>(w.hsy[2]);
+            z.body[0] = static_cast<int16_t>(w.hsy[3]);
+            z.body[1] = static_cast<int16_t>(w.hsy[4]);
+            // Only the clips setEyeBtp and setEyeBtk use
+            const uint16_t btp = zeldaAnmFrom(w.hsy[5] & 0xFFFF);
+            const uint16_t btk = zeldaAnmFrom((w.hsy[5] >> 16) & 0xFFFF);
+            z.btp = btp >= 0x2C && btp <= 0x2F ? btp : 0xFFFF;
+            z.btk = btk >= 0x26 && btk <= 0x28 ? btk : 0xFFFF;
+            z.btpFrame = (std::max)(w.hsy[6] / kFrameScale, 0.0f);
+            z.btkFrame = (std::max)(w.hsy[7] / kFrameScale, 0.0f);
+            for (int i = 0; i < 4; i++) {
+                z.eyeOffset[i] = std::clamp(w.hsy[8 + i] / kRatioScale, -1.0f, 1.0f);
+            }
+        }
         if (z.anm[0] == 0xFFFF) {
             h.flags &= ~kHorseZelda;  // her pack 0 always holds a clip
             z = RemoteHorseZelda{};

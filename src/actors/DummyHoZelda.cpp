@@ -4,14 +4,17 @@
 
 #include "d/d_com_inf_game.h"
 #include "d/d_kankyo.h"
+#include "JSystem/J3DGraphAnimator/J3DAnimation.h"
 #include "JSystem/J3DGraphAnimator/J3DJoint.h"
 #include "JSystem/J3DGraphAnimator/J3DModel.h"
+#include "JSystem/J3DGraphBase/J3DMaterial.h"
 #include "JSystem/J3DGraphBase/J3DSys.h"
 #include "m_Do/m_Do_mtx.h"
 #include "SSystem/SComponent/c_math.h"
 #include "SSystem/SComponent/c_phase.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace twili {
 namespace {
@@ -22,6 +25,10 @@ constexpr u16 kBowBmd = 0x20;
 constexpr u16 kBowIdleBck = 0xC;
 constexpr u16 kJointNum = 47;
 constexpr u16 kUpperEndJoint = 23;
+constexpr u16 kBodyJoint = 1;
+constexpr u16 kHeadJoint = 4;
+// The eyes' materials (daHoZelda_c::create's mpMatAnm)
+constexpr u16 kEyeMaterial = 4;
 constexpr u32 kHeapSize = 0x10000;
 // She goes back to the archive after this long without the sender's Zelda.
 constexpr uint32_t kReleaseTicks = 150;
@@ -31,6 +38,22 @@ const Vec kRidePos = {-5.894f, 52.61f, 4.079f};
 const Vec kFrontRidePos = {-75.893997f, 57.61f, 4.079f};
 const Vec kRideOffset = {0.1f, 236.7f, -63.554f};
 const Vec kFrontRideOffset = {0.1f, 241.7f, 6.445999f};
+
+// The angle between the rotations of `a` and `b`, columns normalised against joint scale.
+f32 turnDeg(const Mtx a, const Mtx b) {
+    f32 trace = 0.0f;
+    for (int k = 0; k < 3; k++) {
+        f32 dot = 0.0f, la = 0.0f, lb = 0.0f;
+        for (int r = 0; r < 3; r++) {
+            dot += a[r][k] * b[r][k];
+            la += a[r][k] * a[r][k];
+            lb += b[r][k] * b[r][k];
+        }
+        const f32 norm = std::sqrt(la * lb);
+        trace += norm > 1e-6f ? dot / norm : 1.0f;
+    }
+    return std::acos(std::clamp((trace - 1.0f) * 0.5f, -1.0f, 1.0f)) * 180.0f / 3.14159265f;
+}
 
 J3DAnmTransform* clip(uint16_t id) {
     if (id == 0xFFFF) {
@@ -43,17 +66,65 @@ J3DAnmTransform* clip(uint16_t id) {
 
 }  // namespace
 
-// daHoZelda_c::modelCallBack's upper-body switch (joints 1-22 while the bow is up).
+// daHoZelda_matAnm_c::calc
+void DummyHoZeldaEyeAnm::calc(J3DMaterial* material) const {
+    J3DMaterialAnm::calc(material);
+    const uint8_t flags = mFlags != nullptr ? *mFlags : 0;
+    const uint8_t morf = (flags >> kMidnaEyeMorfShift) & 7;
+    for (u32 i = 0; i < 8; i++) {
+        if (!getTexMtxAnm(i).getAnmFlag()) {
+            continue;
+        }
+        J3DTexMtxInfo& info = material->getTexGenBlock()->getTexMtx(i)->getTexMtxInfo();
+        if (morf != 0) {
+            const f32 t = 1.0f / (morf + 1);
+            info.mSRT.mTranslationX = mOldX * (1.0f - t) + info.mSRT.mTranslationX * t;
+            info.mSRT.mTranslationY = mOldY * (1.0f - t) + info.mSRT.mTranslationY * t;
+        } else if (flags & kMidnaEyeMove) {
+            info.mSRT.mTranslationX = mNowX;
+            info.mSRT.mTranslationY = mNowY;
+        }
+        mOldX = info.mSRT.mTranslationX;
+        mOldY = info.mSRT.mTranslationY;
+    }
+}
+
+// daHoZelda_c::modelCallBack's upper-body switch (joints 1-22 while the bow is up) and turns.
 int dummyHoZeldaJointCallBack(J3DJoint* joint, int timing) {
     if (timing == 0) {
         auto* self = reinterpret_cast<DummyHoZelda*>(j3dSys.getModel()->getUserArea());
-        if (joint->getJntNo() == 0 && self->mUpper) {
+        const u16 jnt = joint->getJntNo();
+        if (jnt == 0 && self->mUpper) {
             self->mPacks[2].setRatio(1.0f);
-        } else if (joint->getJntNo() == kUpperEndJoint) {
+        } else if (jnt == kUpperEndJoint) {
             self->mPacks[2].setRatio(0.0f);
+        } else if ((jnt == kBodyJoint || jnt == kHeadJoint) && self->mLook) {
+            self->turnJoint(jnt);
         }
     }
     return 1;
+}
+
+// modelCallBack's searchBodyAngle (joint 1) and setNeckAngle (joint 4) turns.
+void DummyHoZelda::turnJoint(u16 jnt) {
+    Mtx before;
+    cMtx_copy(mModel->getAnmMtx(jnt), before);
+    mDoMtx_stack_c::copy(before);
+    if (jnt == kBodyJoint) {
+        mDoMtx_stack_c::XrotM(mBody[1]);
+        mDoMtx_stack_c::ZrotM(static_cast<s16>(mShapeX - mBody[0]));
+    } else {
+        mDoMtx_stack_c::XrotM(mNeck[1]);
+        mDoMtx_stack_c::ZrotM(static_cast<s16>(-mNeck[0]));
+    }
+    mModel->setAnmMtx(jnt, mDoMtx_stack_c::get());
+    cMtx_copy(mDoMtx_stack_c::get(), J3DSys::mCurrentMtx);
+    const f32 turned = turnDeg(before, mDoMtx_stack_c::get());
+    if (jnt == kBodyJoint) {
+        mLookDebug.bodyTurnDeg = turned;
+    } else {
+        mLookDebug.headTurnDeg = turned;
+    }
 }
 
 bool DummyHoZelda::build() {
@@ -61,7 +132,7 @@ bool DummyHoZelda::build() {
     auto* bowData = static_cast<J3DModelData*>(dComIfG_getObjectRes(kArc, kBowBmd));
     J3DAnmTransform* bowIdle = clip(kBowIdleBck);
     if (data == nullptr || bowData == nullptr || bowIdle == nullptr ||
-        data->getJointNum() != kJointNum)
+        data->getJointNum() != kJointNum || data->getMaterialNum() <= kEyeMaterial + 1)
     {
         return false;
     }
@@ -74,9 +145,17 @@ bool DummyHoZelda::build() {
     mBow = mDoExt_J3DModel__create(bowData, 0x80000, 0x11000084);
     mCalc = JKR_NEW mDoExt_MtxCalcAnmBlendTbl(3, mPacks);
     const bool bck = mBowBck.init(bowIdle, 1, 0, 1.0f, 0, -1, false);
+    for (DummyHoZeldaEyeAnm*& eye : mEyeAnm) {
+        eye = JKR_NEW DummyHoZeldaEyeAnm();
+        if (eye != nullptr) {
+            eye->mFlags = &mEyeFlags;
+        }
+    }
     mDoExt_setCurrentHeap(prev);
     mDoExt_adjustSolidHeap(mHeap);
-    if (mModel == nullptr || mBow == nullptr || mCalc == nullptr || !bck) {
+    if (mModel == nullptr || mBow == nullptr || mCalc == nullptr || !bck ||
+        mEyeAnm[0] == nullptr || mEyeAnm[1] == nullptr)
+    {
         release();
         return false;
     }
@@ -93,6 +172,12 @@ void DummyHoZelda::release() {
     }
     mModel = mBow = nullptr;
     mCalc = nullptr;
+    mEyeAnm[0] = mEyeAnm[1] = nullptr;
+    mBtp = nullptr;
+    mBtk = nullptr;
+    mBtpId = mBtkId = 0xFFFF;
+    mLook = false;
+    mLookDebug = DummyHoZeldaLook{};
     for (mDoExt_AnmRatioPack& pack : mPacks) {
         pack.setAnmTransform(nullptr);
         pack.setRatio(0.0f);
@@ -161,6 +246,23 @@ void DummyHoZelda::pose(const RemoteHorseZelda& zelda, MtxP root, const csXyz& a
     mPacks[1].setRatio(second ? zelda.ratio : 0.0f);
     mPacks[2].setRatio(0.0f);
     mUpper = zelda.upper && mPacks[2].getAnmTransform() != nullptr;
+    mLook = zelda.look;
+    mShapeX = angle.x;
+    for (int i = 0; i < 2; i++) {
+        mNeck[i] = zelda.neck[i];
+        mBody[i] = zelda.body[i];
+    }
+    bindEyes(zelda);
+    mLookDebug.look = mLook;
+    mLookDebug.headTurnDeg = mLookDebug.bodyTurnDeg = 0.0f;
+    if (mLook) {
+        for (int i = 0; i < 2; i++) {
+            mLookDebug.neck[i] = mNeck[i];
+            mLookDebug.body[i] = mBody[i];
+        }
+        mLookDebug.bodyZ = static_cast<s16>(mShapeX - mBody[0]);
+        mLookDebug.eyeFlags = mEyeFlags;
+    }
 
     mDoMtx_multVec(root, ridden ? &kRidePos : &kFrontRidePos, &mPos);
     const Vec& offset = ridden ? kRideOffset : kFrontRideOffset;
@@ -177,8 +279,7 @@ void DummyHoZelda::pose(const RemoteHorseZelda& zelda, MtxP root, const csXyz& a
     for (int i = 0; i < 4; i++) {
         J3DJoint* j = data->getJointNodePointer(kHooked[i]);
         saved[i] = j->getCallBack();
-        j->setCallBack(kHooked[i] == 0 || kHooked[i] == kUpperEndJoint ? dummyHoZeldaJointCallBack
-                                                                        : nullptr);
+        j->setCallBack(dummyHoZeldaJointCallBack);
     }
     J3DMtxCalc* savedCalc = rootJoint->getMtxCalc();
     rootJoint->setMtxCalc(mCalc);
@@ -205,6 +306,39 @@ void DummyHoZelda::pose(const RemoteHorseZelda& zelda, MtxP root, const csXyz& a
     mShown = true;
 }
 
+// setEyeBtp / setEyeBtk with the sender's clips, setEyeMove with its offsets.
+void DummyHoZelda::bindEyes(const RemoteHorseZelda& zelda) {
+    J3DModelData* data = mModel->getModelData();
+    const uint16_t btp = zelda.look ? zelda.btp : 0xFFFF;
+    const uint16_t btk = zelda.look ? zelda.btk : 0xFFFF;
+    if (btp != mBtpId) {
+        auto* anm =
+            static_cast<J3DAnmBase*>(btp != 0xFFFF ? dComIfG_getObjectRes(kArc, btp) : nullptr);
+        mBtp = anm != nullptr && anm->getKind() == 2 ? static_cast<J3DAnmTexPattern*>(anm) : nullptr;
+        if (mBtp != nullptr) {
+            mBtp->searchUpdateMaterialID(data);
+        }
+        mBtpId = btp;
+    }
+    if (btk != mBtkId) {
+        auto* anm =
+            static_cast<J3DAnmBase*>(btk != 0xFFFF ? dComIfG_getObjectRes(kArc, btk) : nullptr);
+        mBtk = anm != nullptr && anm->getKind() == 4 ? static_cast<J3DAnmTextureSRTKey*>(anm)
+                                                     : nullptr;
+        if (mBtk != nullptr) {
+            mBtk->searchUpdateMaterialID(data);
+        }
+        mBtkId = btk;
+    }
+    mBtpFrame = zelda.btpFrame;
+    mBtkFrame = zelda.btkFrame;
+    mEyeFlags = zelda.eyeFlags;
+    for (int i = 0; i < 2; i++) {
+        mEyeAnm[i]->mNowX = zelda.eyeOffset[i * 2];
+        mEyeAnm[i]->mNowY = zelda.eyeOffset[i * 2 + 1];
+    }
+}
+
 // daHoZelda_c::draw
 void DummyHoZelda::draw(const dKy_tevstr_c& horseTev, u32 shadowId) {
     if (!mShown) {
@@ -214,7 +348,31 @@ void DummyHoZelda::draw(const dKy_tevstr_c& horseTev, u32 shadowId) {
     mTevStr.YukaCol = horseTev.YukaCol;
     g_env_light.settingTevStruct(0, &mPos, &mTevStr);
     g_env_light.setLightTevColorType_MAJI(mModel, &mTevStr);
+    // The model data is the game's: our eye animators come off again after the entry.
+    J3DModelData* data = mModel->getModelData();
+    const bool eyes = mLook && mBtp != nullptr && mBtk != nullptr;
+    J3DMaterialAnm* saved[2] = {};
+    if (eyes) {
+        for (int i = 0; i < 2; i++) {
+            J3DMaterial* material = data->getMaterialNodePointer(kEyeMaterial + i);
+            saved[i] = material->getMaterialAnm();
+            material->setMaterialAnm(mEyeAnm[i]);
+        }
+        mBtp->setFrame(static_cast<s16>(mBtpFrame));
+        data->entryTexNoAnimator(mBtp);
+        mBtk->setFrame(mBtkFrame);
+        data->entryTexMtxAnimator(mBtk);
+    }
     mDoExt_modelEntryDL(mModel);
+    if (eyes) {
+        data->removeTexNoAnimator(mBtp);
+        data->removeTexMtxAnimator(mBtk);
+        for (int i = 0; i < 2; i++) {
+            data->getMaterialNodePointer(kEyeMaterial + i)->setMaterialAnm(saved[i]);
+        }
+    }
+    mLookDebug.btp = eyes ? mBtpId : 0xFFFF;
+    mLookDebug.btk = eyes ? mBtkId : 0xFFFF;
     g_env_light.setLightTevColorType_MAJI(mBow, &mTevStr);
     mDoExt_modelEntryDL(mBow);
     if (shadowId != 0) {

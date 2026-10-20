@@ -408,6 +408,15 @@ struct RemoteHorseZelda {
     bool upper = false;       // pack 2 drives the upper body (mBowMode or field_0x6da)
     uint16_t bowAnm = 0xFFFF;
     float bowFrame = 0.0f;
+    // Where she looks ("oy"): modelCallBack's neck and body turns and her eyes
+    bool look = false;
+    int16_t neck[2] = {};      // mNeckAngle.x, .y
+    int16_t body[2] = {};      // mBodyAngle.x, .y
+    uint16_t btp = 0xFFFF;     // HoZelda.arc eye clips (setEyeBtp, setEyeBtk)
+    uint16_t btk = 0xFFFF;
+    float btpFrame = 0.0f, btkFrame = 0.0f;
+    uint8_t eyeFlags = 0;      // MidnaEyeFlag bits, from daHoZelda_matAnm_c's statics
+    float eyeOffset[4] = {};   // mNowOffsetX/Y of both eyes
 };
 
 struct RemoteHorseRider {
@@ -584,12 +593,16 @@ struct WirePose {
     int32_t hk[11]{}, bc[7]{}, ls[8]{}, hx[4]{}, fr[27 + 3 * kFishingLinePoints]{};
     int32_t hsx[6]{}, hsp[3]{}, hss[3]{}, hsa[3]{}, hsf[3]{}, hsw[2]{}, hsk[16]{}, hsr[7]{};
     int32_t hsz[8]{};
+    // Zelda's look: flags, neck x/y, body x/y, eye clips, their frames, eye offsets
+    int32_t hsy[12]{};
     // Life and max life in quarter hearts
     int32_t hp[2]{};
     // The item held up (RemoteGetItem, GetItem.hpp)
     int32_t gi[7]{};
     // The body's height and feet (RemoteGround): flags, step offset, extra offset, root base Y
     int32_t yo[4]{};
+    // Its matrix (RemoteBodyMatrix): flags, root X, Z, tweak angles, magnet tilt, dir, climb yaw
+    int32_t ym[8]{};
 };
 
 struct RemotePoseSample {

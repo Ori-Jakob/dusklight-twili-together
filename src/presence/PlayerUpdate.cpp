@@ -786,6 +786,9 @@ static void sendPose(Session& session, PoseSender& tx, const WirePose& cur, uint
     if (!keyframe || anyNonZero(cur.hsz)) {
         putField(packet, "oz", cur.hsz, o.hsz, keyframe, changed);
     }
+    if (!keyframe || anyNonZero(cur.hsy)) {
+        putField(packet, "oy", cur.hsy, o.hsy, keyframe, changed);
+    }
     if (!keyframe || anyNonZero(cur.hp)) {
         putField(packet, "hp", cur.hp, o.hp, keyframe, changed);
     }
@@ -1071,9 +1074,11 @@ void Session::handlePlayerUpdate(const nlohmann::json& packet) {
     takeItemGroup("ok", w.hsk);
     takeItemGroup("or", w.hsr);
     takeItemGroup("oz", w.hsz);
+    takeItemGroup("oy", w.hsy);
     takeItemGroup("hp", w.hp);
     takeItemGroup("gi", w.gi);
     takeItemGroup("yo", w.yo);
+    takeItemGroup("ym", w.ym);
     if (keyframe) {
         c.sendsItemFx = packet.find("xv") != packet.end();
     }

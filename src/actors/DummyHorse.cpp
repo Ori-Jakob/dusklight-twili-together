@@ -763,6 +763,9 @@ void daDummyHorse_c::getDebugInfo(DummyHorseDebugInfo& out) const {
     out.zeldaPos[0] = mZelda.pos().x;
     out.zeldaPos[1] = mZelda.pos().y;
     out.zeldaPos[2] = mZelda.pos().z;
+    if (out.zeldaShown) {
+        out.zeldaLook = mZelda.look();
+    }
 }
 
 namespace {
