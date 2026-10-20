@@ -203,7 +203,7 @@ module.exports = [
                     { op: "expectNoMapCursor", target: "B", reason: "locationsOff" },
                     ...room("showLocationsMode", true),
                     seesPeer("A", { holdTicks: 15 }),
-                    ...room("hidePlayersInCutscene", true),
+                    { op: "hidePlayersInCutscene", value: true },
                     { op: "forceCutscene", on: true },
                     { op: "expectNoMapCursor", target: "B", reason: "cutscene" },
                     { op: "forceCutscene", on: null },
@@ -240,7 +240,7 @@ module.exports = [
                     seesPeer("B"),
                     ...room("showLocationsMode", false),
                     ...room("showLocationsMode", true),
-                    ...room("hidePlayersInCutscene", true),
+                    { op: "hidePlayersInCutscene", value: true },
                     { op: "forceCutscene", on: true },
                     ...barrier("b-cutscene", "A"),
                     ...barrier("b-cutscene-checked", "A"),
@@ -337,7 +337,7 @@ module.exports = [
                 ...(name === "A" ? [{ op: "expectNoMapCursor", surface: "fmap", target: "B", reason: "locationsOff" }] : []),
                 ...barrier("fmap-locations", other(name)),
                 ...room("showLocationsMode", true),
-                ...room("hidePlayersInCutscene", true),
+                { op: "hidePlayersInCutscene", value: true },
                 ...(name === "A"
                     ? [
                         seesPeer(name, { surface: "fmap", holdTicks: 15 }),

@@ -25,7 +25,6 @@ struct RoomState {
     // Needs syncNPCs ("Share Enemy Damage").
     bool syncEnemyDamage = true;
     bool cutsceneSync = true;
-    bool hidePlayersInCutscene = false;
     int enemyHealthMultiplier = 100;  // percent
     int enemyCountMultiplier = 100;   // percent
 
@@ -37,7 +36,6 @@ struct RoomState {
                syncWorldState == o.syncWorldState && shareWoodenShield == o.shareWoodenShield &&
                sharePickups == o.sharePickups && syncNPCs == o.syncNPCs && syncEnemyDamage == o.syncEnemyDamage &&
                cutsceneSync == o.cutsceneSync &&
-               hidePlayersInCutscene == o.hidePlayersInCutscene &&
                enemyHealthMultiplier == o.enemyHealthMultiplier &&
                enemyCountMultiplier == o.enemyCountMultiplier;
     }
@@ -57,7 +55,6 @@ struct RoomState {
             {"syncNPCs", syncNPCs},
             {"syncEnemyDamage", syncEnemyDamage},
             {"cutsceneSync", cutsceneSync},
-            {"hidePlayersInCutscene", hidePlayersInCutscene},
             {"enemyHealthMultiplier", enemyHealthMultiplier},
             {"enemyCountMultiplier", enemyCountMultiplier},
         };
@@ -79,7 +76,6 @@ struct RoomState {
         syncNPCs = j.value("syncNPCs", syncNPCs);
         syncEnemyDamage = j.value("syncEnemyDamage", syncEnemyDamage);
         cutsceneSync = j.value("cutsceneSync", cutsceneSync);
-        hidePlayersInCutscene = j.value("hidePlayersInCutscene", hidePlayersInCutscene);
         enemyHealthMultiplier = j.value("enemyHealthMultiplier", enemyHealthMultiplier);
         enemyCountMultiplier = j.value("enemyCountMultiplier", enemyCountMultiplier);
     }

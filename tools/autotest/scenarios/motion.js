@@ -38,9 +38,8 @@ const smoothMotion = (name, description, cvars, serverEnv = {}) => ({
     ],
 });
 
-// Every instance sets the room option: whichever one owns the room pushes it.
+// A personal setting: each instance's own value decides what it sees.
 const hideInCutscenes = [...COMMON_CVARS, tt("hide_players_in_cutscene", 1)];
-const roomHidesInCutscenes = { op: "waitRoomState", key: "hidePlayersInCutscene", value: true, timeoutSec: 20 };
 
 // The body's climb rate may change sharply on few ticks, for our Link and for the dummy alike.
 const steadyBody = { frames: 240, settleFrames: 20, jerk: 3, maxJerkRatio: 0.05 };
@@ -227,7 +226,6 @@ module.exports = [
                 steps: [
                     ...connect,
                     ...meetIn(STAGES.linksHouse, "B"),
-                    roomHidesInCutscenes,
                     ...barrier("room-ready", "B"),
                     ...barrier("b-in-cutscene", "B"),
                     // B's cutscene reaches us as its PLAYER_UPDATE flag and hides its dummy.
@@ -250,7 +248,6 @@ module.exports = [
                 steps: [
                     ...connect,
                     ...meetIn(STAGES.linksHouse, "A"),
-                    roomHidesInCutscenes,
                     ...barrier("room-ready", "A"),
                     // Our own cutscene hides A's dummy here.
                     { op: "forceCutscene", on: true },
@@ -265,6 +262,69 @@ module.exports = [
                     ...barrier("a-compulsory", "A"),
                     { op: "expectPeerFlag", flag: "inCutscene", set: false },
                     { op: "expectDummyHidden", hidden: false },
+                    ...barrier("done", "A"),
+                    { op: "quit" },
+                ],
+            },
+        ],
+    },
+    {
+        name: "cutscene-hide-personal",
+        description: "Hide Players in Cutscenes is personal: A has it on, B off; A's cutscene and B's both hide B's dummy on A, while B sees A's dummy through both",
+        timeoutSec: 300,
+        cvars: COMMON_CVARS,
+        instances: [
+            {
+                name: "A",
+                cvars: [tt("hide_players_in_cutscene", 1)],
+                steps: [
+                    ...connect,
+                    ...meetIn(STAGES.linksHouse, "B"),
+                    { op: "expectDummyHidden", hidden: false, timeoutSec: 10 },
+                    ...barrier("ready", "B"),
+                    // Our cutscene hides B here.
+                    { op: "forceCutscene", on: true },
+                    { op: "expectDummyHidden", hidden: true, timeoutSec: 5 },
+                    ...barrier("a-in-cutscene", "B"),
+                    ...barrier("b-saw-a", "B"),
+                    { op: "forceCutscene", on: null },
+                    { op: "wait", frames: 15 },
+                    { op: "expectDummyHidden", hidden: false, timeoutSec: 5 },
+                    ...barrier("a-out", "B"),
+                    // B's cutscene hides B here too: our setting, not B's.
+                    ...barrier("b-in-cutscene", "B"),
+                    { op: "expectPeerFlag", flag: "inCutscene", set: true, timeoutSec: 10 },
+                    { op: "expectDummyHidden", hidden: true, timeoutSec: 10 },
+                    ...barrier("a-saw-b", "B"),
+                    ...barrier("b-out", "B"),
+                    { op: "expectDummyHidden", hidden: false, timeoutSec: 10 },
+                    ...barrier("done", "B"),
+                    { op: "quit" },
+                ],
+            },
+            {
+                name: "B",
+                cvars: [tt("hide_players_in_cutscene", 0)],
+                steps: [
+                    ...connect,
+                    ...meetIn(STAGES.linksHouse, "A"),
+                    { op: "expectDummyHidden", hidden: false, timeoutSec: 10 },
+                    ...barrier("ready", "A"),
+                    ...barrier("a-in-cutscene", "A"),
+                    // A is in a cutscene and A hides players, but we do not: A stays shown.
+                    { op: "expectPeerFlag", flag: "inCutscene", set: true, timeoutSec: 10 },
+                    { op: "wait", frames: 30 },
+                    { op: "expectDummyHidden", hidden: false },
+                    ...barrier("b-saw-a", "A"),
+                    ...barrier("a-out", "A"),
+                    { op: "forceCutscene", on: true },
+                    { op: "wait", frames: 30 },
+                    { op: "expectDummyHidden", hidden: false },
+                    ...barrier("b-in-cutscene", "A"),
+                    ...barrier("a-saw-b", "A"),
+                    { op: "expectDummyHidden", hidden: false },
+                    { op: "forceCutscene", on: null },
+                    ...barrier("b-out", "A"),
                     ...barrier("done", "A"),
                     { op: "quit" },
                 ],

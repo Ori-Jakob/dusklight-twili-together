@@ -187,11 +187,15 @@ climbing wall's turn) come out exactly: root (12, -20), up (0, -1, 0) at 180 deg
 on Hyrule Field's event tag 36 spot slides about 22 units a second on its own (the slope), dummy
 or not.
 
+`cutscene-hide-personal`: Hide Players in Cutscenes is personal. A has it on, B off: A's cutscene
+and B's both hide B's dummy on A, and B keeps seeing A through both.
+
 World sync (`StepsWorld.cpp`):
 
 | op | fields | does |
 | --- | --- | --- |
-| `setRoomOption` / `waitRoomOption` | `name` (`syncWorldState`, `shareWoodenShield`, `sharePickups`, `teleportMode`, `hidePlayersInCutscene`, `syncNPCs`, `syncEnemyDamage`, `pvpMode`, `pvpFriendlyFire`, `pvpLethal`, `showLocationsMode`, `cutsceneSync`), `value`, `timeoutSec` | sets our room-setting default (the owner's is the room's, so every instance sets it) / waits until the room reports that value |
+| `setRoomOption` / `waitRoomOption` | `name` (`syncWorldState`, `shareWoodenShield`, `sharePickups`, `teleportMode`, `syncNPCs`, `syncEnemyDamage`, `pvpMode`, `pvpFriendlyFire`, `pvpLethal`, `showLocationsMode`, `cutsceneSync`), `value`, `timeoutSec` | sets our room-setting default (the owner's is the room's, so every instance sets it) / waits until the room reports that value |
+| `hidePlayersInCutscene` | `value` (true) | our own Hide Players in Cutscenes setting (personal, not a room option) |
 | `forceLayout` | `layout` (16 hex digits) | before `connect`: announce another save layout, as a different game build would |
 | `waitLayoutMismatch` | `peer`, `timeoutSec` | until the incompatible-layout toast was shown for that peer |
 | `expectNoItem` | `item`, `forSec` (5) | fails if the item's first-get bit gets set within `forSec` |

@@ -1,5 +1,6 @@
 #include "core/Visibility.hpp"
 
+#include "core/Config.hpp"
 #include "core/Session.hpp"
 
 #include "d/d_com_inf_game.h"
@@ -18,6 +19,11 @@ constexpr uint16_t kEventFlagTreasure = 0x4;
 
 int s_cutsceneOverride = -1;
 std::chrono::steady_clock::time_point s_cutsceneReleaseAt{};
+
+// A personal setting: it changes only what we see.
+bool hideInCutscenesEnabled() {
+    return config::getBool(config::Var::HidePlayersInCutscene);
+}
 
 }  // namespace
 
@@ -49,7 +55,7 @@ bool localCutsceneRunning() {
 }
 
 bool hideRemotePlayersForCutscene() {
-    return Session::instance().roomState().hidePlayersInCutscene && localCutsceneRunning();
+    return hideInCutscenesEnabled() && localCutsceneRunning();
 }
 
 bool hideRemoteClientForCutscene(const Client& client) {
@@ -60,8 +66,7 @@ bool hideRemoteClientForCutscene(const Client& client) {
     if (Session::instance().storySharedEventWith(client.clientId)) {
         return true;
     }
-    return Session::instance().roomState().hidePlayersInCutscene &&
-           (client.presenceFlags & kPresenceInCutscene) != 0;
+    return hideInCutscenesEnabled() && (client.presenceFlags & kPresenceInCutscene) != 0;
 }
 
 void setCutsceneOverrideForTest(int value) {

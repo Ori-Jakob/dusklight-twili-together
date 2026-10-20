@@ -94,6 +94,7 @@ Personal settings, on the Connection tab:
 | Your Own Pickups | off | toasts for your own pickups too |
 | Story Prompts | on | ask whether to follow when a teammate's story event moves them |
 | Show Player Health | on | a heart bar on other players' name tags: their health in quarter hearts, a segment per heart container |
+| Hide Players in Cutscenes | off | hide other players, tags and markers during your cutscenes, and a player during theirs; only changes what you see |
 | Players Widget | on | the players list on screen (below) |
 | Players Widget Opacity | 80% | how solid its background and border are, 0% to 100% |
 | Players Widget Size | 100% | zooms the whole widget, 50% to 200% |
@@ -111,7 +112,6 @@ the others see the owner's values, greyed out.
 | Sync Enemy Deaths | off | a regular enemy a teammate defeats near you disappears for you too (not bosses; the drop goes to whoever defeated it) |
 | Share Enemy Damage | on | with Sync Enemy Deaths: teammates wear down the same enemies, so your hits weaken their copy too |
 | Cutscene Sync | on | teammates standing safely in the same room watch a story cutscene together |
-| Hide Players in Cutscenes | off | hide other players, tags and markers during your cutscenes |
 | PvP Mode | off | players can hurt each other |
 | Friendly Fire | off | PvP within a team too |
 | Lethal PvP | off | off: PvP hits never take you below one heart |

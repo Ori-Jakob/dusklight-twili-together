@@ -1106,6 +1106,18 @@ test("room state carries sharePickups, on by default and type-checked", () => wi
     assert.equal((await b.waitType("UPDATE_ROOM_STATE")).state.sharePickups, false);
 }));
 
+test("room state drops hidePlayersInCutscene, now a personal setting, even from old clients", () => withServer(async (mk) => {
+    const a = mk();
+    const b = mk();
+    await a.join();
+    const state = await b.join();
+    assert.equal("hidePlayersInCutscene" in state.roomState, false);
+    a.send({ type: "UPDATE_ROOM_STATE", state: { hidePlayersInCutscene: true, pvpMode: true } });
+    const got = await b.waitType("UPDATE_ROOM_STATE");
+    assert.equal(got.state.pvpMode, true);
+    assert.equal("hidePlayersInCutscene" in got.state, false);
+}));
+
 test("room state carries the enemy count multiplier, clamped to 100-300", () => withServer(async (mk) => {
     const a = mk();
     const b = mk();

@@ -248,6 +248,10 @@ ModResult buildConnectionTab(ModContext*, UiWindowHandle, UiElementHandle left, 
     addToggle(left, Var::ShowPlayerHealth, "Show Player Health",
         "<p>A heart bar on other players' name tags: their current health in quarter hearts, one "
         "segment per heart container.</p>");
+    addToggle(left, Var::HidePlayersInCutscene, "Hide Players in Cutscenes",
+        "<p>Hide other players, their name tags and map markers while a cutscene plays for you, "
+        "and hide a player while a cutscene plays for them. Conversations don't count. Changes "
+        "only what you see.</p>");
     addToggle(left, Var::PlayersWidget, "Players Widget",
         "<p>A small list on screen of your teammates (everyone in the room without a team), where "
         "they are and a teleport button. While the menu is open, drag it by its title to move it "
@@ -364,9 +368,6 @@ const RoomBool kSyncOptions[] = {
     {Var::CutsceneSync, &RoomState::cutsceneSync, "Cutscene Sync",
         "<p>When a story cutscene starts for a teammate, players in the same room who are "
         "standing safely watch it too. Needs Sync World State.</p>"},
-    {Var::HidePlayersInCutscene, &RoomState::hidePlayersInCutscene, "Hide Players in Cutscenes",
-        "<p>Hide other players, their name tags and map markers while a cutscene plays for you, "
-        "and hide you from them during theirs. Conversations don't count.</p>"},
 };
 
 const RoomBool kPvpOptions[] = {

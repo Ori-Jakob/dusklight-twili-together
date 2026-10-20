@@ -192,7 +192,6 @@ module.exports = [
     duo("wolf-fx-hidden-hop", "A's cutscene hides B's dummy mid-spin and mid-dome (no emitters, no dome drawn); then A leaves and comes back, and its new dummy of B shows the dome at once without replaying a burst", {
         cvars: hideInCutscenes,
         a: [
-            { op: "waitRoomState", key: "hidePlayersInCutscene", value: true, timeoutSec: 20 },
             ...barrier("hid-go", "B"),
             fx({ dome: true, domeShown: true, lastSpin: "left", minSpinTicks: 5, timeoutSec: 8 }),
             { op: "forceCutscene", on: true },
@@ -210,7 +209,6 @@ module.exports = [
             ...barrier("hop-done", "B"),
         ],
         b: [
-            { op: "waitRoomState", key: "hidePlayersInCutscene", value: true, timeoutSec: 20 },
             ...barrier("hid-go", "A"),
             patch({ wx: [0x11, 300, 0, 0] }, 900),
             ...barrier("hop", "A"),

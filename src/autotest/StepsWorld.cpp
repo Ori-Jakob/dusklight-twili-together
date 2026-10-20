@@ -27,7 +27,6 @@ constexpr RoomOption kRoomOptions[] = {
     {"shareWoodenShield", Var::ShareWoodenShield, &RoomState::shareWoodenShield},
     {"sharePickups", Var::SharePickups, &RoomState::sharePickups},
     {"teleportMode", Var::TeleportMode, &RoomState::teleportMode},
-    {"hidePlayersInCutscene", Var::HidePlayersInCutscene, &RoomState::hidePlayersInCutscene},
     {"syncNPCs", Var::SyncEnemyDeaths, &RoomState::syncNPCs},
     {"syncEnemyDamage", Var::SyncEnemyDamage, &RoomState::syncEnemyDamage},
     {"pvpMode", Var::PvpMode, &RoomState::pvpMode},
@@ -69,6 +68,11 @@ std::optional<bool> worldSteps(const std::string& op, StepContext& ctx) {
             ctx.fail(fmt::format("waitRoomOption {} never became {}", name, value));
         }
         return false;
+    }
+
+    if (op == "hidePlayersInCutscene") {
+        config::setBool(Var::HidePlayersInCutscene, step.value("value", true));
+        return true;
     }
 
     // Before connect: announce another save layout, as a different game build would.

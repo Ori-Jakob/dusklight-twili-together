@@ -473,7 +473,6 @@ module.exports = [
                 steps: [
                     ...connect,
                     ...meetIn(STAGES.southFaron, "B"),
-                    { op: "waitRoomState", key: "hidePlayersInCutscene", value: true, timeoutSec: 20 },
                     { op: "forceCutscene", on: true },
                     ...barrier("a-hidden", "B"),
                     { op: "waitRemoteTransformPhase", phase: "C", timeoutSec: 60 },
@@ -489,7 +488,6 @@ module.exports = [
                 steps: [
                     ...connect,
                     ...meetIn(STAGES.southFaron, "A"),
-                    { op: "waitRoomState", key: "hidePlayersInCutscene", value: true, timeoutSec: 20 },
                     ...barrier("a-hidden", "A"),
                     { op: "transform", form: "wolf", timeoutSec: 30 },
                     ...barrier("fx-done", "A"),

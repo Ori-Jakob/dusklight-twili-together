@@ -222,7 +222,7 @@ module.exports = [
     },
     {
         name: "horse-hide",
-        description: "B's horse waiting to be called hides its puppet; with hidePlayersInCutscene A's own cutscene and B's hide it too, and it comes back after each",
+        description: "B's horse waiting to be called hides its puppet; with Hide Players in Cutscenes on, A's own cutscene and B's hide it too, and it comes back after each",
         timeoutSec: 300,
         cvars: [...COMMON_CVARS, tt("hide_players_in_cutscene", 1)],
         instances: [
@@ -233,7 +233,6 @@ module.exports = [
                     ...connect,
                     ...meetIn(field, "B"),
                     { op: "clearEnemies" },
-                    { op: "waitRoomState", key: "hidePlayersInCutscene", value: true, timeoutSec: 20 },
                     { op: "waitSignal", name: "spawned", from: "B", timeoutSec: 60 },
                     { op: "expectRemoteHorse", frames: 15 },
                     ...barrier("saw-horse", "B"),
@@ -263,7 +262,6 @@ module.exports = [
                     ...connect,
                     ...meetIn(field, "A"),
                     { op: "clearEnemies" },
-                    { op: "waitRoomState", key: "hidePlayersInCutscene", value: true, timeoutSec: 20 },
                     { op: "spawnHorse", dist: 300 },
                     { op: "signal", name: "spawned" },
                     ...barrier("saw-horse", "A"),

@@ -13,10 +13,6 @@ const drawSword = [{ op: "walk", frames: 1, stickX: 0, stickY: 0, buttons: 0x200
 // Packs with the ice block (Snowpeak) and the sparks (Lakebed, room 0 starts under water).
 const SNOWPEAK = { stage: "F_SP114", room: 1, point: 5 };
 const LAKEBED = { stage: "D_MN01", room: 1, point: 0 };
-const room = (name, value) => [
-    { op: "setRoomOption", name, value },
-    { op: "waitRoomOption", name, value, timeoutSec: 20 },
-];
 const spawnAs = (form, s) => [
     { op: "setForm", form },
     warp(s),
@@ -83,7 +79,7 @@ module.exports = [
         ],
     }),
     duo("status-burn", "B burns at four points: A's dummy burns at four; B's fire is put out, then burns and runs out on its own, and a local cutscene hides the flames", {
-        before: room("hidePlayersInCutscene", true),
+        before: [{ op: "hidePlayersInCutscene", value: true }],
         a: [
             faceDummy,
             ...barrier("burn", "B"),
@@ -186,7 +182,7 @@ module.exports = [
     }),
     duo("status-elec", "Lakebed: B is electrocuted (a compulsory event): A's dummy shows the sparks and is not hidden as in a cutscene", {
         start: LAKEBED,
-        before: room("hidePlayersInCutscene", true),
+        before: [{ op: "hidePlayersInCutscene", value: true }],
         a: [
             { op: "statusFxPack", elec: true },
             ...barrier("go", "B"),

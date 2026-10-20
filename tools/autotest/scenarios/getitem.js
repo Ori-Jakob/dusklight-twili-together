@@ -132,7 +132,7 @@ module.exports = [
     },
     {
         name: "getitem-hidden",
-        description: "with hidePlayersInCutscene, A's heart piece event is an item get like a chest: A's puppet on B and the item it holds up stay shown",
+        description: "with Hide Players in Cutscenes on, A's heart piece event is an item get like a chest: A's puppet on B and the item it holds up stay shown",
         timeoutSec: 300,
         cvars: [...COMMON_CVARS, tt("hide_players_in_cutscene", 1)],
         instances: [
@@ -143,7 +143,6 @@ module.exports = [
                     ...connect,
                     ...noPickups,
                     ...meetIn(STAGES.southFaron, "B"),
-                    { op: "waitRoomState", key: "hidePlayersInCutscene", value: true, timeoutSec: 20 },
                     { op: "spawnFieldItem", tag: "h", item: HEART_PIECE, bit: HEART_BIT, dist: 150 },
                     { op: "wait", sec: 2 },
                     ...barrier("spawned", "B"),
@@ -161,7 +160,6 @@ module.exports = [
                     ...connect,
                     ...noPickups,
                     ...meetIn(STAGES.southFaron, "A"),
-                    { op: "waitRoomState", key: "hidePlayersInCutscene", value: true, timeoutSec: 20 },
                     ...barrier("spawned", "A"),
                     { op: "expectRemoteGetItem", item: HEART_PIECE, drawn: true, timeoutSec: 60 },
                     { op: "expectDummyHidden", hidden: false },

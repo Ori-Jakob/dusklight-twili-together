@@ -246,7 +246,7 @@ module.exports = [
                 steps: [
                     ...connect,
                     ...meetIn(STAGES.southFaron, "B"),
-                    ...room("hidePlayersInCutscene", true),
+                    { op: "hidePlayersInCutscene", value: true },
                     { op: "markRemoteItemFx" },
                     { op: "forceCutscene", on: true },
                     { op: "wait", frames: 5 },
@@ -266,7 +266,6 @@ module.exports = [
                 steps: [
                     ...connect,
                     ...meetIn(STAGES.southFaron, "A"),
-                    ...room("hidePlayersInCutscene", true),
                     ...barrier("hidden", "A"),
                     { op: "spawnLocalItem", kind: "bomb", forward: 200 },
                     { op: "expectLocalItemFx", events: { explode: 1 }, timeoutSec: 15 },

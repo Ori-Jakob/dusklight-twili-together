@@ -84,7 +84,6 @@ keys and wrong types are ignored, numbers are clamped. The state:
 | `syncNPCs` | false | enemy deaths sync within a stage |
 | `syncEnemyDamage` | true | with `syncNPCs`: teammates' hits on an enemy weaken our copy too |
 | `cutsceneSync` | true | story cutscenes pull in teammates in the same room |
-| `hidePlayersInCutscene` | false | hide other players during your cutscenes |
 | `pvpMode`, `pvpFriendlyFire`, `pvpLethal` | false | PvP rules |
 | `showLocationsMode` | true | map markers |
 | `teleportMode` | false | teleport to a player |
@@ -92,7 +91,9 @@ keys and wrong types are ignored, numbers are clamped. The state:
 | `enemyHealthMultiplier` | 100 | percent, 100 to 500 |
 | `enemyCountMultiplier` | 100 | percent, 100 to 300: extra copies of stage-placed regular enemies (at most 24 per room, picked in spawn key order) and more children from enemy spawners, made alike by every client when an area loads |
 
-The relay adds `ownerClientId`. An empty room keeps its settings and caches for 6 hours.
+The relay adds `ownerClientId`. An empty room keeps its settings and caches for 6 hours. Older
+clients still send `hidePlayersInCutscene`, now a personal setting: the relay drops it like any
+unknown key.
 
 ## Team games
 

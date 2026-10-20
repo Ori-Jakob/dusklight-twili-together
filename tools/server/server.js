@@ -200,7 +200,6 @@ function defaultRoomState() {
         syncNPCs: false,
         syncEnemyDamage: true,
         cutsceneSync: true,
-        hidePlayersInCutscene: false,
         enemyHealthMultiplier: 100,
         enemyCountMultiplier: 100,
     };
