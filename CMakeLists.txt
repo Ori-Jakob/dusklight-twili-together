@@ -139,6 +139,7 @@ if (TWILI_ENABLE_AUTOTEST)
         src/autotest/NetDriver.cpp
         src/autotest/PadOverride.cpp
         src/autotest/Platform.cpp
+        src/autotest/StepsBoss.cpp
         src/autotest/StepsColor.cpp
         src/autotest/StepsCutscene.cpp
         src/autotest/StepsEnemy.cpp
