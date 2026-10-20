@@ -517,6 +517,8 @@ exporting an array. A scenario has:
 - `enableMods`: ids of other mods next to the exe to keep enabled (`MODS` in `lib.js`);
 - `files`: `{path: text}` written into every instance's user dir before launch (an instance's own
   `files` too), e.g. randomizer seeds under `mod_data/`;
+- `sharedUserDir`: every instance runs on `slot0` (one user's config, saves and mod cache), each
+  with its own log dir `slot0/logs/<instance>`;
 - `expectLog` / `rejectLog`: regexes (or `{pattern, instance}`) every instance log must / must not
   match. Every scenario also rejects a HookService "was inlined into callers" warning for our mod
   (the hook would miss the inlined calls) and a failure of our mod;

@@ -172,8 +172,7 @@ function prepareSlot(index, modIds, enableMods) {
     return dir;
 }
 
-function findSlotLog(dir) {
-    const logs = path.join(dir, "logs");
+function findSlotLog(logs) {
     try {
         const files = fs.readdirSync(logs).filter((f) => /^dusklight-.*\.log$/.test(f)).sort();
         return files.length ? path.join(logs, files[files.length - 1]) : null;
@@ -323,8 +322,13 @@ async function runScenario(scenario, opts, outRoot) {
     }
 
     const procs = [];
+    let sharedDir = null;
     for (const [index, inst] of scenario.instances.entries()) {
-        const dataDir = prepareSlot(index, modIds, scenario.enableMods ?? []);
+        // sharedUserDir: every instance runs on slot0's user dir, like two games of one user.
+        const dataDir = scenario.sharedUserDir
+            ? (sharedDir ??= prepareSlot(0, modIds, scenario.enableMods ?? []))
+            : prepareSlot(index, modIds, scenario.enableMods ?? []);
+        const logDir = path.join(dataDir, "logs", ...(scenario.sharedUserDir ? [inst.name] : []));
         // Fixture files, relative to the user dir (e.g. a randomizer seed under mod_data).
         for (const [rel, content] of Object.entries({ ...scenario.files, ...inst.files })) {
             const dst = path.join(dataDir, rel);
@@ -347,7 +351,7 @@ async function runScenario(scenario, opts, outRoot) {
         const s = inst.start;
         const args = [
             "--user-dir", dataDir,
-            "--log-dir", path.join(dataDir, "logs"),
+            "--log-dir", logDir,
             // Skips Prelaunch; the boot takeover replaces it anyway.
             "--stage", `${s.stage},${s.room ?? 0},${s.point ?? 0},${s.layer ?? -1}`,
             ...(scripted ? ["--cvar", `${CONFIG_PREFIX}autotest_script=${scriptPath}`] : []),
@@ -366,7 +370,7 @@ async function runScenario(scenario, opts, outRoot) {
         const proc = spawn(opts.exe, args, { cwd: path.dirname(opts.exe), env, stdio: ["ignore", "ignore", stderrFd] });
         fs.closeSync(stderrFd);
         const entry = {
-            name: inst.name, dataDir, proc, stderrPath, exitCode: null, scripted,
+            name: inst.name, dataDir, logDir, proc, stderrPath, exitCode: null, scripted,
             stopAt: scripted ? null : Date.now() + (inst.runSec ?? 30) * 1000,
             killedForCrash: false, killedForTimeout: false, killedAfterResult: false, stoppedAsPlanned: false,
         };
@@ -385,7 +389,7 @@ async function runScenario(scenario, opts, outRoot) {
         if (server) await watchServerRestart(scenario, server);
         for (const p of procs) {
             if (p.exitCode !== null || p.killedForCrash) continue;
-            const log = findSlotLog(p.dataDir);
+            const log = findSlotLog(p.logDir);
             if (/APPLICATION CRASHED/.test(readText(log ?? "")) || /APPLICATION CRASHED/.test(readText(p.stderrPath))) {
                 console.log(`    ${p.name} crashed; stopping it`);
                 p.killedForCrash = true;
@@ -423,7 +427,7 @@ async function runScenario(scenario, opts, outRoot) {
     const report = { scenario: scenario.name, url, room, instances: [] };
     let pass = true;
     for (const p of procs) {
-        const logPath = findSlotLog(p.dataDir);
+        const logPath = findSlotLog(p.logDir);
         const text = logPath ? readText(logPath) : "";
         if (logPath) fs.copyFileSync(logPath, path.join(outDir, `${p.name}.log`));
         const stderr = readText(p.stderrPath);

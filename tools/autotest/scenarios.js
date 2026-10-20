@@ -255,6 +255,20 @@ const all = [
             },
         ],
     },
+    {
+        name: "shared-user-dir",
+        description: "two games on one user dir both load the mod (own native cache dirs) and see each other",
+        timeoutSec: 240,
+        cvars: COMMON_CVARS,
+        sharedUserDir: true,
+        expectLog: [/\[core\] Twili-Together initialized/],
+        instances: ["A", "B"].map((name, i, names) => ({
+            name,
+            // B boots once A has loaded its mod library from the shared cache.
+            launchDelayMs: i === 0 ? 12000 : 1500,
+            steps: [...connect, ...meetIn(STAGES.linksHouse, names[1 - i]), { op: "quit" }],
+        })),
+    },
 ];
 
 const featureDir = path.join(__dirname, "scenarios");
