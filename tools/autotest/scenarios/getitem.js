@@ -27,7 +27,7 @@ const confirmUnverified = [
 ];
 
 // A opens a chest holding `item`; B sees A's puppet hold it up, then let it go.
-const chestPair = (item, extraB = []) => [
+const chestPair = (item, extraB = [], afterB = []) => [
     {
         name: "A",
         start: STAGES.southFaron,
@@ -57,6 +57,7 @@ const chestPair = (item, extraB = []) => [
             { op: "expectRemoteGetItem", item, near: HELD_UP, tol: 40, minScale: 0.9, frames: 15, timeoutSec: 60 },
             ...extraB,
             { op: "expectRemoteGetItem", none: true, timeoutSec: 60 },
+            ...afterB,
             ...barrier("opened", "A"),
             ...barrier("done", "A"),
             { op: "quit" },
@@ -74,7 +75,7 @@ module.exports = [
     },
     {
         name: "getitem-heart-piece",
-        description: "A takes a freestanding heart piece (item get event); B sees it held up with its sparkle effects, then gone",
+        description: "A takes a freestanding heart piece (item get event); B sees it held up with its sparkle effects and light, then gone, the light dying down and the sparkles fading out after it",
         timeoutSec: 300,
         cvars: COMMON_CVARS,
         instances: [
@@ -106,13 +107,28 @@ module.exports = [
                     ...meetIn(STAGES.southFaron, "A"),
                     ...barrier("spawned", "A"),
                     { op: "expectRemoteGetItem", item: HEART_PIECE, near: HELD_UP, tol: 40, emitters: 1, frames: 10, timeoutSec: 60 },
+                    // daDitem_c's light comes up on the item while it is held up.
+                    { op: "expectRemoteGetItem", item: HEART_PIECE, light: true, minLightPow: 5, timeoutSec: 30 },
                     { op: "expectRemoteGetItem", none: true, timeoutSec: 60 },
+                    // Then the light dies down and the sparkles fade out where the item was (26 a tick).
+                    { op: "expectRemoteGetItem", none: true, light: false, minLightFades: 1, minLightFadeTicks: 4, minSparkleFades: 1, minSparkleFadeTicks: 9, maxSparkleFadeTicks: 10, timeoutSec: 10 },
                     ...barrier("taken", "A"),
                     ...barrier("done", "A"),
                     { op: "quit" },
                 ],
             },
         ],
+    },
+    {
+        name: "getitem-poe-soul",
+        description: "A opens a chest holding a Poe soul; B's puppet of A holds it up with the soul's looping sound, which stops when it goes",
+        timeoutSec: 300,
+        cvars: COMMON_CVARS,
+        instances: chestPair(
+            POE_SOUL,
+            [{ op: "expectRemoteGetItem", item: POE_SOUL, sound: true, minSoundTicks: 15, timeoutSec: 30 }],
+            [{ op: "expectRemoteGetItem", none: true, sound: false, minSoundTicks: 15, light: false, frames: 10, timeoutSec: 20 }],
+        ),
     },
     {
         name: "getitem-hidden",

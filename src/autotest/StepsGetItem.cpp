@@ -38,8 +38,39 @@ fopAc_ac_c* firstPeerDummy() {
     return nullptr;
 }
 
+// The light, the heart sparkles' fade-out and the Poe soul's sound, in any mode.
+std::string extrasMismatch(const json& step, const DummyGetItemDebug& g) {
+    if (step.contains("light") && g.light != step.value("light", false)) {
+        return fmt::format("light {} (power {:.2f})", g.light, g.lightPow);
+    }
+    if (g.light && g.lightPow < step.value("minLightPow", 0.0f)) {
+        return fmt::format("light power {:.2f}", g.lightPow);
+    }
+    if (step.contains("sound") && g.sound != step.value("sound", false)) {
+        return fmt::format("Poe soul sound {}", g.sound);
+    }
+    if (g.soundTicks < step.value("minSoundTicks", 0u)) {
+        return fmt::format("Poe soul sound for {} ticks", g.soundTicks);
+    }
+    if (g.lightFades < step.value("minLightFades", 0u)) {
+        return fmt::format("{} lights faded out", g.lightFades);
+    }
+    if (g.lightFades > 0 && g.lightFadeTicks < step.value("minLightFadeTicks", 0u)) {
+        return fmt::format("the light faded out in {} ticks", g.lightFadeTicks);
+    }
+    if (g.sparkleFades < step.value("minSparkleFades", 0u)) {
+        return fmt::format("{} sparkle fade-outs (alpha {})", g.sparkleFades, g.sparkleAlpha);
+    }
+    if (g.sparkleFades > 0 && (g.sparkleFadeTicks < step.value("minSparkleFadeTicks", 0u) ||
+                               g.sparkleFadeTicks > step.value("maxSparkleFadeTicks", 1000u)))
+    {
+        return fmt::format("the sparkles faded out in {} ticks", g.sparkleFadeTicks);
+    }
+    return {};
+}
+
 // Empty when the dummy's held up item is as the step says.
-std::string remoteMismatch(const json& step, const DummyGetItemDebug& g) {
+std::string baseMismatch(const json& step, const DummyGetItemDebug& g) {
     if (step.value("none", false)) {
         if (g.wanted != 0xFF || g.item != 0xFF || g.loading || g.placed) {
             return fmt::format("still holds item 0x{:02X} up (built 0x{:02X}, loading {}, drawn {})",
@@ -89,6 +120,11 @@ std::string remoteMismatch(const json& step, const DummyGetItemDebug& g) {
     return {};
 }
 
+std::string remoteMismatch(const json& step, const DummyGetItemDebug& g) {
+    std::string why = baseMismatch(step, g);
+    return why.empty() ? extrasMismatch(step, g) : why;
+}
+
 // Holds for `frames` ticks once it matches; `none` waits for the model to go.
 bool expectRemoteGetItem(StepContext& ctx) {
     if (!ctx.begun) {
@@ -109,8 +145,12 @@ bool expectRemoteGetItem(StepContext& ctx) {
         const DummyGetItemDebug& g = info.getItem;
         TwiliLog.info("[autotest] remote held up item 0x{:02X}: drawn {} ticks, at ({:.1f}, "
                       "{:.1f}, {:.1f}) scale {:.2f}, emitters {}, builds {}, failures {}, heap "
-                      "0x{:X}", g.item, g.placedTicks, g.offset[0], g.offset[1], g.offset[2],
-                      g.scale, g.emitters, g.builds, g.failures, g.heapUsed);
+                      "0x{:X}; light {} power {:.2f} for {} ticks, {} faded (last {} ticks), "
+                      "{} sparkle fades (last {} ticks), Poe sound {} ticks", g.item,
+                      g.placedTicks, g.offset[0], g.offset[1], g.offset[2], g.scale, g.emitters,
+                      g.builds, g.failures, g.heapUsed, g.light, g.lightPow, g.lightTicks,
+                      g.lightFades, g.lightFadeTicks, g.sparkleFades, g.sparkleFadeTicks,
+                      g.soundTicks);
         return true;
     }
     if (sMatchedAt >= 0 && !ctx.step.value("none", false)) {
