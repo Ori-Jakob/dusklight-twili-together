@@ -58,8 +58,27 @@ struct LocalTransformTrace {
     int16_t tevMinA = 0, tevMinC = 0, tevMaxC = 0;
     float hatMin = 1.0f;
     float endFrame = 0.0f;
+    // Midna in stages A, swap and C: ticks daMidna_c::draw drew her, and ticks we sent her
+    int midnaDrawn[3] = {}, midnaSent[3] = {};
 };
 LocalTransformTrace sLocalTf;
+
+// Whether daMidna_c::draw draws her this tick, and as her real body or her shadow.
+bool localMidnaDrawn(daAlink_c* link, bool& realBody) {
+    daMidna_c* m = daPy_py_c::getMidnaActor();
+    realBody = false;
+    if (m == nullptr || m->checkNoDrawState() ||
+        (!m->checkStateFlg1(static_cast<daMidna_c::daMidna_FLG1>(
+             daMidna_c::FLG1_SHADOW_MODEL_DRAW_DEMO_FORCE | daMidna_c::FLG1_UNK_1)) &&
+         link->checkPlayerNoDraw() &&
+         !m->checkStateFlg0(static_cast<daMidna_c::daMidna_FLG0>(daMidna_c::FLG0_TAG_WAIT |
+                                                                 daMidna_c::FLG0_UNK_100))))
+    {
+        return false;
+    }
+    realBody = !m->checkNoDraw() && !m->checkShadowModelDrawDemoForce() && m->mpModel != nullptr;
+    return true;
+}
 
 // Before this call's procCoMetamorphoseInit: the sample follows the execute that set the emitters.
 void traceLocalTransform(StepContext& ctx, daAlink_c* link) {
@@ -99,6 +118,21 @@ void traceLocalTransform(StepContext& ctx, daAlink_c* link) {
         t.hatMin = (std::min)(t.hatMin, tf.hatScale);
     }
     t.endFrame = link->mUnderFrameCtrl[0].getFrame();
+    const int stageNo = tf.postSwap() ? 2 : swap ? 1 : 0;
+    bool realBody = false;
+    const bool drawn = localMidnaDrawn(link, realBody);
+    RemoteMidnaPose sent;
+    Session::captureLocalMidna(localCutsceneRunning(), sent);
+    t.midnaDrawn[stageNo] += drawn ? 1 : 0;
+    t.midnaSent[stageNo] += sent.mode != kMidnaNone ? 1 : 0;
+    if (ctx.step.value("midnaLog", false)) {
+        daMidna_c* m = daPy_py_c::getMidnaActor();
+        TwiliLog.info("[autotest] tf midna tick {} stage {} drawn {} real {} sent {} flags 0x{:X} "
+                      "clip 0x{:X} demo 0x{:X} wolfNoPos {} model {} swapTimer {}",
+            ctx.ticks, stage, drawn, realBody, sent.mode, sent.flags, sent.bodyBck,
+            m != nullptr ? m->mDemoMode : 0u, m != nullptr && m->checkWolfNoPos(),
+            m != nullptr && m->mpModel != nullptr, link->getClothesChangeWaitTimer());
+    }
     const TransformFxPlan plan = planTransformFx(tf, link->checkWolf() != 0, swap);
     const u32 ids[2] = {link->field_0x31f8, link->field_0x31fc};
     for (int i = 0; i < 2; i++) {
@@ -132,9 +166,21 @@ bool transform(StepContext& ctx) {
             }
             const LocalTransformTrace& t = sLocalTf;
             TwiliLog.info("[autotest] local transform toWolf={} A={} swap={} C={} startSeq={} "
-                          "tevA={} tevC={}..{} hatMin={:.2f} endFrame={:.1f} dead={}",
+                          "tevA={} tevC={}..{} hatMin={:.2f} endFrame={:.1f} dead={}; Midna "
+                          "drawn {}/{}/{} sent {}/{}/{}",
                 t.toWolf, t.ticksA, t.ticksSwap, t.ticksC, t.startSeq, t.tevMinA, t.tevMinC,
-                t.tevMaxC, t.hatMin, t.endFrame, t.deadTicks);
+                t.tevMaxC, t.hatMin, t.endFrame, t.deadTicks, t.midnaDrawn[0], t.midnaDrawn[1],
+                t.midnaDrawn[2], t.midnaSent[0], t.midnaSent[1], t.midnaSent[2]);
+            // Every tick her game drew her went to the peers
+            if (ctx.step.value("midnaSent", false)) {
+                for (int i = 0; i < 3; i++) {
+                    if (t.midnaSent[i] < t.midnaDrawn[i]) {
+                        ctx.fail(fmt::format("transform: Midna drawn on {} ticks of stage {} but "
+                                             "sent on {}", t.midnaDrawn[i], i, t.midnaSent[i]));
+                        break;
+                    }
+                }
+            }
             if (!t.seen || t.ticksA == 0 || t.ticksSwap == 0 || t.ticksC == 0) {
                 ctx.fail(fmt::format("transform: stages seen A={} swap={} C={}", t.ticksA,
                     t.ticksSwap, t.ticksC));
@@ -816,6 +862,93 @@ bool expectRemoteSfxTiming(StepContext& ctx) {
     return false;
 }
 
+// Midna on the first peer's dummy through its next transformation: per stage (A, swap, C and
+// the ticks after it) the ticks its pose had her and the ticks the dummy drew her.
+struct MidnaTransformWatch {
+    uint16_t baseCount = 0;
+    bool started = false;
+    int lastTick = -1;
+    int endTick = -1;
+    int sent[4] = {}, drawn[4] = {};
+    int gaps = 0, noneRun = 0;
+    bool anySent = false;
+};
+MidnaTransformWatch sMidnaTf;
+
+bool measureRemoteMidnaTransform(StepContext& ctx) {
+    MidnaTransformWatch& w = sMidnaTf;
+    uint32_t id = 0;
+    DummyPlayerDebugInfo info;
+    const Client* c = firstPeerDummy(id, info);
+    if (!ctx.begun) {
+        w = MidnaTransformWatch{};
+        w.baseCount = c != nullptr ? info.tf.count : 0;
+    }
+    if (c == nullptr || ctx.ticks == w.lastTick) {
+        if (ctx.seconds > ctx.timeout(60.0)) {
+            ctx.fail("measureRemoteMidnaTransform: no peer dummy");
+        }
+        return false;
+    }
+    w.lastTick = ctx.ticks;
+    const DummyTransformFxTrace& t = info.tf;
+    const bool active = (t.flags & kTfActive) != 0;
+    if (!w.started) {
+        w.started = active && t.count > w.baseCount;
+        if (!w.started) {
+            if (ctx.seconds > ctx.timeout(60.0)) {
+                ctx.fail("measureRemoteMidnaTransform: the peer did not transform");
+            }
+            return false;
+        }
+    }
+    int stage = 3;
+    if (active) {
+        stage = (t.flags & kTfPostSwap) ? 2 : t.silhouette ? 1 : 0;
+    } else if (w.endTick < 0) {
+        w.endTick = ctx.ticks;
+    }
+    if (info.midnaPoseMode != kMidnaNone) {
+        w.sent[stage]++;
+        w.drawn[stage] += info.midnaShown ? 1 : 0;
+        if (w.anySent) {
+            w.gaps += w.noneRun;
+        }
+        w.noneRun = 0;
+        w.anySent = true;
+    } else if (w.anySent && stage != 3) {
+        w.noneRun++;
+    }
+    if (stage != 3 || ctx.ticks - w.endTick < ctx.step.value("afterTicks", 30)) {
+        return false;
+    }
+    TwiliLog.info("[autotest] remote Midna through the transformation: sent {}/{}/{}/{} drawn "
+                  "{}/{}/{}/{} (A/swap/C/after), {} ticks without her in between",
+        w.sent[0], w.sent[1], w.sent[2], w.sent[3], w.drawn[0], w.drawn[1], w.drawn[2],
+        w.drawn[3], w.gaps);
+    static const char* const kStages[4] = {"A", "swap", "C", "after"};
+    const int maxMissed = ctx.step.value("maxMissed", 1);
+    const nlohmann::json minSent = ctx.step.value("minSent", nlohmann::json::object());
+    for (int i = 0; i < 4; i++) {
+        if (w.sent[i] - w.drawn[i] > maxMissed) {
+            ctx.fail(fmt::format("measureRemoteMidnaTransform: stage {} sent her on {} ticks, "
+                                 "drawn on {}", kStages[i], w.sent[i], w.drawn[i]));
+            return false;
+        }
+        if (w.sent[i] < minSent.value(kStages[i], 0)) {
+            ctx.fail(fmt::format("measureRemoteMidnaTransform: stage {} sent her on {} ticks, "
+                                 "want {}", kStages[i], w.sent[i], minSent.value(kStages[i], 0)));
+            return false;
+        }
+    }
+    if (w.gaps > ctx.step.value("maxGap", 0)) {
+        ctx.fail(fmt::format("measureRemoteMidnaTransform: {} ticks without her in the middle "
+                             "of the transformation", w.gaps));
+        return false;
+    }
+    return true;
+}
+
 std::optional<bool> wolfRemoteSteps(const std::string& op, StepContext& ctx) {
     if (op == "setForm") {
         bool wolf = true;
@@ -870,6 +1003,9 @@ std::optional<bool> wolfRemoteSteps(const std::string& op, StepContext& ctx) {
         TwiliLog.info("[autotest] Midna sound 0x{:X} at pose tick {}", sound,
             Session::localPoseSeq() + 1);
         return true;
+    }
+    if (op == "measureRemoteMidnaTransform") {
+        return measureRemoteMidnaTransform(ctx);
     }
     if (op == "markRemoteMidna") {
         return markRemoteMidna(ctx);
