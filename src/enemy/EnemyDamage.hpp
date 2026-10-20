@@ -24,6 +24,8 @@ struct Hit {
     uint16_t pct;
     // The sender's health after the hit in 100% units; -1 if unknown.
     int16_t hpAfter;
+    // Hits that count down to a death whatever the health (Chu Worm); dmg may then be 0.
+    uint8_t hits = 0;
 };
 
 // fopAc_Create returned cPhs_COMPLEATE_e; after enemy_sync::onActorCreated.
@@ -53,9 +55,14 @@ struct Stats {
 };
 const Stats& stats();
 
+// Health as shared: a helmeted Helmasaur's is what its helmet still takes.
+int sharedHealth(fopAc_ac_c* actor);
+// Chu Worm hits left before it dies, else -1.
+int countedHitsLeft(fopAc_ac_c* actor);
+
 // Autotest.
 void noteLocalHitForTest(fopAc_ac_c* actor);
-bool sendForTest(fopAc_ac_c* actor, int dmg, int pct, int hpAfter);
+bool sendForTest(fopAc_ac_c* actor, int dmg, int pct, int hpAfter, int hits = 0);
 
 namespace detail {
 bool sendHits(const char* stage, int layer, const Hit* hits, size_t count);

@@ -8,14 +8,21 @@
 #include "core/Session.hpp"
 #include "enemy/EnemyScaling.hpp"
 
+#include "m_Do/m_Do_ext.h"  // the enemy headers are not self-contained
+
+#include "d/actor/d_a_e_mm.h"
+#include "d/actor/d_a_e_sm.h"
 #include "d/actor/d_a_player.h"
 #include "d/d_com_inf_game.h"
 #include "f_op/f_op_actor_mng.h"
 #include "f_pc/f_pc_name.h"
 
+#include <fmt/format.h>
+
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -30,6 +37,8 @@ constexpr auto kAttribution = std::chrono::milliseconds(500);
 constexpr auto kPendingTtl = std::chrono::seconds(2);
 constexpr size_t kMaxPending = 64;
 constexpr int kMaxScaledHealth = 30000;
+// d_a_e_mm_mt.cpp: the helmet starts at 2000 and kills its wearer field_0x560 below that.
+constexpr int kHelmetHealth = 2000;
 
 struct Rec {
     fopAc_ac_c* actor;  // valid until onActorDeleted
@@ -39,6 +48,8 @@ struct Rec {
     int16_t floor;
     int16_t lastHealth;
     int lastPct;
+    // Chu Worm hits left as last measured; -1 for others.
+    int lastHits;
     Clock::time_point hitAt{}, biteAt{};
 };
 
@@ -58,7 +69,8 @@ std::vector<Out> s_outbox;
 std::vector<Pending> s_pending;
 Stats s_stats{};
 
-// Kill-synced and health-scaled, minus enemies whose health is also a state (revive, shell, counter).
+// Kill-synced and health-scaled. A downed, collapsed or dying enemy is at or below the floor, so
+// remote hits never touch a revive state.
 bool isDamageShareable(s16 procName, u32 params) {
     switch (procName) {
     case fpcNm_E_OC_e:   // Bokoblin
@@ -76,6 +88,10 @@ bool isDamageShareable(s16 procName, u32 params) {
     case fpcNm_E_ST_e:   // Skulltula
     case fpcNm_E_FS_e:   // Wooden Puppet
     case fpcNm_E_HZ_e:   // Tile Worm
+    case fpcNm_E_S1_e:   // Shadow Beast (downed at 0; the group revive stays local)
+    case fpcNm_E_SF_e:   // Stalfos (collapsed at 0, back up at full)
+    case fpcNm_E_MM_e:   // Helmasaur (helmet hits through sharedHealth)
+    case fpcNm_E_SM_e:   // Chu Worm (its four counted hits too)
         return true;
     case fpcNm_E_RD_e: {
         // Not King Bulblin.
@@ -93,6 +109,23 @@ bool isDamageShareable(s16 procName, u32 params) {
 // Puppet and Skulltula zero themselves at 10 or less; Chilfos ignores hits at 1.
 int16_t floorOf(s16 procName) {
     return procName == fpcNm_E_FS_e || procName == fpcNm_E_ST_e ? 11 : 2;
+}
+
+// A Helmasaur's helmet, while it wears it and lives.
+fopAc_ac_c* helmetOf(fopAc_ac_c* ac) {
+    if (fopAcM_GetName(ac) != fpcNm_E_MM_e || ac->health <= 0) {
+        return nullptr;
+    }
+    const auto* mm = reinterpret_cast<const e_mm_class*>(ac);
+    return mm->field_0x672 != 0 ? fopAcM_SearchByID(mm->armorChildId) : nullptr;
+}
+
+void writeHealth(fopAc_ac_c* ac, int hp) {
+    if (fopAc_ac_c* helmet = helmetOf(ac)) {
+        helmet->health = static_cast<s16>(kHelmetHealth - (ac->field_0x560 - hp));
+        return;
+    }
+    ac->health = static_cast<s16>(hp);
 }
 
 int appliedPct(fpc_ProcID id) {
@@ -155,13 +188,13 @@ Apply tryApply(const Hit& h) {
         fopAc_ac_c* ac = r.actor;
         const int pct = appliedPct(id);
         followPct(r, pct);
-        const int hp = ac->health;
+        const int hp = sharedHealth(ac);
         // Raising a knocked-down or dying copy would revive it.
         if (enemy_sync::isDying(id) || hp <= r.floor) {
             ++s_stats.dropped;
             return Apply::Done;
         }
-        const int dmg = std::max(1, (h.dmg * pct + h.pct / 2) / h.pct);
+        const int dmg = h.dmg > 0 ? std::max(1, (h.dmg * pct + h.pct / 2) / h.pct) : 0;
         int next = hp - dmg;
         // Never above the sender's own health (past its rounding): heals a hit we missed.
         bool healed = false;
@@ -175,9 +208,19 @@ Apply tryApply(const Hit& h) {
         if (floored) {
             next = r.floor;
         }
-        ac->health = static_cast<s16>(next);
-        // Keeps our own damage since the last poll measurable, and never sends this back.
-        r.lastHealth = static_cast<int16_t>(r.lastHealth - (hp - next));
+        if (next != hp) {
+            writeHealth(ac, next);
+            // Keeps our own damage since the last poll measurable, and never sends this back.
+            r.lastHealth = static_cast<int16_t>(r.lastHealth - (hp - next));
+        }
+        // Never the last counted hit: deaths stay with enemy_sync.
+        int hitsTaken = 0;
+        if (const int left = countedHitsLeft(ac); h.hits > 0 && left > 1) {
+            const int now = std::max(1, left - h.hits);
+            static_cast<daE_SM_c*>(ac)->field_0x984 = now;
+            hitsTaken = left - now;
+            r.lastHits -= hitsTaken;
+        }
         ++s_stats.applied;
         if (floored) {
             ++s_stats.floored;
@@ -185,18 +228,32 @@ Apply tryApply(const Hit& h) {
         if (healed) {
             ++s_stats.healed;
         }
-        // A small spark where the teammate's hit landed on their copy.
-        const csXyz rot(0, 0, 0);
-        dComIfGp_setHitMark(7, nullptr, &ac->eyePos, &rot, nullptr, 0);
-        TwiliLog.debug("[enemy] {} ({}) took {} from a teammate: {} -> {}{}",
+        if (next != hp || hitsTaken > 0) {
+            // A small spark where the teammate's hit landed on their copy.
+            const csXyz rot(0, 0, 0);
+            dComIfGp_setHitMark(7, nullptr, &ac->eyePos, &rot, nullptr, 0);
+        }
+        TwiliLog.debug("[enemy] {} ({}) took {} from a teammate: {} -> {}{}{}",
             fopAcM_getProcNameString(ac), enemy_sync::keyText(r.key), dmg, hp, next,
-            floored ? " (floor)" : "");
+            floored ? " (floor)" : "",
+            hitsTaken > 0 ? fmt::format(", {} counted hits", hitsTaken) : std::string{});
         return Apply::Done;
     }
     return Apply::NoMatch;
 }
 
 }  // namespace
+
+int sharedHealth(fopAc_ac_c* ac) {
+    if (fopAc_ac_c* helmet = helmetOf(ac)) {
+        return std::min<int>(ac->health, ac->field_0x560 - (kHelmetHealth - helmet->health));
+    }
+    return ac->health;
+}
+
+int countedHitsLeft(fopAc_ac_c* ac) {
+    return fopAcM_GetName(ac) == fpcNm_E_SM_e ? static_cast<daE_SM_c*>(ac)->field_0x984 : -1;
+}
 
 void onActorCreated(fopAc_ac_c* ac) {
     const fpc_ProcID id = fopAcM_GetID(ac);
@@ -216,8 +273,9 @@ void onActorCreated(fopAc_ac_c* ac) {
     std::strncpy(r.stage, stage, sizeof(r.stage) - 1);
     r.layer = static_cast<int8_t>(dComIfG_play_c::getLayerNo(0));
     r.floor = floor;
-    r.lastHealth = ac->health;
+    r.lastHealth = static_cast<int16_t>(sharedHealth(ac));
     r.lastPct = appliedPct(id);
+    r.lastHits = countedHitsLeft(ac);
     s_recs[id] = r;
 }
 
@@ -226,7 +284,10 @@ void onActorDeleted(fopAc_ac_c* ac) {
 }
 
 void onLocalHit(fopAc_ac_c* ac) {
-    if (const auto it = s_recs.find(fopAcM_GetID(ac)); it != s_recs.end()) {
+    // A hit on a Helmasaur's helmet is a hit on the Helmasaur.
+    const fpc_ProcID id =
+        fopAcM_GetName(ac) == fpcNm_E_MM_MT_e ? ac->parentActorID : fopAcM_GetID(ac);
+    if (const auto it = s_recs.find(id); it != s_recs.end()) {
         it->second.hitAt = Clock::now();
     }
 }
@@ -245,19 +306,23 @@ void poll() {
         if (player != nullptr && player->checkWolfEnemyBiteAllOwn(r.actor)) {
             r.biteAt = now;
         }
-        const int cur = r.actor->health;
+        const int cur = sharedHealth(r.actor);
+        const int hits = countedHitsLeft(r.actor);
+        const int lostHits = hits >= 0 && r.lastHits > hits ? r.lastHits - hits : 0;
         // A lethal loss is a kill: enemy_sync reports it.
-        if (share && cur < r.lastHealth && cur > 0 &&
+        if (share && (cur < r.lastHealth || lostHits > 0) && cur > 0 && hits != 0 &&
             (recent(r.hitAt, now) || recent(r.biteAt, now)) && !enemy_sync::isDying(id))
         {
             Out o{};
-            o.hit = {r.key, static_cast<uint16_t>(r.lastHealth - cur), static_cast<uint16_t>(pct),
-                static_cast<int16_t>((cur * 100 + pct / 2) / pct)};
+            o.hit = {r.key, static_cast<uint16_t>(std::max(0, r.lastHealth - cur)),
+                static_cast<uint16_t>(pct), static_cast<int16_t>((cur * 100 + pct / 2) / pct),
+                static_cast<uint8_t>(lostHits)};
             std::memcpy(o.stage, r.stage, sizeof(o.stage));
             o.layer = r.layer;
             s_outbox.push_back(o);
         }
         r.lastHealth = static_cast<int16_t>(cur);
+        r.lastHits = hits;
     }
     flush();
 }
@@ -320,14 +385,14 @@ void noteLocalHitForTest(fopAc_ac_c* ac) {
     onLocalHit(ac);
 }
 
-bool sendForTest(fopAc_ac_c* ac, int dmg, int pct, int hpAfter) {
+bool sendForTest(fopAc_ac_c* ac, int dmg, int pct, int hpAfter, int hits) {
     const auto it = s_recs.find(fopAcM_GetID(ac));
     if (it == s_recs.end()) {
         return false;
     }
     const Rec& r = it->second;
     const Hit hit{r.key, static_cast<uint16_t>(dmg), static_cast<uint16_t>(pct),
-        static_cast<int16_t>(hpAfter)};
+        static_cast<int16_t>(hpAfter), static_cast<uint8_t>(hits)};
     return detail::sendHits(r.stage, r.layer, &hit, 1);
 }
 

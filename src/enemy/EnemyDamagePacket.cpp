@@ -12,17 +12,20 @@ namespace twili::enemy_damage {
 namespace {
 
 bool parseHit(const nlohmann::json& j, Hit& out) {
-    int64_t dmg, pct, hpAfter;
+    int64_t dmg, pct, hpAfter, hits = 0;
     if (!enemy_sync::detail::parseKey(j, out.key) ||
-        !enemy_sync::detail::intField(j, "dmg", 1, 30000, dmg) ||
+        !enemy_sync::detail::intField(j, "dmg", 0, 30000, dmg) ||
         !enemy_sync::detail::intField(j, "pct", 100, 500, pct) ||
-        !enemy_sync::detail::intField(j, "hpAfter", -1, 30000, hpAfter))
+        !enemy_sync::detail::intField(j, "hpAfter", -1, 30000, hpAfter) ||
+        (j.contains("hits") && !enemy_sync::detail::intField(j, "hits", 0, 4, hits)) ||
+        (dmg == 0 && hits == 0))
     {
         return false;
     }
     out.dmg = static_cast<uint16_t>(dmg);
     out.pct = static_cast<uint16_t>(pct);
     out.hpAfter = static_cast<int16_t>(hpAfter);
+    out.hits = static_cast<uint8_t>(hits);
     return true;
 }
 
@@ -38,6 +41,9 @@ bool detail::sendHits(const char* stage, int layer, const Hit* hits, size_t coun
         j["dmg"] = hits[i].dmg;
         j["pct"] = hits[i].pct;
         j["hpAfter"] = hits[i].hpAfter;
+        if (hits[i].hits > 0) {
+            j["hits"] = hits[i].hits;
+        }
         list.push_back(std::move(j));
     }
     nlohmann::json packet = {
