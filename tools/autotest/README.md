@@ -488,7 +488,7 @@ Cutscenes (`StepsCutscene.cpp`). With `soft` a failed check logs `[autotest] CUT
 | op | fields | does |
 | --- | --- | --- |
 | `expectEventName` | `name`, `soft`, `tag`, `timeoutSec` (30) | our game runs the event of that name (the story tracker's map event name, else the event data's) |
-| `expectCutsceneJoin` | `name`, `soft`, `tag`, `timeoutSec` (60) | our pull-in copy of a teammate's event of that name runs, ran or was shared; fails at once when that join was missed (with its reason) |
+| `expectCutsceneJoin` | `name`, `soft`, `tag`, `timeoutSec` (60) | our pull-in copy of a teammate's event of that name runs, ran or was shared (a join that had finished before the step does not count); fails at once when that join was missed (with its reason) |
 
 The cutscene scenarios (`scenarios/cutscenes.js`) are generated from `data/cutscenes.json`, the
 catalog `tools/cutscenes/extract.js` builds from the disc image and the decomp (read

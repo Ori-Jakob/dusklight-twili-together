@@ -63,11 +63,18 @@ std::optional<bool> cutsceneSteps(const std::string& op, StepContext& ctx) {
         return false;
     }
 
-    // Our pull-in copy of a teammate's event of that name runs or ran.
+    // Our pull-in copy of a teammate's event of that name runs or ran (a join newer than the step).
     if (op == "expectCutsceneJoin") {
+        static uint64_t s_before = 0;
         const std::string want = step.value("name", std::string{});
         const sd::JoinInfo& j = sd::state().join;
-        const bool ours = j.eventName == want;
+        const uint64_t key = (static_cast<uint64_t>(j.originClientId) << 32) | j.originInstance;
+        if (!ctx.begun) {
+            const bool finished = j.state == story::JoinState::Ended || j.state == story::JoinState::Missed ||
+                                  j.state == story::JoinState::Shared;
+            s_before = finished ? key : 0;
+        }
+        const bool ours = j.eventName == want && key != s_before;
         if (ours && (j.state == story::JoinState::Running || j.state == story::JoinState::Ended ||
                         j.state == story::JoinState::Shared))
         {

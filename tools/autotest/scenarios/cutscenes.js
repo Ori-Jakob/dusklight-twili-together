@@ -23,7 +23,8 @@ function play(e, i, soft) {
     const allow = e.test.allowNpc ? [{ op: "allowNpcEvent", ...e.test.allowNpc }] : [];
     const name = e.test.expectEvent;
     return {
-        a: [...allow, ...barrier(`ready-${i}`, "B", 240), e.test.trigger,
+        // The pause lets B's join check begin before A's STORY_EVENT can arrive.
+        a: [...allow, ...barrier(`ready-${i}`, "B", 240), { op: "wait", sec: 1 }, e.test.trigger,
             { op: "expectEventName", name, timeoutSec: 90, soft, tag: t }, settle, ...barrier(`done-${i}`, "B", 420)],
         b: [...allow, ...barrier(`ready-${i}`, "A", 240),
             { op: "expectCutsceneJoin", name, timeoutSec: 90, soft, tag: t }, settle, ...barrier(`done-${i}`, "A", 420)],
