@@ -25,12 +25,16 @@ const TEST_CONFIG = {
     "video.enableFullscreen": false,
     "video.rememberWindowSize": true,
     "video.lastWindowWidth": 800,
-    "video.lastWindowHeight": 450,
+    // 480 is the game's minimum window height.
+    "video.lastWindowHeight": 480,
     // Off plus --stage skips Prelaunch even when a mod registers a game mode (see README).
     "backend.skipPreLaunchUI": false,
     "backend.wasPresetChosen": true,
+    // Mouse steps and the players widget's coordinates assume UI scale 1.
+    "video.uiScale": 100,
 };
-const STRIPPED_KEY_PREFIXES = ["mod.", "actionBindings."];
+// All a run takes from the user's config: the disc image. Everything else is the game's default.
+const USER_CONFIG_KEYS = ["backend.isoPath", "backend.isoVerification"];
 const SEED_CACHES = ["pipeline_cache.db", "dawn_cache.db"];
 const NET_OPS = new Set(["connect", "disconnect", "waitConnected", "waitPeers", "waitDummies",
     "waitNoDummies", "checkDummies", "expectPeers", "signal", "waitSignal"]);
@@ -147,13 +151,14 @@ function prepareSlot(index, modIds, enableMods) {
         "mod_data", "mods"]) {
         fs.rmSync(path.join(dir, name), { recursive: true, force: true });
     }
-    let config = {};
+    let userConfig = {};
     try {
-        config = JSON.parse(readText(path.join(USER_DATA_DIR, "config.json")) || "{}");
+        userConfig = JSON.parse(readText(path.join(USER_DATA_DIR, "config.json")) || "{}");
     } catch {
     }
-    for (const key of Object.keys(config)) {
-        if (STRIPPED_KEY_PREFIXES.some((p) => key.startsWith(p))) delete config[key];
+    const config = {};
+    for (const key of USER_CONFIG_KEYS) {
+        if (key in userConfig) config[key] = userConfig[key];
     }
     const mods = {};
     for (const id of modIds) {

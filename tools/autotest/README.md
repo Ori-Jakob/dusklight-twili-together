@@ -27,8 +27,8 @@ node tools/autotest/run.js smoke --exe <copy>/dusklight.exe --work <dir>
 ```
 
 Needs a GPU (there is no headless mode) and a user config with a valid disc image path: each run
-reads `%APPDATA%/TwilitRealm/Dusklight/config.json`. Instances open 800x450 windows in a row,
-muted. Don't minimize them: a minimized window skips frames.
+takes it from `%APPDATA%/TwilitRealm/Dusklight/config.json`. Instances open 800x480 windows in a
+row, muted. Don't minimize them: a minimized window skips frames.
 
 Exit code is 0 when every scenario passed. Output goes to `out/<timestamp>/<scenario>/`:
 `report.json`, `<instance>.log`, `<instance>.stderr.log`, `<instance>.result.json`,
@@ -63,11 +63,12 @@ and the logs without `--log-dir`) is the SDL preference path, which `--user-dir`
 the runner also points `USERPROFILE`, `APPDATA` and `LOCALAPPDATA` at `work/slot<N>/home`. A run
 therefore never writes the player's real game data.
 
-Before each scenario the runner rebuilds the slot's `config.json` from the user's, without
-`mod.*` and `actionBindings.*` keys, plus the test settings: autosave and pause on
-focus loss off, background controller input off, audio muted, windowed 800x450. It deletes the
-slot's saves, achievements, logs and mod data. The first run seeds each slot's shader caches from
-the user's data folder; later runs reuse them.
+Before each scenario the runner rebuilds the slot's `config.json`: from the user's config only the
+disc image (`backend.isoPath`, `backend.isoVerification`), every other setting at the game's
+default, plus the test settings: autosave and pause on focus loss off, background controller input
+off, audio muted, windowed 800x480, UI scale 100; a scenario that needs another value sets it in
+`cvars`. It deletes the slot's saves, achievements, logs and mod data. The first run seeds each
+slot's shader caches from the user's data folder; later runs reuse them.
 
 Mods: every `.dusk` next to the exe loads by default, and the in-tree build puts all in-tree mods
 there (`custom_actor_demo` alone places a rock and mines in South Faron). The runner reads each
@@ -521,7 +522,7 @@ run yet** (the machine was in use): `pvp-lockon` (now with `stance`), `name-tag-
 with `checkMapCursorTransform` now also checks the marker and outline sizes.
 
 Players widget and the Players tab rows (`StepsPlayersWidget.cpp`). Mouse steps push SDL events
-at window coordinates (an 800x450 window at UI scale 1), so a real pointer over the test window
+at window coordinates (an 800x480 window at UI scale 1), so a real pointer over the test window
 disturbs them:
 
 | op | fields | does |
