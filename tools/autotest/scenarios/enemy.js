@@ -1,17 +1,34 @@
 // Enemy health multiplier and enemy-death sync; steps in StepsEnemy.cpp.
 
-const { STAGES, COMMON_CVARS, waitStage, barrier, connect } = require("../lib");
+const { STAGES, COMMON_CVARS, tt, waitStage, barrier, connect } = require("../lib");
 
 // Bokoblin type 0 without switches: 40 health (d_a_e_oc.cpp daE_OC_c::create).
 const BOKOBLIN = { name: "E_oc", param: 0xffffff00, dy: 30 };
 // Tektite, not on the health-scaling allowlist: keeps its 80 whatever the room sets.
 const TEKTITE = { name: "E_tt", param: 0xffffffff, dy: 30 };
-// Mini Freezard, not on the kill-sync allowlist (its death has no puff and no mark).
+// Mini Freezard, neither kill-synced (its death has no puff and no mark) nor duplicated.
 const FREEZARD = { name: "E_fz", param: 0xffffffff, dy: 30 };
 // Tile Worm with defeated switch 0x13 (its low param byte).
 const TILE_WORM = { name: "E_hz", param: 0xffffff13, dy: 0 };
 // Bokoblin type 0 with defeated switch 0x12.
 const BOKO_SW = { name: "E_oc", param: 0xff12ff00, dy: 30 };
+// Defeated switches 0x14, 0x15 and 0x16 (Young Gohma and Deku Baba: top byte, Tektite: low byte).
+const GOHMA = { name: "E_kg", param: 0x14ffff00, dy: 30 };
+const TEKTITE_SW = { name: "E_tt", param: 0xffffff15, dy: 30 };
+const DEKU_BABA = { name: "E_db", param: 0x16ffff00, dy: 0 };
+// The ceiling variants, 20 below it: Deku Baba type 2, Young Gohma type 1.
+const DEKU_BABA_ROOF = { name: "E_db", param: 0x17ffff02, onRoof: true, dy: -20 };
+const GOHMA_ROOF = { name: "E_kg", param: 0x18ffff01, onRoof: true, dy: -20 };
+// No group, no roof spawn (d_a_e_s1.cpp); Stalfos keeps its switch in angle z.
+const SHADOW_BEAST = { name: "E_s1", param: 0xffffffff, dy: 30 };
+const STALFOS = { name: "E_sf", param: 0xffffffff, angleZ: 0xff, dy: 30 };
+const HELMASAUR = { name: "E_mm", param: 0xffffffff, dy: 30 };
+const CHU_WORM = { name: "E_sm", param: 0xffffffff, dy: 30 };
+// E_Make (d_a_obj_enemy_create.cpp): type, count, activate and deactivate switches, no loop end.
+const SPAWNER = (type, count, on, off) => ({
+    name: "E_Make",
+    param: ((0xff << 24) | (off << 16) | (on << 8) | (count << 4) | type) >>> 0,
+});
 // Seen by Enemy Count as placed by the stage.
 const PLACED = { placed: true };
 // Counts and digests near the start point: the stage's own enemies elsewhere in the room stay out.
@@ -84,6 +101,12 @@ const pair = (name, description, steps, cvars = CVARS) => ({
 });
 
 const health = (tag, value, extra = {}) => ({ op: "expectEnemyHealth", tag, health: value, timeoutSec: 10, ...extra });
+
+// Thirteen spots around the start point (enemy-count-cap).
+const CAP_TEKTITES = [
+    ...[-300, -150, 0, 150, 300].flatMap((dx) => [250, -250].map((dz) => [dx, dz])),
+    ...[-150, 0, 150].map((dx) => [dx, 400]),
+].map(([dx, dz], i) => ({ tag: `t${i + 1}`, dx, dz }));
 
 module.exports = [
     {
@@ -448,16 +471,16 @@ module.exports = [
         }),
     },
     pair("enemy-count",
-        "at 200% a placed Bokoblin gets one extra on both clients (a Tektite none), the extra's kill syncs by its extra index and leaves the original, and only the original's death sets its switch",
+        "at 200% a placed Bokoblin gets one extra on both clients (a Mini Freezard none), the extra's kill syncs by its extra index and leaves the original, and only the original's death sets its switch",
         (isA, other) => [
             ...(isA ? [{ op: "setEnemyCountPercent", value: 200 }] : []),
             { op: "expectEnemyCountPercent", value: 200, timeoutSec: 30 },
             ...syncOn(isA),
             { op: "waitPeers", count: 1, sameStage: true, timeoutSec: 120 },
             ...barrier("ready", other),
-            ...spawnAndSettle([["b1", BOKO_SW, 0, 250, PLACED], ["t1", TEKTITE, 250, 250, PLACED]]),
+            ...spawnAndSettle([["b1", BOKO_SW, 0, 250, PLACED], ["fz", FREEZARD, 250, 250, PLACED]]),
             { op: "expectEnemyCount", name: "E_oc", count: 2, maxDist: NEAR },
-            { op: "expectEnemyCount", name: "E_tt", count: 1, maxDist: NEAR, timeoutSec: 0 },
+            { op: "expectEnemyCount", name: "E_fz", count: 1, maxDist: NEAR, timeoutSec: 0 },
             { op: "tagExtra", tag: "x1", of: "b1", dup: 1 },
             { op: "expectEnemyExtras", of: "b1", count: 1 },
             { op: "dumpEnemies" },
@@ -608,4 +631,140 @@ module.exports = [
             };
         }),
     },
+    pair("enemy-count-kinds",
+        "at 200% a placed Young Gohma, Tektite and Deku Baba get one extra each, alike on both clients and without their defeated switch; an extra's kill syncs and leaves its original, the switches and the Deku Baba's zone actor bit alone, the original's kill still sets that bit",
+        (isA, other) => [
+            ...(isA ? [{ op: "setEnemyCountPercent", value: 200 }] : []),
+            { op: "expectEnemyCountPercent", value: 200, timeoutSec: 30 },
+            ...syncOn(isA),
+            { op: "waitPeers", count: 1, sameStage: true, timeoutSec: 120 },
+            ...barrier("ready", other),
+            ...spawnAndSettle([["kg", GOHMA, -250, 250, PLACED], ["tt", TEKTITE_SW, 0, 300, PLACED], ["db", DEKU_BABA, 250, 250, { placed: true, setId: 0x21 }]]),
+            ...["kg", "tt", "db"].map((of) => ({ op: "expectEnemyExtras", of, count: 1 })),
+            ...["kg", "tt", "db"].map((of) => ({ op: "tagExtra", tag: `x${of}`, of, dup: 1 })),
+            { op: "dumpEnemies" },
+            { op: "enemyDigest", maxDist: NEAR },
+            { op: "expectPeerEnemyDigest", from: other, maxDist: NEAR },
+            ...barrier("spawned", other),
+            ...(isA ? [{ op: "killEnemy", tag: "xkg" }, { op: "killEnemy", tag: "xtt" }, { op: "killEnemy", tag: "xdb", onActor: true }] : []),
+            ...["xkg", "xtt", "xdb"].map((tag) => ({ op: "expectEnemyGone", tag, timeoutSec: 15 })),
+            { op: "wait", frames: 60 },
+            ...["kg", "tt", "db"].map((tag) => ({ op: "expectEnemyHealth", tag, timeoutSec: 0 })),
+            ...[0x14, 0x15, 0x16].map((no) => ({ op: "expectSwitch", no, room: 0, set: false, timeoutSec: 0 })),
+            { op: "expectZoneActor", setId: 0x21, set: false, timeoutSec: 0 },
+            ...barrier("extras-killed", other),
+            ...(isA ? [] : [{ op: "killEnemy", tag: "db", onActor: true }]),
+            { op: "expectEnemyGone", tag: "db", timeoutSec: 15 },
+            { op: "expectZoneActor", setId: 0x21 },
+            ...barrier("killed", other),
+            { op: "expectEnemySync", ...(isA ? { sent: 3, received: 1, applied: 1 } : { sent: 1, received: 3, applied: 3 }) },
+        ]),
+    pair("enemy-count-roof",
+        "at 200% a Deku Baba and a Young Gohma hanging from the ceiling get their extra on the ceiling too, as far below it, alike on both clients",
+        (isA, other) => [
+            ...(isA ? [{ op: "setEnemyCountPercent", value: 200 }] : []),
+            { op: "expectEnemyCountPercent", value: 200, timeoutSec: 30 },
+            { op: "waitPeers", count: 1, sameStage: true, timeoutSec: 120 },
+            ...barrier("ready", other),
+            ...spawnAndSettle([["db", DEKU_BABA_ROOF, -250, 250, PLACED], ["kg", GOHMA_ROOF, 250, 250, PLACED]]),
+            ...["db", "kg"].map((of) => ({ op: "expectEnemyExtras", of, count: 1, roofGap: 5 })),
+            { op: "dumpEnemies" },
+            // The ceiling is far above the start point.
+            { op: "enemyDigest", maxDist: NEAR, flat: true },
+            { op: "expectPeerEnemyDigest", from: other, maxDist: NEAR, flat: true },
+        ]),
+    pair("enemy-damage-kinds",
+        "teammates' hits are shared on a Shadow Beast, a Stalfos, a Helmasaur (what its helmet still takes while it wears one, its body once it is off) and a Chu Worm (its counted hits too, never the last), and a downed copy is left alone",
+        (isA, other) => [
+            ...damageOn(isA),
+            { op: "waitPeers", count: 1, sameStage: true, timeoutSec: 120 },
+            ...barrier("ready", other),
+            ...spawnAndSettle([["s1", SHADOW_BEAST, -250, 250], ["sf", STALFOS, 250, 250], ["mm", HELMASAUR, -250, -250], ["sm", CHU_WORM, 250, -250]]),
+            health("s1", 50), health("sf", 200), health("mm", 20, { helmetHealth: 2000, shared: 20 }), health("sm", 80, { hitsLeft: 4 }),
+            ...barrier("spawned", other),
+            ...(isA ? [{ op: "damageEnemy", tag: "s1", amount: 10 }] : [{ op: "damageEnemy", tag: "sf", amount: 50 }]),
+            health("s1", 40), health("sf", 150),
+            ...barrier("plain", other),
+            ...(isA ? [{ op: "damageEnemy", tag: "mm", helmet: true, amount: 5 }] : []),
+            health("mm", 20, { helmetHealth: 1995, shared: 15 }),
+            ...barrier("helmet", other),
+            // As in the game, what the helmet took stays with the helmet.
+            ...(isA ? [] : [{ op: "removeHelmet", tag: "mm" }]),
+            health("mm", 20, { shared: isA ? 15 : 20 }),
+            ...barrier("helmet-off", other),
+            // A's helmet hit on B's bare body, and down to A's own health (a hit B missed).
+            ...(isA ? [{ op: "damageEnemy", tag: "mm", helmet: true, amount: 5 }] : []),
+            health("mm", isA ? 20 : 10, { shared: 10 }),
+            ...barrier("bare", other),
+            ...(isA ? [] : [{ op: "damageEnemy", tag: "mm", amount: 3 }]),
+            health("mm", isA ? 20 : 7, { shared: 7, ...(isA ? { helmetHealth: 1987 } : {}) }),
+            ...barrier("body", other),
+            ...(isA ? [{ op: "damageEnemy", tag: "sm", amount: 2, hits: 1 }] : []),
+            health("sm", 78, { hitsLeft: 3 }),
+            ...barrier("sm-hit", other),
+            ...(isA ? [] : [{ op: "damageEnemy", tag: "sm", amount: 2, hits: 2 }]),
+            health("sm", 76, { hitsLeft: 1 }),
+            ...barrier("sm-hit2", other),
+            // More counted hits than B's copy has left: it keeps its last one.
+            ...(isA ? [{ op: "sendEnemyDamageForTest", tag: "sm", dmg: 1, pct: 100, hits: 3 }] : [health("sm", 75, { hitsLeft: 1 })]),
+            ...barrier("sm-last", other),
+            // B's Shadow Beast downed (health 0): A's hit leaves it there.
+            ...(isA ? [] : [{ op: "setEnemyHealth", tag: "s1", health: 0 }]),
+            ...barrier("downed", other),
+            ...(isA ? [{ op: "damageEnemy", tag: "s1", amount: 5 }] : []),
+            health("s1", isA ? 35 : 0),
+            ...barrier("downed-hit", other),
+            { op: "wait", frames: 30 },
+            { op: "expectEnemyDamage", ...(isA ? { sent: 5, received: 3, applied: 3, floored: 0, healed: 0, dropped: 0 } : { sent: 3, received: 6, applied: 5, floored: 0, healed: 1, dropped: 1 }) },
+        ]),
+    pair("enemy-spawner",
+        "at 200% an enemy spawner of two Bokoblins makes four on both clients (a rat spawner keeps its two), each child's kill syncs by its place in the spawner's list, and the spawner's switch turns on once all four are gone",
+        (isA, other) => [
+            ...(isA ? [{ op: "setEnemyCountPercent", value: 200 }] : []),
+            { op: "expectEnemyCountPercent", value: 200, timeoutSec: 30 },
+            ...syncOn(isA),
+            { op: "waitPeers", count: 1, sameStage: true, timeoutSec: 120 },
+            ...barrier("ready", other),
+            { op: "spawnEnemy", ...SPAWNER(7, 2, 0x30, 0x31), ...HOME, dz: 300, tag: "mk", placed: true },
+            { op: "spawnEnemy", ...SPAWNER(2, 2, 0x32, 0xff), ...HOME, dx: -300, dz: -300, tag: "rats", placed: true },
+            { op: "expectBroodSize", of: "mk", count: 4 },
+            { op: "expectBroodSize", of: "rats", count: 2 },
+            { op: "wait", frames: 30 },
+            { op: "expectEnemyCount", name: "E_oc", count: 0, maxDist: NEAR, timeoutSec: 0 },
+            ...barrier("placed", other),
+            { op: "setSwitch", no: 0x30, room: 0 },
+            { op: "expectEnemyCount", name: "E_oc", count: 4, maxDist: NEAR },
+            ...[0, 1, 2, 3].map((index) => ({ op: "tagBrood", tag: `c${index}`, of: "mk", index })),
+            ...[0, 1, 2, 3].map((index) => ({ op: "expectEnemyHealth", tag: `c${index}` })),
+            { op: "dumpEnemies" },
+            ...barrier("spawned", other),
+            ...(isA ? [{ op: "killEnemy", tag: "c0", how: "real" }, { op: "killEnemy", tag: "c2", how: "real" }] : []),
+            ...["c0", "c2"].map((tag) => ({ op: "expectEnemyGone", tag, timeoutSec: 15 })),
+            { op: "wait", frames: 30 },
+            ...["c1", "c3"].map((tag) => ({ op: "expectEnemyHealth", tag, timeoutSec: 0 })),
+            { op: "expectSwitch", no: 0x31, room: 0, set: false, timeoutSec: 0 },
+            ...barrier("half", other),
+            ...(isA ? [] : [{ op: "killEnemy", tag: "c1", how: "real" }, { op: "killEnemy", tag: "c3", how: "real" }]),
+            ...["c1", "c3"].map((tag) => ({ op: "expectEnemyGone", tag, timeoutSec: 15 })),
+            { op: "expectSwitch", no: 0x31, room: 0, timeoutSec: 15 },
+            ...barrier("cleared", other),
+            { op: "expectEnemySync", sent: 2, received: 2, applied: 2, echoes: 0 },
+        ]),
+    pair("enemy-count-cap",
+        "at 300% thirteen placed Tektites want 26 extras: the room's cap of 24 keeps the same ones on both clients, though they spawn the Tektites in opposite orders",
+        (isA, other) => [
+            { op: "expectEnemyCountPercent", value: 300, timeoutSec: 30 },
+            { op: "waitPeers", count: 1, sameStage: true, timeoutSec: 120 },
+            ...barrier("ready", other),
+            { op: "spawnEnemies", ...TEKTITE, ...HOME, placed: true, enemies: isA ? CAP_TEKTITES : [...CAP_TEKTITES].reverse() },
+            ...CAP_TEKTITES.map(({ tag }) => ({ op: "expectEnemyHealth", tag })),
+            { op: "expectRoomExtras", count: 24 },
+            { op: "wait", frames: 60 },
+            { op: "expectRoomExtras", count: 24, timeoutSec: 0 },
+            { op: "dumpEnemies" },
+            { op: "enemyDigest", maxDist: NEAR },
+            { op: "expectPeerEnemyDigest", from: other, maxDist: NEAR },
+        ],
+        // The owner's percent from the start, so the room's own enemies get theirs alike too.
+        [...CVARS, tt("enemy_count_multiplier", 300)]),
 ];

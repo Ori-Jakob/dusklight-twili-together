@@ -16,8 +16,11 @@
 
 #include "SSystem/SComponent/c_malloc.h"
 #include "d/actor/d_a_e_hz.h"
+#include "d/actor/d_a_e_mm.h"
 #include "d/actor/d_a_e_oc.h"
 #include "d/actor/d_a_e_s1.h"
+#include "d/actor/d_a_e_sm.h"
+#include "d/d_bg_s_roof_chk.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_stage.h"
 #include "f_op/f_op_actor_iter.h"
@@ -57,8 +60,25 @@ std::string tagOf(const StepContext& ctx) {
     return ctx.step.value("tag", std::string{});
 }
 
-std::optional<bool> spawnEnemy(StepContext& ctx) {
-    const std::string name = ctx.step.value("name", std::string{});
+// The ceiling over `p` (from 50 below it), or G_CM3D_F_INF.
+f32 roofAbove(const cXyz& p) {
+    dBgS_ObjRoofChk roof;
+    roof.SetPos(cXyz(p.x, p.y - 50.0f, p.z));
+    return dComIfG_Bgsp().RoofChk(&roof);
+}
+
+// A Helmasaur's helmet while it wears it.
+fopAc_ac_c* helmetOf(fopAc_ac_c* ac) {
+    if (fopAcM_GetName(ac) != fpcNm_E_MM_e) {
+        return nullptr;
+    }
+    const auto* mm = reinterpret_cast<const e_mm_class*>(ac);
+    return mm->field_0x672 != 0 ? fopAcM_SearchByID(mm->armorChildId) : nullptr;
+}
+
+// One actor from a spawnEnemy-style spec `e`.
+bool spawnOne(StepContext& ctx, const nlohmann::json& e) {
+    const std::string name = e.value("name", std::string{});
     fopAc_ac_c* player = dComIfGp_getPlayer(0);
     dStage_objectNameInf* inf = dStage_searchName(name.c_str());
     const int roomNo = dStage_roomControl_c::getStayNo();
@@ -73,20 +93,34 @@ std::optional<bool> spawnEnemy(StepContext& ctx) {
         ctx.fail("spawnEnemy: out of memory");
         return false;
     }
-    prm->base.parameters = static_cast<u32>(ctx.step.value("param", 0xFFFFFFFFu));
-    const cXyz& anchor = ctx.step.value("anchor", std::string("player")) == "playerHome" ?
+    prm->base.parameters = static_cast<u32>(e.value("param", 0xFFFFFFFFu));
+    const cXyz& anchor = e.value("anchor", std::string("player")) == "playerHome" ?
                              player->home.pos :
                              player->current.pos;
-    prm->base.position = cXyz(anchor.x + ctx.step.value("dx", 0.0f),
-        anchor.y + ctx.step.value("dy", 0.0f), anchor.z + ctx.step.value("dz", 0.0f));
-    prm->base.setID = static_cast<u16>(ctx.step.value("setId", 0xFFFF));
+    prm->base.position = cXyz(anchor.x + e.value("dx", 0.0f),
+        anchor.y + e.value("dy", 0.0f), anchor.z + e.value("dz", 0.0f));
+    if (e.value("onRoof", false)) {
+        // `dy` below the ceiling over that spot.
+        dBgS_ObjRoofChk roof;
+        roof.SetPos(cXyz(prm->base.position.x, anchor.y + 50.0f, prm->base.position.z));
+        const f32 roofY = dComIfG_Bgsp().RoofChk(&roof);
+        if (roofY == G_CM3D_F_INF) {
+            cMl::free(prm);
+            ctx.fail("spawnEnemy " + name + ": no ceiling above that spot");
+            return false;
+        }
+        prm->base.position.y = roofY + e.value("dy", 0.0f);
+    }
+    prm->base.angle.x = static_cast<s16>(e.value("angleX", 0));
+    prm->base.angle.z = static_cast<s16>(e.value("angleZ", 0));
+    prm->base.setID = static_cast<u16>(e.value("setId", 0xFFFF));
     prm->room_no = static_cast<s8>(roomNo);
     prm->argument = inf->argument;
     // In the room's layer like a stage-placed actor, so it is deleted with the room.
     layer_class* saved = fpcLy_CurrentLayer();
     fpcLy_SetCurrentLayer(&room->base.layer);
     fpc_ProcID id;
-    if (ctx.step.value("placed", false)) {
+    if (e.value("placed", false)) {
         // Seen by Enemy Count as dStage_actorCreate's request.
         hooks::ScopeGuard placed(hooks::ScopeKind::StagePlaced, prm);
         id = fopAcM_Create(inf->procname, NULL, prm);
@@ -99,7 +133,24 @@ std::optional<bool> spawnEnemy(StepContext& ctx) {
         ctx.fail("spawnEnemy " + name + ": create request failed");
         return false;
     }
-    sTags[ctx.step.value("tag", name)] = id;
+    sTags[e.value("tag", name)] = id;
+    return true;
+}
+
+std::optional<bool> spawnEnemy(StepContext& ctx) {
+    return spawnOne(ctx, ctx.step);
+}
+
+// All in one update, in the given order; the step's own fields are every entry's defaults.
+std::optional<bool> spawnEnemies(StepContext& ctx) {
+    for (const nlohmann::json& entry : ctx.step.value("enemies", nlohmann::json::array())) {
+        nlohmann::json e = ctx.step;
+        e.erase("enemies");
+        e.update(entry);
+        if (!spawnOne(ctx, e)) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -108,9 +159,14 @@ std::optional<bool> expectEnemyHealth(StepContext& ctx) {
     fopAc_ac_c* ac = runningActor(id);
     enemy_scaling::TrackedHealth tracked{};
     const bool isTracked = ac != nullptr && enemy_scaling::trackedHealth(id, tracked);
-    if (ac != nullptr &&
-        (!ctx.step.contains("health") || ac->health == ctx.step["health"].get<int>()) &&
-        (!ctx.step.contains("max") || ac->field_0x560 == ctx.step["max"].get<int>()) &&
+    fopAc_ac_c* helmet = ac != nullptr ? helmetOf(ac) : nullptr;
+    const auto want = [&](const char* key, int have) {
+        return !ctx.step.contains(key) || ctx.step[key].get<int>() == have;
+    };
+    if (ac != nullptr && want("health", ac->health) && want("max", ac->field_0x560) &&
+        want("shared", enemy_damage::sharedHealth(ac)) &&
+        want("hitsLeft", enemy_damage::countedHitsLeft(ac)) &&
+        want("helmetHealth", helmet != nullptr ? helmet->health : -1) &&
         (!ctx.step.contains("tracked") || isTracked == ctx.step["tracked"].get<bool>()))
     {
         return true;
@@ -118,8 +174,11 @@ std::optional<bool> expectEnemyHealth(StepContext& ctx) {
     if (ctx.seconds > ctx.timeout(20.0)) {
         ctx.fail(ac == nullptr ?
                      fmt::format("enemy '{}' is not running", tagOf(ctx)) :
-                     fmt::format("enemy '{}' has health {}/{} (tracked {}), step wants {}",
-                         tagOf(ctx), ac->health, ac->field_0x560, isTracked, ctx.step.dump()));
+                     fmt::format("enemy '{}' has health {}/{} (tracked {}, shared {}, hits left "
+                                 "{}, helmet {}), step wants {}",
+                         tagOf(ctx), ac->health, ac->field_0x560, isTracked,
+                         enemy_damage::sharedHealth(ac), enemy_damage::countedHitsLeft(ac),
+                         helmet != nullptr ? helmet->health : -1, ctx.step.dump()));
     }
     return false;
 }
@@ -330,19 +389,23 @@ uint8_t dupOf(fopAc_ac_c* ac) {
 }
 
 // FNV of the room's enemies (name, params, home, dup): equal on clients that made the same extras.
-std::pair<uint32_t, int> enemyDigest(float maxDist) {
+// `flat`: maxDist across the ground only, whatever the height.
+std::pair<uint32_t, int> enemyDigest(float maxDist, bool flat) {
     struct Digest {
         std::vector<std::tuple<int, uint32_t, long, long, long, int>> list;
         float maxDist;
+        bool flat;
         cXyz from;
-    } d{{}, maxDist, {}};
+    } d{{}, maxDist, flat, {}};
     if (fopAc_ac_c* player = dComIfGp_getPlayer(0)) {
         d.from = player->home.pos;
     }
     forRoomEnemies(
         [](fopAc_ac_c* ac, void* data) {
             auto* d = static_cast<Digest*>(data);
-            if (d->maxDist <= 0.0f || (ac->home.pos - d->from).abs() <= d->maxDist) {
+            const f32 dist =
+                d->flat ? ac->home.pos.absXZ(d->from) : (ac->home.pos - d->from).abs();
+            if (d->maxDist <= 0.0f || dist <= d->maxDist) {
                 d->list.emplace_back(fopAcM_GetName(ac), fopAcM_GetParam(ac),
                     std::lround(ac->home.pos.x), std::lround(ac->home.pos.y),
                     std::lround(ac->home.pos.z), dupOf(ac));
@@ -420,6 +483,14 @@ std::optional<bool> expectEnemyExtras(StepContext& ctx) {
                     fopAcM_GetParam(ac));
             } else if (ac->layer_tag.layer != original->layer_tag.layer) {
                 why = fmt::format("extra {} is not in its original's layer", dup);
+            } else if (ctx.step.contains("roofGap")) {
+                // Hangs as far below its ceiling as the original below its own.
+                const f32 gap = roofAbove(ac->home.pos) - ac->home.pos.y;
+                const f32 originalGap = roofAbove(original->home.pos) - original->home.pos.y;
+                if (std::fabs(gap - originalGap) > ctx.step["roofGap"].get<float>()) {
+                    why = fmt::format("extra {} hangs {:.0f} below its ceiling, the original {:.0f}",
+                        dup, gap, originalGap);
+                }
             }
         }
         if (why.empty() && n != want) {
@@ -466,6 +537,23 @@ void dumpEnemies() {
 std::optional<bool> enemySteps(const std::string& op, StepContext& ctx) {
     if (op == "spawnEnemy") {
         return spawnEnemy(ctx);
+    }
+
+    if (op == "spawnEnemies") {
+        return spawnEnemies(ctx);
+    }
+
+    // Live Enemy Count extras in the current room, all of them.
+    if (op == "expectRoomExtras") {
+        const int have = enemy_count::extrasInRoom(dStage_roomControl_c::getStayNo());
+        if (have == ctx.step.value("count", 0)) {
+            return true;
+        }
+        if (ctx.seconds > ctx.timeout(20.0)) {
+            ctx.fail(fmt::format("{} extras in this room, step wants {}", have,
+                ctx.step.value("count", 0)));
+        }
+        return false;
     }
 
     if (op == "expectEnemyHealth") {
@@ -533,7 +621,8 @@ std::optional<bool> enemySteps(const std::string& op, StepContext& ctx) {
     }
 
     if (op == "enemyDigest") {
-        const auto [hash, count] = enemyDigest(ctx.step.value("maxDist", 0.0f));
+        const auto [hash, count] =
+            enemyDigest(ctx.step.value("maxDist", 0.0f), ctx.step.value("flat", false));
         TwiliLog.info("[autotest] enemy digest {:08x} ({} enemies)", hash, count);
         Session::instance().sendAutotestSignal(
             detail::state().instance, fmt::format("enemies:{:08x}", hash));
@@ -542,7 +631,8 @@ std::optional<bool> enemySteps(const std::string& op, StepContext& ctx) {
 
     // Until the peer's enemyDigest signal matches ours.
     if (op == "expectPeerEnemyDigest") {
-        const auto [hash, count] = enemyDigest(ctx.step.value("maxDist", 0.0f));
+        const auto [hash, count] =
+            enemyDigest(ctx.step.value("maxDist", 0.0f), ctx.step.value("flat", false));
         const std::string name = fmt::format(
             "{}:enemies:{:08x}", ctx.step.value("from", std::string{}), hash);
         if (detail::state().signals.count(name) != 0) {
@@ -585,16 +675,71 @@ std::optional<bool> enemySteps(const std::string& op, StepContext& ctx) {
             ctx.fail("damageEnemy: enemy '" + tagOf(ctx) + "' is not running");
             return false;
         }
-        enemy_damage::noteLocalHitForTest(ac);
-        ac->health = static_cast<s16>(ac->health - ctx.step.value("amount", 1));
+        // On its helmet, the hit is the helmet's (d_a_e_mm_mt.cpp cc_at_check).
+        fopAc_ac_c* target = ac;
+        if (ctx.step.value("helmet", false) && (target = helmetOf(ac)) == nullptr) {
+            ctx.fail("damageEnemy: '" + tagOf(ctx) + "' wears no helmet");
+            return false;
+        }
+        enemy_damage::noteLocalHitForTest(target);
+        target->health = static_cast<s16>(target->health - ctx.step.value("amount", 1));
+        // A Chu Worm's counted hits (C_DamageCheck).
+        if (const int hits = ctx.step.value("hits", 0); hits > 0) {
+            if (fopAcM_GetName(ac) != fpcNm_E_SM_e) {
+                ctx.fail("damageEnemy: '" + tagOf(ctx) + "' is not a Chu Worm");
+                return false;
+            }
+            static_cast<daE_SM_c*>(ac)->field_0x984 -= hits;
+        }
         return true;
+    }
+
+    // The helmet off, as the clawshot pull leaves it (d_a_e_mm.cpp damage_checkMetOn).
+    if (op == "removeHelmet") {
+        fopAc_ac_c* ac = runningActor(taggedId(ctx.step));
+        if (ac == nullptr || helmetOf(ac) == nullptr) {
+            ctx.fail("removeHelmet: '" + tagOf(ctx) + "' is not a running Helmasaur with a helmet");
+            return false;
+        }
+        reinterpret_cast<e_mm_class*>(ac)->field_0x672 = 0;
+        return true;
+    }
+
+    if (op == "expectBroodSize") {
+        const auto it = sTags.find(ctx.step.value("of", std::string{}));
+        const int have = it == sTags.end() ? -1 : enemy_count::broodSize(it->second);
+        if (have == ctx.step.value("count", 0)) {
+            return true;
+        }
+        if (ctx.seconds > ctx.timeout(20.0)) {
+            ctx.fail(fmt::format("spawner '{}' makes {}, step wants {}",
+                ctx.step.value("of", std::string{}), have, ctx.step.value("count", 0)));
+        }
+        return false;
+    }
+
+    // Tags the child at `index` of the tagged spawner's list, once it runs.
+    if (op == "tagBrood") {
+        const auto it = sTags.find(ctx.step.value("of", std::string{}));
+        const fpc_ProcID id = it == sTags.end() ?
+                                  fpcM_ERROR_PROCESS_ID_e :
+                                  enemy_count::broodChild(it->second, ctx.step.value("index", 0));
+        if (runningActor(id) != nullptr) {
+            sTags[tagOf(ctx)] = id;
+            return true;
+        }
+        if (ctx.seconds > ctx.timeout(20.0)) {
+            ctx.fail(fmt::format("tagBrood: no running child {} of '{}'",
+                ctx.step.value("index", 0), ctx.step.value("of", std::string{})));
+        }
+        return false;
     }
 
     if (op == "sendEnemyDamageForTest") {
         fopAc_ac_c* ac = runningActor(taggedId(ctx.step));
         if (ac == nullptr ||
             !enemy_damage::sendForTest(ac, ctx.step.value("dmg", 1), ctx.step.value("pct", 100),
-                ctx.step.value("hpAfter", -1)))
+                ctx.step.value("hpAfter", -1), ctx.step.value("hits", 0)))
         {
             ctx.fail("sendEnemyDamageForTest: '" + tagOf(ctx) +
                      "' is not a running shared enemy, or no teammate is here");

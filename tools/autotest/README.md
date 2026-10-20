@@ -315,23 +315,27 @@ Life, PvP and enemies (`StepsPvp.cpp`, `StepsEnemy.cpp`):
 | `expectLockOn` | `locked` (true), `stance`, `frames` (30), `timeoutSec` (5) | Z-targeting (hold L with an async `walk`, buttons 0x40) is locked on the first peer's dummy (`stance`: and our Link is in its enemy lock, battle stance with the shield allowed); `locked: false`: neither for `frames` |
 | `expectPvpToast` | `text`, `count` (1), `max`, `none`, `frames`, `timeoutSec` (10) | knockout toasts with that text ("A beat B", "A knocked out B") |
 | `chargeDummy` | `dist` (600), `charge` (true), `trace` (false), `timeoutSec` (10) | our ridden Epona, `dist` from the first peer's dummy on open ground (its front first, then either side), faces it with the camera behind her, then gallops straight at it (spurred) until we send it a hit; `trace` logs each tick |
-| `spawnEnemy` | `name`, `param`, `dx`, `dy`, `dz`, `tag`, `anchor` (`player`, `playerHome`), `setId`, `placed` | an actor in the current room's layer (`placed`: seen by Enemy Count as a stage placement) |
-| `expectEnemyHealth` | `tag`, `health`, `max`, `tracked`, `timeoutSec` | until the tagged actor runs with that health, max and scaling |
+| `spawnEnemy` | `name`, `param`, `dx`, `dy`, `dz`, `tag`, `anchor` (`player`, `playerHome`), `onRoof`, `angleX`, `angleZ`, `setId`, `placed` | an actor in the current room's layer (`onRoof`: `dy` below the ceiling over that spot; `placed`: seen by Enemy Count as a stage placement) |
+| `spawnEnemies` | `enemies` (a list of `spawnEnemy` fields), any `spawnEnemy` field as every entry's default | all of them in one update, in list order |
+| `expectEnemyHealth` | `tag`, `health`, `max`, `tracked`, `shared`, `hitsLeft`, `helmetHealth`, `timeoutSec` | until the tagged actor runs with that health, max and scaling (`shared`: health as shared damage sees it; `hitsLeft`: a Chu Worm's counted hits left; `helmetHealth`: a Helmasaur's helmet, -1 without one) |
 | `setEnemyHealthPercent` | `value`, `timeoutSec` | once we own the room: its enemy health percent |
 | `expectEnemyHealthPercent` | `value`, `timeoutSec` | the percent we apply (the room's while joined, else 100) |
 | `setEnemyCountPercent` / `expectEnemyCountPercent` | `value`, `timeoutSec` | the same for the enemy count percent |
 | `expectEnemyCount` | `name`, `count`, `maxDist` (from our Link's home), `timeoutSec` | exactly that many running enemies of that actor name in the current room |
 | `tagExtra` | `tag`, `of`, `dup` (1), `timeoutSec` | tags extra `dup` of the enemy tagged `of`, once it runs |
-| `expectEnemyExtras` | `of`, `count`, `timeoutSec` | exactly `count` extras of `of`, each with setID 0xFFFF, its defeated switch stripped and in the original's layer |
-| `enemyDigest` / `expectPeerEnemyDigest` | `maxDist` / `from`, `maxDist`, `timeoutSec` | signals a hash of the room's enemies (name, params, home, extra index) / waits for `from`'s to match ours |
+| `expectEnemyExtras` | `of`, `count`, `roofGap`, `timeoutSec` | exactly `count` extras of `of`, each with setID 0xFFFF, its defeated switch stripped and in the original's layer (`roofGap`: and as far below its ceiling as the original, within that many units) |
+| `expectRoomExtras` | `count`, `timeoutSec` | exactly that many live extras in the current room |
+| `expectBroodSize` / `tagBrood` | `of`, `count` / `tag`, `of`, `index`, `timeoutSec` | the enemy spawner tagged `of` makes `count` enemies / tags the one at `index` of its list, once it runs |
+| `enemyDigest` / `expectPeerEnemyDigest` | `maxDist`, `flat` / `from`, `maxDist`, `flat`, `timeoutSec` | signals a hash of the room's enemies (name, params, home, extra index; `flat`: `maxDist` across the ground, whatever the height) / waits for `from`'s to match ours |
 | `setEnemyHealth` / `deleteEnemy` | `tag`, `health` / `tag` | writes health directly (a bite, a get-up) / deletes the actor |
 | `expectEnemyGone` / `expectEnemiesGone` | `tag` / `tags`, `maxSpreadTicks`, `timeoutSec` | no longer running (and not scaled) / all gone within that many ticks of each other |
 | `killEnemy` | `tag`, `how` (`disappear`, `real`, `fall`, `hz`, `hzReal`), `size`, `type`, `onActor` | a puff and delete (with the zone actor bit after it), a Bokoblin's own death or void fall, or a Tile Worm's death wait after its puff / its own death roll |
 | `expectEnemyDeadInPlace` | `tag`, `timeoutSec` | the tagged Tile Worm still runs, dead (its tile only) and out of the ENEMY group |
 | `expectZoneActor` | `setId`, `room`, `set`, `timeoutSec` | the zone actor bit |
 | `expectEnemySync` | `sent`, `received`, `applied`, `echoes`, `expired`, `timeoutSec` | the enemy-death sync counters given |
-| `damageEnemy` | `tag`, `amount` | lowers health as an attributed hit of ours (unlike `setEnemyHealth`), so it is shared |
-| `sendEnemyDamageForTest` | `tag`, `dmg`, `pct`, `hpAfter` (-1) | sends an ENEMY_DAMAGE for the tagged enemy with any sender percent (not counted as sent) |
+| `damageEnemy` | `tag`, `amount`, `helmet`, `hits` | lowers health as an attributed hit of ours (unlike `setEnemyHealth`), so it is shared (`helmet`: a Helmasaur's helmet's; `hits`: also a Chu Worm's counted hits) |
+| `removeHelmet` | `tag` | the tagged Helmasaur's helmet off, as the clawshot pull leaves it |
+| `sendEnemyDamageForTest` | `tag`, `dmg`, `pct`, `hpAfter` (-1), `hits` (0) | sends an ENEMY_DAMAGE for the tagged enemy with any sender percent (not counted as sent) |
 | `expectEnemyDamage` | `sent`, `received`, `applied`, `floored`, `healed`, `dropped`, `timeoutSec` | the shared-damage counters given (hits, not packets) |
 | `forceGroupFail` | `tags` | tagged Shadow Beasts into their downed wait, so the group is condemned |
 | `dumpEnemies` | | logs the current room's enemies, their scaling and extra index |
