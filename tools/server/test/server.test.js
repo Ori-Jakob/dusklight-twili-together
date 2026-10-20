@@ -696,6 +696,32 @@ test("LIGHT_DROP is team-scoped, queued and replayed after the cached world stat
     assert.equal(drop.area, 1);
 }));
 
+test("COLLECT_REWARD is team-scoped, queued and replayed after the cached world state", () => withServer(async (mk) => {
+    const a = mk();
+    await a.join({ teamId: "t" });
+    const mate = mk();
+    await mate.join({ teamId: "t" });
+    const other = mk();
+    await other.join({ teamId: "u" });
+    a.send({ type: "UPDATE_WORLD_STATE", save: "AAAA", saveTblNo: 3 });
+    a.send({ type: "COLLECT_REWARD", crystal: 1, mirror: 0, addToQueue: true });
+    const live = await mate.waitType("COLLECT_REWARD");
+    assert.equal(live.crystal, 1);
+    assert.equal(live.teamId, "t");
+    assert.ok(Number.isInteger(live.queueSeq), "queued packets are numbered");
+    await other.expectNone((p) => p.type === "COLLECT_REWARD", "COLLECT_REWARD to another team");
+
+    await settle();
+    const b = mk();
+    await b.join({ teamId: "t" });
+    b.send({ type: "REQUEST_WORLD_STATE", catchUp: true });
+    const ws = await b.waitType("UPDATE_WORLD_STATE");
+    assert.equal(ws.fromCache, true);
+    const reward = await b.waitType("COLLECT_REWARD");
+    assert.equal(reward.fromQueue, true);
+    assert.equal(reward.crystal, 1);
+}));
+
 test("TAKE_ITEM is team-scoped, queued and replayed after the cached world state", () => withServer(async (mk) => {
     const a = mk();
     await a.join({ teamId: "t" });
@@ -1440,13 +1466,15 @@ test("hostile field types and unserializable packets do not kill the server", ()
     const evil = { toString: 1 };
     for (const type of ["UPDATE_CLIENT_STATE", "SET_FLAG", "UNSET_FLAG", "SET_EVENT_BIT", "UNSET_EVENT_BIT", "GIVE_ITEM",
         "UPDATE_DUNGEON_ITEMS", "UPDATE_WORLD_STATE", "REQUEST_WORLD_STATE", "UPDATE_ROOM_STATE", "PLAYER_SFX",
-        "ENEMY_DEFEATED", "ENEMY_DAMAGE", "STORY_EVENT", "STORY_MOVE", "PUSH_MOVE", "PUSH_REST", "CHAIN_PULL"]) {
+        "ENEMY_DEFEATED", "ENEMY_DAMAGE", "STORY_EVENT", "STORY_MOVE", "PUSH_MOVE", "PUSH_REST", "CHAIN_PULL",
+        "COLLECT_REWARD"]) {
         a.send({
             type, no: evil, itemNo: evil, flagNo: evil, roomNo: evil, stageName: evil, saveTblNo: evil, layerNo: evil,
             isSaveLoaded: evil, category: evil, keyDelta: evil, dungeonItemBits: evil, targetClientId: evil,
             soundId: evil, kind: evil, kills: evil, hits: evil, state: { pvpMode: evil, nested: [evil] },
             ph: evil, id: evil, stage: evil, room: evil, layer: evil, m: evil, req: evil, from: evil, to: evil,
             curated: evil, qual: evil, key: { roomNo: evil, procName: evil }, dir: evil, held: evil, out: evil,
+            crystal: evil, mirror: evil,
         });
     }
     a.send({ type: "AUTOTEST_SIGNAL", instance: evil, name: evil });

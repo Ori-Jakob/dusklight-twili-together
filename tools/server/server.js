@@ -46,6 +46,7 @@ const TEAM_PACKET_TYPES = new Set([
     "REQUEST_WORLD_STATE",
     "LIGHT_DROP",
     "TAKE_ITEM",
+    "COLLECT_REWARD",
 ]);
 // World packets for the team as it is now: relayed like the others, never queued or cached.
 const TEAM_LIVE_PACKET_TYPES = new Set(["SHARE_PICKUP"]);
@@ -116,6 +117,8 @@ function packetSummary(packet) {
                 "equip" in packet ? `equip=${text(packet.equip)}` : `slot=${text(packet.slot)}`}`;
         case "LIGHT_DROP":
             return `${packet.type} area=${text(packet.area)} saveTbl=${text(packet.tbl)} tbox=${text(packet.tbox)}`;
+        case "COLLECT_REWARD":
+            return `${packet.type} crystal=0x${hex(packet.crystal)} mirror=0x${hex(packet.mirror)}`;
         case "SHARE_PICKUP":
             return `${packet.type} items=${Array.isArray(packet.items) ? packet.items.map((i) => hex(i, 2)).join(",") : "?"}`;
         case "UPDATE_DUNGEON_ITEMS":
