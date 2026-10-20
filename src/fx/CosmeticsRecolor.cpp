@@ -690,7 +690,11 @@ void PuppetCosmetics::probe(CosmeticsProbe& out) const {
     out = {};
     out.bound = bound();
     const int state = sKeysState.load(std::memory_order_acquire);
-    out.keys = state == kKeysReady ? 1 : state == kKeysUnavailable ? 2 : 0;
+    out.keys = state == kKeysReady       ? 1 :
+               state == kKeysUnavailable ? 2 :
+               state == kKeysFailed      ? 3 : 0;
+    out.keysTotal = static_cast<uint16_t>(kTargetCount);
+    out.keysFound = state == kKeysReady ? static_cast<uint16_t>(sKeysFound) : 0;
     for (const Entry& e : mEntries) {
         CosmeticsTexProbe t;
         t.texture = kTargets[e.target].texture;

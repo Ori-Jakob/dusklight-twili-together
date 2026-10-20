@@ -62,8 +62,11 @@ struct CosmeticsTexProbe {
 };
 struct CosmeticsProbe {
     bool bound = false;
-    // The vanilla keys: 0 not read yet, 1 read from the disc, 2 unavailable (every texture trusted)
+    // The vanilla keys: 0 not read yet, 1 read from the disc, 2 no ModsService, 3 reading failed
+    // (2 and 3: nothing is recoloured)
     uint8_t keys = 0;
+    // Targets whose texture the disc's model has, of all targets.
+    uint16_t keysFound = 0, keysTotal = 0;
     uint16_t recolored = 0, blocked = 0;
     uint8_t hairBase = 0, hairTips = 0;
     std::vector<CosmeticsTexProbe> tex;

@@ -6,6 +6,8 @@ const { MODS, STAGES, COMMON_CVARS, tt, escapeModId, barrier, meetIn, connect } 
 const cos = (name, value) => `mod.${escapeModId(MODS.cosmetics)}.${name}=${value}`;
 const cosCvars = (vars) => Object.entries(vars).map(([name, value]) => cos(name, value));
 const colorCvars = (hex) => [tt("color", hex.slice(1).toLowerCase())];
+// Share My Looks: Everyone in Room (the default is Off).
+const SHARE_ROOM = [tt("share_looks", 2)];
 const RED = "#E53935";
 const BLUE = "#1E88E5";
 const WHITE = "#FFFFFF";
@@ -45,6 +47,12 @@ const SHARED = {
     midnaHairBaseColor: 5,
     midnaHairTipsColor: 2,
 };
+// Every TEX1 name a colour targets on the player puppet and on its Epona (kTargets).
+const PLAYER_TEXTURES = ["al_cap", "al_upbody", "al_lowbody", "zl_cap", "zl_helmet", "zl_armor", "zl_armL",
+    "zl_body", "zl_boots", "al_SWB", "al_SWA", "al_SWgripA", "al_SWM", "al_SWgripM", "L_al_boom00", "al_bootsH",
+    "al_SP", "al_hair", "bl_hair", "wl_body", "wl_eye.1", "wl_eye.2", "wl_eye.3", "wl_eye.4", "wl_eye.5"];
+const HORSE_TEXTURES = ["hs_body", "hs_eye.1", "hs_eye.2", "hs_eye.3"];
+const present = (names) => Object.fromEntries(names.map((name) => [name, {}]));
 const sharedOnLink = {
     herosTunicTorsoColor: recolor(SHARED.herosTunicTorsoColor),
     linkHairColor: recolor(SHARED.linkHairColor),
@@ -70,7 +78,7 @@ const sharedOnLink = {
 module.exports = [
     {
         name: "cosmetics-share",
-        description: "B (red) shares a colour for every cosmetics target and two Midna hair indices: A gets them in B's manifest and its dummy of B wears them as POINTER replacements checked against the disc's own textures (hero's clothes untinted, the rest of the set and the defaults blocked), Midna's palette, the Magic Armor still red, B's Epona and wolf in B's colours; A at its defaults shares none",
+        description: "B (red, sharing with the room) shares a colour for every cosmetics target and two Midna hair indices: A gets them in B's manifest and its dummy of B wears them as POINTER replacements checked against the disc's own textures (every target's texture found on the disc and on the dummy; hero's clothes untinted, the rest of the set and the defaults blocked against A's own colours), Midna's palette, the Magic Armor still red, B's Epona and wolf in B's colours; A has colours of its own but shares none, as sharing is off by default",
         timeoutSec: 540,
         cvars: [...COMMON_CVARS, ...ARMOR_CVARS],
         enableMods: [MODS.cosmetics],
@@ -78,6 +86,7 @@ module.exports = [
             {
                 name: "A",
                 start: field,
+                cvars: cosCvars({ herosTunicCapColor: "2e7d32", msBladeColor: "2e7d32" }),
                 steps: [
                     { op: "cosmeticsSelfTest" },
                     ...connect,
@@ -86,8 +95,8 @@ module.exports = [
                     ...barrier("apart", "B"),
                     { op: "expectCosmetics", name: "B", vars: SHARED, version: "1.0.0", timeoutSec: 20 },
                     { op: "expectCosmetics", self: true, none: true },
-                    { op: "expectDummyCosmetics", name: "B", keys: "disc", vars: sharedOnLink, hair: [5, 2],
-                      noSource: true, frames: 15, timeoutSec: 30 },
+                    { op: "expectDummyCosmetics", name: "B", keys: "disc", allKeys: true, vars: sharedOnLink,
+                      textures: present(PLAYER_TEXTURES), hair: [5, 2], noSource: true, frames: 15, timeoutSec: 30 },
                     { op: "expectDummyRecolor", name: "B", set: "kokiri", vanilla: true, frames: 15 },
                     ...hold("kokiri"),
                     ...barrier("saw-kokiri", "B"),
@@ -103,8 +112,9 @@ module.exports = [
                     { op: "waitSignal", name: "horse", from: "B", timeoutSec: 90 },
                     // Her mane is not tinted: B's Epona colour replaces it.
                     { op: "expectRemoteHorse", ridden: false, vanilla: true, frames: 15, timeoutSec: 30 },
-                    { op: "expectDummyCosmetics", name: "B", horse: true, keys: "disc",
-                      vars: { eponaColor: recolor(SHARED.eponaColor) }, noSource: true, frames: 15 },
+                    { op: "expectDummyCosmetics", name: "B", horse: true, keys: "disc", allKeys: true,
+                      vars: { eponaColor: recolor(SHARED.eponaColor) }, textures: present(HORSE_TEXTURES),
+                      noSource: true, frames: 15 },
                     ...barrier("saw-horse", "B"),
                     { op: "waitSignal", name: "wolf", from: "B", timeoutSec: 90 },
                     { op: "expectDummyRecolor", name: "B", set: "wolf", vanilla: true, frames: 15, timeoutSec: 20 },
@@ -118,7 +128,7 @@ module.exports = [
             {
                 name: "B",
                 start: field,
-                cvars: [...colorCvars(RED), ...cosCvars(SHARED)],
+                cvars: [...colorCvars(RED), ...SHARE_ROOM, ...cosCvars(SHARED)],
                 steps: [
                     ...connect,
                     ...meetIn(field, "A"),
@@ -158,7 +168,7 @@ module.exports = [
                     ...connect,
                     ...meetIn(STAGES.forestTemple, "B"),
                     { op: "expectDummyCosmetics", name: "B", keys: "disc",
-                      vars: { herosTunicTorsoColor: recolor("1e88e5"), herosTunicCapColor: BLOCK }, frames: 15 },
+                      vars: { herosTunicTorsoColor: recolor("1e88e5") }, frames: 15 },
                     { op: "expectDummyRecolor", name: "B", set: "kokiri", vanilla: true, frames: 15 },
                     { op: "expectPeerColor", name: "B", rgb: RED },
                     { op: "expectNameTag", name: "B", rgb: RED, holdTicks: 10 },
@@ -176,7 +186,7 @@ module.exports = [
             {
                 name: "B",
                 start: STAGES.forestTemple,
-                cvars: [...colorCvars(RED), cos("herosTunicTorsoColor", "1e88e5")],
+                cvars: [...colorCvars(RED), ...SHARE_ROOM, cos("herosTunicTorsoColor", "1e88e5")],
                 steps: [
                     { op: "waitStage", stage: STAGES.forestTemple.stage, timeoutSec: 90 },
                     ...connect,
@@ -194,7 +204,7 @@ module.exports = [
     },
     {
         name: "cosmetics-defaults",
-        description: "B has the cosmetics mod on with every colour at its default (the one it set is not a colour): B shares none, and A's dummy of B shows B's red tint, its tunic textures left to the tint and the rest blocked",
+        description: "B shares with the room, but has the cosmetics mod on with every colour at its default (the one it set is not a colour): B shares none, and A's dummy of B shows B's red tint, its tunic textures left to the tint and the rest blocked against A's own red hair",
         timeoutSec: 300,
         cvars: COMMON_CVARS,
         enableMods: [MODS.cosmetics],
@@ -202,6 +212,7 @@ module.exports = [
             {
                 name: "A",
                 start: faron,
+                cvars: cosCvars({ linkHairColor: "ff0000" }),
                 steps: [
                     ...connect,
                     ...meetIn(faron, "B"),
@@ -219,7 +230,7 @@ module.exports = [
             {
                 name: "B",
                 start: faron,
-                cvars: [...colorCvars(RED), cos("herosTunicTorsoColor", "zzzzzz")],
+                cvars: [...colorCvars(RED), ...SHARE_ROOM, cos("herosTunicTorsoColor", "zzzzzz")],
                 steps: [
                     ...connect,
                     ...meetIn(faron, "A"),
@@ -232,7 +243,7 @@ module.exports = [
     },
     {
         name: "cosmetics-leak",
-        description: "A's own cosmetics are red, B (white) shares blue: A sees blue on B's dummy and none of A's red (no texture of the dummy renders from a content replacement); B stops sharing: B's exact white leaves the tunic as on disc, which A's red would match, and A's blockers keep it off; B turns blue: A shows B's tint, still no red",
+        description: "A's own cosmetics are red, B (white) shares blue: A sees blue on B's dummy and none of A's red (no texture of the dummy renders from a content replacement); B turns sharing off: B's exact white leaves the tunic as on disc, which A's red would match, and A's blockers keep it off; B turns blue: A shows B's tint, still no red; A picks My Own for B: A's red hair lands on B's dummy (no blockers), the tinted tunic stays B's blue, and back to Theirs blocks it again",
         timeoutSec: 360,
         cvars: COMMON_CVARS,
         enableMods: [MODS.cosmetics],
@@ -265,6 +276,15 @@ module.exports = [
                     { op: "expectDummyCosmetics", name: "B", vars: {
                         herosTunicTorsoColor: TINTED, linkHairColor: BLOCK,
                     }, noSource: true, frames: 15 },
+                    { op: "cosmeticsOption", player: "B", choice: "mine" },
+                    { op: "expectDummyCosmetics", name: "B", vars: {
+                        herosTunicTorsoColor: TINTED, linkHairColor: { state: "none", source: "source" },
+                    }, frames: 15, timeoutSec: 10 },
+                    { op: "expectDummyRecolor", name: "B", set: "kokiri", rgb: BLUE, frames: 15 },
+                    ...hold("mine"),
+                    { op: "cosmeticsOption", player: "B", choice: "theirs" },
+                    { op: "expectDummyCosmetics", name: "B", vars: { linkHairColor: BLOCK }, noSource: true,
+                      frames: 15, timeoutSec: 10 },
                     ...barrier("saw-tint", "B"),
                     { op: "quit" },
                 ],
@@ -272,13 +292,13 @@ module.exports = [
             {
                 name: "B",
                 start: faron,
-                cvars: [...colorCvars(WHITE), ...cosCvars({ herosTunicTorsoColor: "1e88e5", linkHairColor: "1e88e5" })],
+                cvars: [...colorCvars(WHITE), ...SHARE_ROOM, ...cosCvars({ herosTunicTorsoColor: "1e88e5", linkHairColor: "1e88e5" })],
                 steps: [
                     ...connect,
                     ...meetIn(faron, "A"),
                     ...stepAway,
                     ...barrier("saw-blue", "A"),
-                    { op: "cosmeticsOption", share: false },
+                    { op: "cosmeticsOption", share: "off" },
                     { op: "expectCosmetics", self: true, none: true, timeoutSec: 10 },
                     { op: "signal", name: "unshared" },
                     ...barrier("saw-white", "A"),
@@ -292,7 +312,7 @@ module.exports = [
     },
     {
         name: "cosmetics-absent",
-        description: "A has no cosmetics mod, B (red) shares a blue tunic and brown hair: A still shows them (receiving needs no cosmetics mod) and shares none itself; B sees A's blue tint and blocks the rest",
+        description: "A has no cosmetics mod, B (red) shares a blue tunic and brown hair with the room: A still shows them (receiving needs no cosmetics mod), shares none itself, and with nothing of its own that could land on B's dummy registers no blockers; B sees A's blue tint and blocks the rest",
         timeoutSec: 300,
         cvars: COMMON_CVARS,
         instances: [
@@ -308,7 +328,7 @@ module.exports = [
                     { op: "expectCosmetics", self: true, none: true },
                     { op: "expectDummyCosmetics", name: "B", keys: "disc", vars: {
                         herosTunicTorsoColor: recolor("1e88e5"), linkHairColor: recolor("91723e"),
-                        woodenSwordColor: BLOCK,
+                        woodenSwordColor: { state: "none" }, ironBootsColor: { state: "none" },
                     }, frames: 15, timeoutSec: 30 },
                     { op: "expectDummyRecolor", name: "B", set: "kokiri", vanilla: true, frames: 15 },
                     ...barrier("checked", "B"),
@@ -319,7 +339,7 @@ module.exports = [
                 name: "B",
                 start: faron,
                 enableMods: [MODS.cosmetics],
-                cvars: [...colorCvars(RED), ...cosCvars({ herosTunicTorsoColor: "1e88e5", linkHairColor: "91723e" })],
+                cvars: [...colorCvars(RED), ...SHARE_ROOM, ...cosCvars({ herosTunicTorsoColor: "1e88e5", linkHairColor: "91723e" })],
                 steps: [
                     ...connect,
                     ...meetIn(faron, "A"),
@@ -337,7 +357,7 @@ module.exports = [
     },
     {
         name: "cosmetics-off",
-        description: "B (red) shares a blue tunic: A turns Show Other Players' Cosmetics off and on, then B's own Their Cosmetics off (the Players tab tags B 'cosmetics hidden') and back to Follow Global; B turns Share My Cosmetics off and on; each off shows B's red tint, each on the blue tunic again",
+        description: "B (red) shares a blue tunic with the room; A has red hair of its own: A turns Show Other Players' Cosmetics off and on, then picks Game Default for B (the Players tab tags B 'game default look') and back to Theirs; B turns Share My Looks off, then to My Team (both without a team, so A still gets it); each off shows B's red tint with A's hair blocked, each on the blue tunic again",
         timeoutSec: 420,
         cvars: COMMON_CVARS,
         enableMods: [MODS.cosmetics],
@@ -345,6 +365,7 @@ module.exports = [
             {
                 name: "A",
                 start: faron,
+                cvars: cosCvars({ linkHairColor: "ff0000" }),
                 steps: [
                     ...connect,
                     ...meetIn(faron, "B"),
@@ -366,13 +387,13 @@ module.exports = [
                             ...red,
                             { op: "cosmeticsOption", show: true },
                             ...blue,
-                            { op: "cosmeticsOption", player: "B", hidden: true },
+                            { op: "cosmeticsOption", player: "B", choice: "default" },
                             ...red,
                             { op: "showWindow", tab: 2 },
-                            { op: "expectPlayersTab", rows: [{ name: "B", text: "cosmetics hidden", actions: true }],
+                            { op: "expectPlayersTab", rows: [{ name: "B", text: "game default look", actions: true }],
                               timeoutSec: 5 },
                             { op: "hideWindow" },
-                            { op: "cosmeticsOption", player: "B", hidden: false },
+                            { op: "cosmeticsOption", player: "B", choice: "theirs" },
                             ...blue,
                             ...barrier("a-done", "B"),
                             { op: "waitSignal", name: "unshared", from: "B", timeoutSec: 60 },
@@ -391,16 +412,16 @@ module.exports = [
             {
                 name: "B",
                 start: faron,
-                cvars: [...colorCvars(RED), cos("herosTunicTorsoColor", "1e88e5")],
+                cvars: [...colorCvars(RED), ...SHARE_ROOM, cos("herosTunicTorsoColor", "1e88e5")],
                 steps: [
                     ...connect,
                     ...meetIn(faron, "A"),
                     ...stepAway,
                     ...barrier("a-done", "A"),
-                    { op: "cosmeticsOption", share: false },
+                    { op: "cosmeticsOption", share: "off" },
                     { op: "signal", name: "unshared" },
                     ...barrier("saw-unshared", "A"),
-                    { op: "cosmeticsOption", share: true },
+                    { op: "cosmeticsOption", share: "team" },
                     { op: "signal", name: "shared" },
                     ...barrier("saw-shared", "A"),
                     { op: "quit" },

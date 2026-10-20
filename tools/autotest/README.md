@@ -618,14 +618,17 @@ mod's names (`herosTunicTorsoColor`, ...); colours as `"rrggbb"`, Midna's hair a
 | op | fields | does |
 | --- | --- | --- |
 | `cosmeticsSelfTest` | | the recolour (grey identity, hue kept, CMPR modes, RGB5A3 alpha, I8 to RGB5A3), Midna's palette, and the Yaz0, RARC and BMD readers on built inputs, cut ones included |
-| `cosmeticsOption` | `share`, `show` (Share My Cosmetics, Show Other Players' Cosmetics), `player` with `hidden` (that player's Their Cosmetics: Off) | |
+| `cosmeticsOption` | `share` (Share My Looks: `off`, `team` or `room`), `show` (Show Other Players' Cosmetics), `player` with `choice` (that player's Their Look: `theirs`, `default` or `mine`) | |
 | `expectCosmetics` | `name` (a peer: what its manifest shares) or `self` (what we last sent), `none`, `vars` (exactly these set), `version`, `frames`, `timeoutSec` | |
-| `expectDummyCosmetics` | `name`, `horse` (its Epona's puppet), `keys` (`disc`: the disc's own textures were read; `unverified`; `pending`), `vars` / `textures` (by var or TEX1 name: `{state: recolor/block/none, rgb, hueTol (15), source: pointer/source/none, vanilla}` for every texture of it on the puppet), `noSource` (no texture renders from a content replacement: none of our own cosmetics or packs), `hair` (`[base, tips]` of Midna's palette), `frames`, `timeoutSec` | the puppet's cosmetics textures as registered, and what `debug_texture_source` says the renderer picks for each |
+| `expectDummyCosmetics` | `name`, `horse` (its Epona's puppet), `keys` (`disc`: the disc's own textures were read; `unavailable`: no ModsService; `failed`; `pending`; with the last three nothing is recoloured), `allKeys` (every target's texture was found on the disc), `vars` / `textures` (by var or TEX1 name: `{state: recolor/block/none, rgb, hueTol (15), source: pointer/source/none, vanilla}` for every texture of it on the puppet), `noSource` (no texture renders from a content replacement: none of our own cosmetics or packs), `hair` (`[base, tips]` of Midna's palette), `frames`, `timeoutSec` | the puppet's cosmetics textures as registered, and what `debug_texture_source` says the renderer picks for each |
 | `dumpCosmetics` | | logs every peer's shared values and its dummy's textures |
 
 Written for cosmetics sharing (M1), **not run yet**: `cosmetics-share`, `cosmetics-color-rule`,
 `cosmetics-defaults`, `cosmetics-leak`, `cosmetics-absent` and `cosmetics-off`
 (`scenarios/cosmetics.js`). All but `cosmetics-absent` enable the cosmetics mod on both instances.
+Sharing is Off by default, so senders start with `share_looks=2` (Everyone in Room); a receiver
+registers blockers only while something of its own could land on a puppet, so most give it a
+colour of its own.
 
 Hook cost (`StepsPerf.cpp`):
 

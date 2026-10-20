@@ -95,15 +95,15 @@ const char* sourceName(int s) {
 }
 
 std::string probeText(const CosmeticsProbe& p) {
-    std::string s = fmt::format("keys={} recolored={} blocked={} hair={}/{}", p.keys, p.recolored,
-        p.blocked, p.hairBase, p.hairTips);
+    std::string s = fmt::format("keys={} ({} of {} targets) recolored={} blocked={} hair={}/{}",
+        p.keys, p.keysFound, p.keysTotal, p.recolored, p.blocked, p.hairBase, p.hairTips);
     for (const CosmeticsTexProbe& t : p.tex) {
         s += fmt::format(" [{} {} {}{} src={}{}]", t.texture, looks::kCosmeticsVars[t.var].name,
             stateName(t.state),
             t.state == CosmeticsTexState::Recolor ? fmt::format(" #{:06X} h{:.0f} s{:.2f}", t.color,
                                                        t.mean.h, t.mean.s) :
                                                     std::string{},
-            sourceName(t.source), t.vanilla == 1 ? "" : t.vanilla == 0 ? " custom" : t.vanilla == 2 ? " unchecked" : " pending");
+            sourceName(t.source), t.vanilla == 1 ? "" : t.vanilla == 0 ? " custom" : " pending");
     }
     return s;
 }
@@ -143,10 +143,16 @@ std::string probeMismatch(const json& step, const CosmeticsProbe& p) {
     }
     if (step.contains("keys")) {
         const std::string want = step.value("keys", std::string{});
-        const char* have = p.keys == 1 ? "disc" : p.keys == 2 ? "unverified" : "pending";
+        const char* have = p.keys == 1 ? "disc" :
+                           p.keys == 2 ? "unavailable" :
+                           p.keys == 3 ? "failed" : "pending";
         if (want != have) {
             return fmt::format("keys {}", have);
         }
+    }
+    if (step.value("allKeys", false) && (p.keys != 1 || p.keysFound != p.keysTotal)) {
+        return fmt::format("{} of {} targets found on the disc (the log names the rest)",
+            p.keysFound, p.keysTotal);
     }
     for (const auto& [name, spec] : step.value("vars", json::object()).items()) {
         const int var = varIndex(name);
