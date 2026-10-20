@@ -428,10 +428,10 @@ std::optional<bool> checkFmapLinkIcon(StepContext& ctx) {
     return true;
 }
 
-// A remote Epona's horseshoe on the minimap, in its owner's colour.
+// A remote Epona's horseshoe on the minimap or the field map, in its owner's colour.
 std::optional<bool> expectMapHorse(StepContext& ctx) {
     const json& step = ctx.step;
-    const mc::Frame& f = mc::lastFrame(mc::Surface::Minimap);
+    const mc::Frame& f = mc::lastFrame(surfaceOf(step));
     const std::string target = step.value("target", std::string{});
     const uint32_t id = resolveTarget(target);
     std::string why = "no fresh frame that ran the filters";
@@ -464,6 +464,24 @@ std::optional<bool> expectMapHorse(StepContext& ctx) {
                 if (h.fill[0] != want.r || h.fill[1] != want.g || h.fill[2] != want.b) {
                     ok = false;
                     why = fmt::format("{}'s horse is drawn {}", target, hex(h.fill));
+                }
+            }
+            // Beside its owner's arrow, half its height across
+            if (ok && step.contains("maxFromMarkerPx")) {
+                const mc::Drawn* d = findDrawn(f, id);
+                const f32 dist = d != nullptr ? std::hypot(h.anchor.x - d->anchor.x,
+                                                           h.anchor.y - d->anchor.y)
+                                              : 0.0f;
+                if (d == nullptr) {
+                    ok = false;
+                    why = fmt::format("no marker for {} beside its horse", target);
+                } else if (dist > step.value("maxFromMarkerPx", 0.0f)) {
+                    ok = false;
+                    why = fmt::format("{}'s horse is {:.1f} from its marker", target, dist);
+                } else if (!d->pinned && std::fabs(h.size - d->height * 0.5f) > 0.01f) {
+                    ok = false;
+                    why = fmt::format("{}'s horse is {:.2f} across, its marker {:.2f} high", target,
+                                      h.size, d->height);
                 }
             }
             if (ok) {

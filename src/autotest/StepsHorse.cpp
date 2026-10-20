@@ -9,6 +9,7 @@
 #include "core/Log.hpp"
 #include "core/Session.hpp"
 #include "fx/PlayerRecolor.hpp"
+#include "horse/HorseSync.hpp"
 #include "ui/NameTags.hpp"
 
 #include "SSystem/SComponent/c_lib.h"
@@ -305,6 +306,68 @@ float trailDist(uint32_t id, const cXyz& pos) {
     return best;
 }
 
+// The angle of XrotM(x) * ZrotM(z), as daHoZelda_c::modelCallBack turns her joints.
+float xzTurnDeg(int16_t x, int16_t z) {
+    const float a = cM_sht2d(x) * 3.14159265f / 180.0f;
+    const float b = cM_sht2d(z) * 3.14159265f / 180.0f;
+    const float c = (std::cos(a) + std::cos(b) + std::cos(a) * std::cos(b) - 1.0f) * 0.5f;
+    return std::acos(std::clamp(c, -1.0f, 1.0f)) * 180.0f / 3.14159265f;
+}
+
+// Her look on the puppet against the step (`zeldaNeck`, `zeldaBody`, ...) or the latest received.
+std::string zeldaLookMismatch(const json& step, const Client& c, const DummyHorseDebugInfo& d) {
+    const DummyHoZeldaLook& l = d.zeldaLook;
+    if (step.contains("zeldaLook") && l.look != step.value("zeldaLook", false)) {
+        return fmt::format("Zelda's look applied {}", l.look);
+    }
+    if (!l.look) {
+        return {};
+    }
+    const int tol = step.value("zeldaAngleTol", 64);
+    auto angles = [&](const char* key, const int16_t have[2]) -> std::string {
+        if (!step.contains(key)) {
+            return {};
+        }
+        const auto want = step[key].get<std::vector<int>>();
+        for (int i = 0; i < 2 && i < static_cast<int>(want.size()); i++) {
+            if (std::abs(static_cast<int16_t>(have[i] - want[i])) > tol) {
+                return fmt::format("Zelda's {} is ({}, {})", key, have[0], have[1]);
+            }
+        }
+        return {};
+    };
+    std::string why = angles("zeldaNeck", l.neck);
+    if (why.empty()) {
+        why = angles("zeldaBody", l.body);
+    }
+    if (!why.empty()) {
+        return why;
+    }
+    const RemoteHorseZelda& sent = c.horse.zelda;
+    const int wantBtp = step.value("zeldaBtp", step.value("zeldaMatchSender", false)
+                                                   ? static_cast<int>(sent.btp) : -1);
+    const int wantBtk = step.value("zeldaBtk", step.value("zeldaMatchSender", false)
+                                                   ? static_cast<int>(sent.btk) : -1);
+    if ((wantBtp >= 0 && l.btp != wantBtp) || (wantBtk >= 0 && l.btk != wantBtk)) {
+        return fmt::format("Zelda's eyes 0x{:X}/0x{:X} drawn, want 0x{:X}/0x{:X}", l.btp, l.btk,
+            wantBtp, wantBtk);
+    }
+    if (step.contains("zeldaEyeMove") &&
+        ((l.eyeFlags & kMidnaEyeMove) != 0) != step.value("zeldaEyeMove", false))
+    {
+        return fmt::format("Zelda's eye flags 0x{:X}", l.eyeFlags);
+    }
+    // The joints turned by what the callbacks were given
+    const float turnTol = step.value("zeldaTurnTol", 1.5f);
+    const float head = xzTurnDeg(l.neck[1], static_cast<int16_t>(-l.neck[0]));
+    const float body = xzTurnDeg(l.body[1], l.bodyZ);
+    if (std::fabs(l.headTurnDeg - head) > turnTol || std::fabs(l.bodyTurnDeg - body) > turnTol) {
+        return fmt::format("Zelda's head turned {:.1f} (want {:.1f}), body {:.1f} (want {:.1f})",
+            l.headTurnDeg, head, l.bodyTurnDeg, body);
+    }
+    return {};
+}
+
 // What of the step's expectations `id`'s puppet misses, empty when none.
 std::string horseMismatch(const json& step, uint32_t id, const Client& c, fopAc_ac_c* actor,
     const DummyHorseDebugInfo& d, float& seat) {
@@ -387,6 +450,11 @@ std::string horseMismatch(const json& step, uint32_t id, const Client& c, fopAc_
                                  .abs(cXyz(d.saddlePos[0], d.saddlePos[1], d.saddlePos[2]));
         if (want && behind > step.value("maxZeldaDist", 150.0f)) {
             return fmt::format("Zelda is {:.0f} from the saddle", behind);
+        }
+        if (want) {
+            if (std::string why = zeldaLookMismatch(step, c, d); !why.empty()) {
+                return why;
+            }
         }
     }
     if (step.value("vanilla", false) && d.recolorKey != RecolorSet::kPristine) {
@@ -757,6 +825,32 @@ bool spawnHoZelda(StepContext& ctx) {
     return false;
 }
 
+// What our capture sends of our Zelda's look.
+bool expectLocalZeldaLook(StepContext& ctx) {
+    RemoteHorsePose pose;
+    horse::captureLocal(pose);
+    const RemoteHorseZelda& z = pose.zelda;
+    std::string why;
+    if (!(pose.flags & kHorseZelda) || !z.look) {
+        why = "no Zelda look captured";
+    } else if (ctx.step.contains("btp") && z.btp != ctx.step.value("btp", 0)) {
+        why = fmt::format("eye pattern 0x{:X}", z.btp);
+    } else if (ctx.step.contains("btk") && z.btk != ctx.step.value("btk", 0)) {
+        why = fmt::format("eye clip 0x{:X}", z.btk);
+    }
+    if (why.empty()) {
+        TwiliLog.info("[autotest] local Zelda look: neck ({}, {}) body ({}, {}) eyes 0x{:X}/0x{:X} "
+                      "frames {:.1f}/{:.1f} flags 0x{:X}",
+            z.neck[0], z.neck[1], z.body[0], z.body[1], z.btp, z.btk, z.btpFrame, z.btkFrame,
+            z.eyeFlags);
+        return true;
+    }
+    if (ctx.seconds > ctx.timeout(10.0)) {
+        ctx.fail("expectLocalZeldaLook: " + why);
+    }
+    return false;
+}
+
 // Our rider's dummy on the peer's screen: joint 5 turned for the bow while riding.
 bool expectRiderBowTilt(StepContext& ctx) {
     const float minDeg = ctx.step.value("minDeg", 20.0f);
@@ -886,6 +980,9 @@ std::optional<bool> horseSteps(const std::string& op, StepContext& ctx) {
     }
     if (op == "spawnHoZelda") {
         return spawnHoZelda(ctx);
+    }
+    if (op == "expectLocalZeldaLook") {
+        return expectLocalZeldaLook(ctx);
     }
     if (op == "expectRiderBowTilt") {
         return expectRiderBowTilt(ctx);

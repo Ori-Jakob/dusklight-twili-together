@@ -17,6 +17,10 @@ const onCamera = (steps, what, camera = CAM, sec = 4) => [
     { op: "horseCamera", release: true },
 ];
 const field = STAGES.faronField;
+// Zelda's look as "oy" sends it: flags (eyes moved), neck, body, eye clips 0x2E/0x28, frames, offsets.
+const ZELDA_NECK = [3000, -6000];
+const ZELDA_BODY = [1500, 2500];
+const ZELDA_LOOK_PATCH = [1 | (1 << 8), ...ZELDA_NECK, ...ZELDA_BODY, 0x2f | (0x29 << 16), 0, 0, 205, -102, 205, 102];
 
 module.exports = [
     {
@@ -445,6 +449,53 @@ module.exports = [
         ],
     },
     {
+        name: "horse-zelda-look",
+        description: "B rides with Zelda behind it: A's puppet of her shows B's eye clips and turns; then B's updates carry a turned neck and body and moved eyes, and A's Zelda turns her head and body joints and her eyes by exactly that",
+        timeoutSec: 300,
+        cvars: COMMON_CVARS,
+        instances: [
+            {
+                name: "A",
+                start: field,
+                steps: [
+                    ...connect,
+                    ...meetIn(field, "B"),
+                    { op: "clearEnemies" },
+                    { op: "waitSignal", name: "zelda", from: "B", timeoutSec: 90 },
+                    { op: "expectRemoteHorse", ridden: true, zelda: true, zeldaLook: true, zeldaMatchSender: true, frames: 30, timeoutSec: 30 },
+                    ...barrier("saw-look", "B"),
+                    { op: "waitSignal", name: "turned", from: "B", timeoutSec: 30 },
+                    { op: "expectRemoteHorse", ridden: true, zelda: true, zeldaLook: true, zeldaNeck: ZELDA_NECK, zeldaBody: ZELDA_BODY, zeldaBtp: 0x2e, zeldaBtk: 0x28, zeldaEyeMove: true, frames: 10, timeoutSec: 20 },
+                    ...onCamera([{ op: "expectRemoteHorse", zelda: true, zeldaNeck: ZELDA_NECK, frames: 5 }], "zelda look", { target: "remote", back: 160, up: 180, side: 90 }),
+                    ...barrier("saw-turn", "B"),
+                    { op: "quit" },
+                ],
+            },
+            {
+                name: "B",
+                start: B_START,
+                cvars: colorCvars(RED),
+                steps: [
+                    ...connect,
+                    ...meetIn(field, "A"),
+                    { op: "clearEnemies" },
+                    { op: "spawnHorse", dist: 300, side: 120 },
+                    { op: "rideHorse", mode: "force" },
+                    { op: "expectLocalHorse", ridden: true },
+                    { op: "spawnHoZelda" },
+                    // setNormalFace's clips
+                    { op: "expectLocalZeldaLook", btp: 0x2f, btk: 0x26 },
+                    { op: "signal", name: "zelda" },
+                    ...barrier("saw-look", "A"),
+                    { op: "patchPlayerUpdate", patch: { oy: ZELDA_LOOK_PATCH }, packets: 240 },
+                    { op: "signal", name: "turned" },
+                    ...barrier("saw-turn", "A"),
+                    { op: "quit" },
+                ],
+            },
+        ],
+    },
+    {
         name: "horse-bow-map",
         description: "B's parked and then ridden Epona has a horseshoe in B's colour on A's minimap; B aims its bow in the saddle: A's dummy of B turns its chest (joint 5) like a rider's",
         timeoutSec: 360,
@@ -489,6 +540,49 @@ module.exports = [
                     // X held: the bow comes up and stays drawn (ASHOOTWAIT) while riding.
                     { op: "walk", frames: 240, stickX: 0, stickY: 0, buttons: 0x400 },
                     ...barrier("saw-bow", "A"),
+                    { op: "quit" },
+                ],
+            },
+        ],
+    },
+    {
+        name: "horse-fmap",
+        description: "B's parked Epona has a horseshoe in B's colour on A's field pause map, beside B's marker and half its size, like the minimap's",
+        timeoutSec: 300,
+        cvars: COMMON_CVARS,
+        instances: [
+            {
+                name: "A",
+                start: field,
+                steps: [
+                    ...connect,
+                    ...meetIn(field, "B"),
+                    { op: "clearEnemies" },
+                    { op: "showMinimap" },
+                    { op: "waitSignal", name: "spawned", from: "B", timeoutSec: 60 },
+                    { op: "expectMapHorse", target: "B", color: "peer", ridden: false, holdTicks: 15 },
+                    { op: "openPauseMap", surface: "fmap" },
+                    { op: "expectMapHorse", surface: "fmap", target: "B", color: "peer", ridden: false, ownerAway: false, maxFromMarkerPx: 30, holdTicks: 15 },
+                    { op: "mark", msg: "HORSE_HOLD fmap" },
+                    { op: "wait", frames: 60 },
+                    // A B press closes the map.
+                    { op: "walk", frames: 1, stickX: 0, stickY: 0, buttons: 0x200 },
+                    { op: "wait", frames: 60 },
+                    ...barrier("saw-fmap", "B"),
+                    { op: "quit" },
+                ],
+            },
+            {
+                name: "B",
+                start: B_START,
+                cvars: colorCvars(RED),
+                steps: [
+                    ...connect,
+                    ...meetIn(field, "A"),
+                    { op: "clearEnemies" },
+                    { op: "spawnHorse", dist: 300, side: 120 },
+                    { op: "signal", name: "spawned" },
+                    ...barrier("saw-fmap", "A"),
                     { op: "quit" },
                 ],
             },
