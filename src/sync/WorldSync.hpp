@@ -73,6 +73,14 @@ bool isSyncedItemNo(int itemNo);
 // The shields that burn (Ordon and Wooden); personal unless the room shares them.
 bool isWoodenShield(int itemNo);
 
+// Tears of light while an area's tears are collected (area -1: none): ours, or what that teammate
+// last reported (TEAR_COUNT).
+struct TearCount {
+    int area = -1;
+    int count = 0;
+};
+TearCount tearCount(uint32_t clientId);
+
 // Story sync: our post-load world state went out (or none is due).
 bool ownStateSettled();
 // World-state merges applied from this client.

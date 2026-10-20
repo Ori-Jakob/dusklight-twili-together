@@ -6,6 +6,7 @@
 #include "core/Session.hpp"
 #include "game/TeamGame.hpp"
 #include "story/StoryUi.hpp"
+#include "sync/WorldSync.hpp"
 #include "teleport/Teleport.hpp"
 #include "ui/ColorMath.hpp"
 #include "ui/PlayersWidget.hpp"
@@ -705,6 +706,13 @@ std::string playerRml(uint32_t id, const Client& c, bool ownTeam) {
         } else if (m->inGame) {
             details += " · " + (m->mode.empty() ? m->kind : m->mode) +
                        (m->name.empty() ? "" : ": " + m->name);
+        }
+    }
+    // A teammate behind on tears lost one.
+    if (const sync::TearCount tears = sync::tearCount(id); ownTeam && tears.area >= 0) {
+        static constexpr const char* kTearAreas[] = {"Faron", "Eldin", "Lanayru"};
+        if (tears.area < static_cast<int>(std::size(kTearAreas))) {
+            details += fmt::format(" · {} tears {}/16", kTearAreas[tears.area], tears.count);
         }
     }
     if (!c.modVersion.empty()) {

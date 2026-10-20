@@ -219,6 +219,8 @@ bool handlePacket(const std::string& type, const nlohmann::json& packet) {
         handleUpdateDungeonItems(packet);
     } else if (type == "LIGHT_DROP") {
         handleLightDrop(packet);
+    } else if (type == "TEAR_COUNT") {
+        handleTearCount(packet);
     } else if (type == "SHARE_PICKUP") {
         handleSharePickup(packet);
     } else if (type == "REQUEST_WORLD_STATE") {
@@ -255,6 +257,7 @@ void tick() {
     tickDungeonItemTracking();
     flushPickups();
     tickFreestanding();
+    tickTearCount();
 }
 
 void endOfUpdate() {
@@ -273,11 +276,13 @@ void resetSession() {
     st.versionMismatchLogged.clear();
     st.layoutWarnedIds.clear();
     st.merges.clear();
+    resetTearCounts();
 }
 
 void shutdown() {
     removeItemObserver();
     resetFreestanding();
+    resetTearCounts();
     s_state = State{};
     RemoteApplyGuard::reset();
 }

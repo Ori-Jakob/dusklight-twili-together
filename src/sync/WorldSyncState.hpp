@@ -85,6 +85,9 @@ void handleUpdateWorldState(const nlohmann::json& packet);
 
 // LightDrops.cpp
 void handleLightDrop(const nlohmann::json& packet);
+void handleTearCount(const nlohmann::json& packet);
+void tickTearCount();
+void resetTearCounts();
 
 // Chests.cpp: a teammate's TBOX bit landed in that stage table (live: just now, from SET_FLAG).
 void onRemoteTbox(int saveTblNo, int tboxNo, bool live);
