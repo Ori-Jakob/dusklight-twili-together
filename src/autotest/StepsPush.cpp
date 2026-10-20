@@ -8,6 +8,7 @@
 #include "core/Session.hpp"
 #include "push/PushState.hpp"
 
+#include "d/actor/d_a_alink.h"
 #include "d/actor/d_a_obj_swchain.h"
 #include "d/actor/d_a_player.h"
 #include "d/d_camera.h"
@@ -253,6 +254,9 @@ struct ChainHold {
     // Ticks since the grab; the stick pulls after kGrabTicks while `pulling`.
     int ticks = 0;
     bool pulling = false;
+    // The chain's tension while every link is out, until its force pull starts: the stick alone
+    // walks Link at about 6, under the 10 its switch takes without iron boots.
+    float pullPower = 0.0f;
 };
 ChainHold sHold;
 
@@ -285,6 +289,13 @@ void holdChainTicker() {
             const float theta = static_cast<s16>(want - camY + 0x8000) * (3.14159265f / 32768.0f);
             stickX = std::sin(theta);
             stickY = -std::cos(theta);
+            // Read by the chain's next count, before its own tension pass.
+            auto* chain = static_cast<daObjSwChain_c*>(r->actor);
+            if (sHold.pullPower > 0.0f && chain->mOutNum == chain->mChainNum &&
+                chain->field_0xa6d == 0 && chain->pow < sHold.pullPower)
+            {
+                chain->pow = sHold.pullPower;
+            }
         }
     }
     pulsePad(stickX, stickY, kPadR, 2);
@@ -325,7 +336,7 @@ bool pullChain(StepContext& ctx) {
             ctx.fail("pullChain: no chain switch here");
             return false;
         }
-        sHold = {true, fopAcM_GetID(r->actor), 0, true};
+        sHold = {true, fopAcM_GetID(r->actor), 0, true, step.value("pullPower", 0.0f)};
         return false;
     }
     Record* r = chainRecord(sHold.id);
@@ -348,6 +359,18 @@ bool pullChain(StepContext& ctx) {
             push::detail::chainOut(*r), switchOn ? "on" : "off",
             push::detail::chainHeldLocally(*r));
         return true;
+    }
+    if (step.value("trace", false) && ctx.ticks % 10 == 0) {
+        const daPy_py_c* player = daPy_getPlayerActorClass();
+        const cXyz end = push::detail::chainEnd(*r);
+        TwiliLog.info("[autotest] chain t{}: {} out, len {:.0f}, pow {:.1f}, Link speed {:.1f} "
+                      "proc {} at {:.0f} {:.0f}, a68 {} a6d {}",
+            ctx.ticks, push::detail::chainOut(*r), end.abs(chain->home.pos), chain->pow,
+            player != nullptr ? player->speedF : 0.0f,
+            player != nullptr ? static_cast<const daAlink_c*>(player)->mProcID : -1,
+            player != nullptr ? player->current.pos.x : 0.0f,
+            player != nullptr ? player->current.pos.z : 0.0f, chain->field_0xa68,
+            chain->field_0xa6d);
     }
     if (ctx.ticks == kGrabTicks + 5 && !push::detail::chainHeldLocally(*r)) {
         ctx.fail("pullChain: R did not pick the chain up");

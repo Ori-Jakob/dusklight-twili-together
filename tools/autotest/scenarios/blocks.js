@@ -17,11 +17,12 @@ const DM_SWITCH = 0x3a;
 // Snowpeak Ruins room 3: an ice block of the courtyard puzzle (saved along path 0).
 const SNOWPEAK = { stage: "D_MN11", room: 3, point: 0 };
 const ICE_BLOCK = [4900, -3100];
-// Arbiter's Grounds entrance: the chain switch (switch 0x6a) that opens the gate.
-const ARBITERS = { stage: "D_MN10", room: 0, point: 1 };
-const CHAIN = [788, 7300];
-const CHAIN_SWITCH = 0x6a;
-const CHAIN_OUT = 12;
+// City in the Sky room 13: a nine-link chain switch (switch 0x54) that opens a shutter. Arbiter's
+// Grounds' entrance chain hangs over sand that voids Link out.
+const CITY = { stage: "D_MN09", room: 13, point: 0 };
+const CHAIN = [-12200, -3300];
+const CHAIN_SWITCH = 0x54;
+const CHAIN_OUT = 4;
 
 const room = (name, value) => [
     { op: "setRoomOption", name, value },
@@ -182,13 +183,14 @@ module.exports = [
             ...samePlace(ICE_BLOCK, "A", "iceblock"),
             block(ICE_BLOCK, { kind: "iceblock", moved: true, matchesRemote: true, tol: 10 }),
         ]),
-    duo("blocks-chain", "A pulls the Arbiter's Grounds chain switch: B's chain follows A's puppet, B gets the switch from A's game, and the chain lets go with A",
-        ARBITERS,
+    duo("blocks-chain", "A pulls a City in the Sky chain switch: B's chain follows A's puppet, B gets the switch from A's game, and the chain lets go with A",
+        CITY,
         [
-            ...meet(ARBITERS, "B"),
+            ...meet(CITY, "B"),
             ...barrier("ready", "B"),
             { op: "approachChain", near: CHAIN },
-            { op: "pullChain", near: CHAIN, untilSwitch: true, timeoutSec: 60 },
+            // The stick alone pulls at about 6, under the 10 the switch takes without iron boots.
+            { op: "pullChain", near: CHAIN, untilSwitch: true, pullPower: 12, timeoutSec: 60 },
             { op: "expectSwitch", no: CHAIN_SWITCH, set: true },
             ...barrier("pulled", "B"),
             ...barrier("b-saw", "B"),
@@ -197,7 +199,7 @@ module.exports = [
             ...barrier("released", "B"),
         ],
         [
-            ...meet(ARBITERS, "A"),
+            ...meet(CITY, "A"),
             ...barrier("ready", "A"),
             { op: "expectChain", near: CHAIN, driven: true, timeoutSec: 30 },
             ...barrier("pulled", "A"),
