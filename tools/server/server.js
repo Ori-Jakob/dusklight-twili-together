@@ -203,7 +203,7 @@ let nextClientId = 1;
  *             awaitingResults: Map<string, number>, game: GameIdentity,
  *             gateLogged: Set<string>, features: string[], gameId: string,
  *             lookManifest: object|null, lookSentAt: number, lookPending: boolean,
- *             lookTimer: NodeJS.Timeout|null }} Client
+ *             lookTimer: NodeJS.Timeout|null, lookSentTo: Set<number> }} Client
  * @typedef {{ inGame: boolean, kind: string, key: string, display: { name: string, mode: string },
  *             share: object|null, allowUnverified: boolean }} GameIdentity
  * @typedef {{ id: string, ownerClientId: number|null, game: object|null, color: object|null,
@@ -489,12 +489,18 @@ function lookManifestFor(sender, c) {
     return { ...m, cosmetics: cosmetics ? m.cosmetics : null, looks: looks ? m.looks : [] };
 }
 
+// Who still holds one of the sender's manifests and now falls out of scope gets it emptied.
 function forwardLookManifest(room, client) {
     client.lookPending = false;
     client.lookSentAt = Date.now();
     for (const c of room.clients.values()) {
         const packet = lookManifestFor(client, c);
-        if (packet) send(c, packet);
+        if (packet) {
+            send(c, packet);
+            client.lookSentTo.add(c.clientId);
+        } else if (client.lookSentTo.delete(c.clientId)) {
+            send(c, { ...client.lookManifest, cosmetics: null, looks: [] });
+        }
     }
 }
 
@@ -968,6 +974,7 @@ function handleHandshake(conn, packet) {
         lookSentAt: 0,
         lookPending: false,
         lookTimer: null,
+        lookSentTo: new Set(),
     };
     room.clients.set(clientId, client);
     clientsById.set(clientId, client);
@@ -990,7 +997,10 @@ function handleHandshake(conn, packet) {
     // Everyone's newest manifest, also one still waiting for its interval.
     for (const c of room.clients.values()) {
         const manifest = lookManifestFor(c, client);
-        if (manifest) send(client, manifest);
+        if (manifest) {
+            send(client, manifest);
+            c.lookSentTo.add(client.clientId);
+        }
     }
 
     broadcastRoom(room, clientId, { type: "UPDATE_CLIENT_STATE", ...clientStateOf(room, client, -1) });
@@ -1009,7 +1019,9 @@ function handleDisconnect(client) {
     clearTimeout(client.lookTimer);
     client.lookTimer = null;
     client.lookManifest = null;
+    client.lookSentTo.clear();
     if (!room) return;
+    for (const c of room.clients.values()) c.lookSentTo.delete(client.clientId);
 
     room.clients.delete(client.clientId);
     broadcastRoom(room, -1, { type: "UPDATE_CLIENT_STATE", clientId: client.clientId, online: false });

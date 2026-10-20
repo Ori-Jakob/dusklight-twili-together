@@ -2904,6 +2904,29 @@ test("a team-scoped LOOK_MANIFEST reaches teammates only", () => withServer(asyn
     await lateRival.expectNone((p) => p.type === "LOOK_MANIFEST", "a team manifest replayed to another team");
 }));
 
+test("narrowing a LOOK_MANIFEST from room to team empties it for the other teams once", () => withServer(async (mk) => {
+    const a = mk();
+    const mate = mk();
+    const rival = mk();
+    await a.join({ name: "A", teamId: "red", features: COS_SEND });
+    await mate.join({ name: "M", teamId: "red", features: ["cos.recv"] });
+    await rival.join({ name: "R", teamId: "blue", features: ["cos.recv"] });
+    a.send(manifest(1, { eponaColor: "aa5500" }));
+    assert.equal((await rival.waitType("LOOK_MANIFEST")).cosmetics.vars.eponaColor, "aa5500");
+    await mate.waitType("LOOK_MANIFEST", (p) => p.rev === 1);
+    a.send(manifest(2, { eponaColor: "aa5500" }, { scope: "team" }));
+    const cleared = await rival.waitType("LOOK_MANIFEST", (p) => p.rev === 2, 2000);
+    assert.equal(cleared.cosmetics, null);
+    assert.deepEqual(cleared.looks, []);
+    assert.equal((await mate.waitType("LOOK_MANIFEST", (p) => p.rev === 2, 2000)).cosmetics.vars.eponaColor, "aa5500");
+    a.send(manifest(3, { eponaColor: "bb5500" }, { scope: "team" }));
+    await mate.waitType("LOOK_MANIFEST", (p) => p.rev === 3, 2000);
+    await rival.expectNone((p) => p.type === "LOOK_MANIFEST", "a second emptied or a team manifest to another team");
+    // Widened again: the other team gets it back.
+    a.send(manifest(4, { eponaColor: "bb5500" }));
+    assert.equal((await rival.waitType("LOOK_MANIFEST", (p) => p.rev === 4, 2000)).cosmetics.vars.eponaColor, "bb5500");
+}, { TT_LOOK_MANIFEST_INTERVAL_MS: "200" }));
+
 test("an oversized LOOK_MANIFEST is dropped and the last good one stays", () => withServer(async (mk, server) => {
     const a = mk();
     const b = mk();
