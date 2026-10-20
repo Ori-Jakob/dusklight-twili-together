@@ -142,11 +142,33 @@ function listExeMods(exe) {
     return ids;
 }
 
+// Fixture mods the in-tree build puts in mods/autotest/, which the game does not scan; an enabled
+// one is copied into the slot's own mods folder (the user mods directory under --user-dir).
+function listFixtureMods(exe) {
+    const dir = path.join(path.dirname(exe), "mods", "autotest");
+    const fixtures = new Map();
+    let names = [];
+    try {
+        names = fs.readdirSync(dir).filter((f) => f.endsWith(".dusk"));
+    } catch {
+        return fixtures;
+    }
+    for (const name of names) {
+        try {
+            const manifest = readZipEntry(path.join(dir, name), "mod.json");
+            if (manifest) fixtures.set(JSON.parse(manifest.toString("utf8")).id, path.join(dir, name));
+        } catch (err) {
+            console.warn(`    cannot read fixture manifest ${name}: ${err.message}`);
+        }
+    }
+    return fixtures;
+}
+
 // The SDL preference path under the slot's redirected home.
 const slotHome = (dir) => path.join(dir, "home");
 const slotCacheDir = (dir) => path.join(slotHome(dir), "AppData", "Roaming", "TwilitRealm", "Dusklight");
 
-function prepareSlot(index, modIds, enableMods) {
+function prepareSlot(index, modIds, enableMods, fixtures) {
     const dir = path.join(WORK_DIR, `slot${index}`);
     fs.mkdirSync(dir, { recursive: true });
     for (const name of ["logs", "USA", "PAL", "JPN", "achievements.json", "states.json", "mod_saves.json",
@@ -165,6 +187,11 @@ function prepareSlot(index, modIds, enableMods) {
     const mods = {};
     for (const id of modIds) {
         mods[`mod.${escapeModId(id)}.enabled`] = id === MOD_ID || enableMods.includes(id);
+    }
+    for (const id of enableMods.filter((x) => fixtures.has(x) && !modIds.includes(x))) {
+        fs.mkdirSync(path.join(dir, "mods"), { recursive: true });
+        fs.copyFileSync(fixtures.get(id), path.join(dir, "mods", path.basename(fixtures.get(id))));
+        mods[`mod.${escapeModId(id)}.enabled`] = true;
     }
     fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({ ...config, ...TEST_CONFIG, ...mods }, null, 4));
 
@@ -323,9 +350,15 @@ async function runScenario(scenario, opts, outRoot) {
     console.log(`    ${server ? `server ${url}` : "no server"}, timeout ${timeoutSec}s, out ${outDir}`);
 
     const modIds = listExeMods(opts.exe);
+    const fixtures = listFixtureMods(opts.exe);
     if (!modIds.includes(MOD_ID)) throw new Error(`${MOD_ID} is not next to ${opts.exe} (mods/*.dusk)`);
-    for (const id of scenario.enableMods ?? []) {
-        if (!modIds.includes(id)) throw new Error(`scenario ${scenario.name} enables ${id}, which is not next to the exe`);
+    // enableMods per scenario and per instance; a shared user dir gets all of them.
+    const enableFor = (inst) => [...(scenario.enableMods ?? []), ...(inst?.enableMods ?? [])];
+    const allEnabled = [...new Set(scenario.instances.flatMap((inst) => enableFor(inst)).concat(enableFor(null)))];
+    for (const id of allEnabled) {
+        if (!modIds.includes(id) && !fixtures.has(id)) {
+            throw new Error(`scenario ${scenario.name} enables ${id}, which is not next to the exe (mods/ or mods/autotest/)`);
+        }
     }
 
     const procs = [];
@@ -333,8 +366,8 @@ async function runScenario(scenario, opts, outRoot) {
     for (const [index, inst] of scenario.instances.entries()) {
         // sharedUserDir: every instance runs on slot0's user dir, like two games of one user.
         const dataDir = scenario.sharedUserDir
-            ? (sharedDir ??= prepareSlot(0, modIds, scenario.enableMods ?? []))
-            : prepareSlot(index, modIds, scenario.enableMods ?? []);
+            ? (sharedDir ??= prepareSlot(0, modIds, allEnabled, fixtures))
+            : prepareSlot(index, modIds, enableFor(inst), fixtures);
         const logDir = path.join(dataDir, "logs", ...(scenario.sharedUserDir ? [inst.name] : []));
         // Fixture files, relative to the user dir (e.g. a randomizer seed under mod_data).
         for (const [rel, content] of Object.entries({ ...scenario.files, ...inst.files })) {

@@ -73,7 +73,12 @@ slot's shader caches from the user's data folder; later runs reuse them.
 
 Mods: every `.dusk` next to the exe loads by default, and the in-tree build puts all in-tree mods
 there (`custom_actor_demo` alone places a rock and mines in South Faron). The runner reads each
-bundle's `mod.json` and disables every mod except Twili-Together and the scenario's `enableMods`.
+bundle's `mod.json` and disables every mod except Twili-Together and the `enableMods` of the
+scenario and of the instance.
+
+Fixture mods (`tools/autotest/mods/`, asset-only) are packaged into `mods/autotest/` next to the
+exe, a folder the game does not scan. An instance that enables one gets a copy in its slot's own
+`mods/` folder (the user mods directory under `--user-dir`), so only that instance loads it.
 
 The Prelaunch menu is skipped by passing `--stage <start stage>` with `backend.skipPreLaunchUI`
 off. With that setting on, the host opens Prelaunch over the running game whenever a mod registers
@@ -688,7 +693,8 @@ exporting an array. A scenario has:
   happened;
 - `server`: force (`true`) or suppress (`false`) the relay server; by default it runs when a step
   uses a network op;
-- `enableMods`: ids of other mods next to the exe to keep enabled (`MODS` in `lib.js`);
+- `enableMods`: ids of other mods next to the exe, or of fixture mods in `mods/autotest/`, to keep
+  enabled (`MODS` in `lib.js`); an instance's own `enableMods` add to it for that instance;
 - `files`: `{path: text}` written into every instance's user dir before launch (an instance's own
   `files` too), e.g. randomizer seeds under `mod_data/`;
 - `sharedUserDir`: every instance runs on `slot0` (one user's config, saves and mod cache), each
