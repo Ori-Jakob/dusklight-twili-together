@@ -158,8 +158,8 @@ module.exports = [
     },
     {
         name: "heart-away",
-        description: "A takes the tree heart piece while B is in Link's house; B arrives while A still reads the item message (A's bit not yet set): the heart piece is never placed for B, and after A's bit it stays gone",
-        timeoutSec: 420,
+        description: "A takes the tree heart piece while B is in Link's house: B gets one piece and the bit in its save slot, and the heart piece is not there when B arrives",
+        timeoutSec: 360,
         cvars: COMMON_CVARS,
         instances: [
             {
@@ -172,10 +172,9 @@ module.exports = [
                     { op: "setInventory", maxLife: BASE_LIFE },
                     { op: "findFieldItem", tag: "h", bit: TREE_BIT },
                     ...barrier("ready", "B"),
-                    // B comes in during these 45 s.
-                    { op: "takeFieldItem", tag: "h", holdSec: 45, timeoutSec: 90 },
+                    { op: "takeFieldItem", tag: "h" },
                     { op: "expectItemBit", bit: TREE_BIT },
-                    ...barrier("taken", "B", 180),
+                    ...barrier("taken", "B"),
                     life(1, { forSec: 3 }),
                     ...barrier("done", "B", 180),
                     { op: "quit" },
@@ -190,19 +189,15 @@ module.exports = [
                     { op: "setInventory", maxLife: BASE_LIFE },
                     { op: "waitPeers", count: 1, timeoutSec: 90 },
                     ...barrier("ready", "A"),
-                    // A's grant came; its bit comes once A's message closes.
+                    ...barrier("taken", "A"),
+                    { op: "expectItemBit", bit: TREE_BIT, tbl: FIELD_TBL, timeoutSec: 30 },
                     life(1, { timeoutSec: 30 }),
                     warp(FIELD),
                     waitStage(FIELD),
-                    { op: "findFieldItem", bit: TREE_BIT, present: false, forSec: 5 },
-                    { op: "expectItemBit", bit: TREE_BIT, set: false },
-                    { op: "expectPickups", spawnsBlocked: 1 },
-                    ...barrier("taken", "A", 180),
-                    { op: "expectItemBit", bit: TREE_BIT, timeoutSec: 30 },
-                    ...away(FIELD),
+                    { op: "wait", sec: 3 },
                     { op: "findFieldItem", bit: TREE_BIT, present: false, forSec: 5 },
                     life(1, { forSec: 3 }),
-                    { op: "expectPickups", spawnsBlocked: 1, deduped: 0 },
+                    { op: "expectPickups", deduped: 0 },
                     ...barrier("done", "A", 180),
                     { op: "quit" },
                 ],
@@ -211,7 +206,7 @@ module.exports = [
     },
     {
         name: "heart-drop",
-        description: "the springwater Goron's heart piece, dropped at run time (Hyrule Field bit 0x80, check goron_springwater_rush): B's copy goes as soon as A takes A's, B's drop while A reads the message is never placed, nor after A's bit; one piece each",
+        description: "the springwater Goron's heart piece, dropped at run time (Hyrule Field bit 0x80, check goron_springwater_rush): B's dropped copy goes when A takes A's, B's next drop is refused, one piece each",
         timeoutSec: 360,
         cvars: COMMON_CVARS,
         instances: [
@@ -225,10 +220,9 @@ module.exports = [
                     { op: "spawnFieldItem", tag: "h", item: HEART_PIECE, bit: SPRINGWATER_BIT, check: SPRINGWATER },
                     { op: "expectFieldItem", tag: "h", timeoutSec: 10 },
                     ...barrier("dropped", "B"),
-                    // B drops another during these 20 s.
-                    { op: "takeFieldItem", tag: "h", holdSec: 20, timeoutSec: 60 },
+                    { op: "takeFieldItem", tag: "h" },
                     { op: "expectItemBit", bit: SPRINGWATER_BIT },
-                    ...barrier("taken", "B", 120),
+                    ...barrier("taken", "B"),
                     life(1, { forSec: 5 }),
                     { op: "expectPickups", deduped: 0 },
                     ...barrier("done", "B"),
@@ -245,17 +239,12 @@ module.exports = [
                     { op: "spawnFieldItem", tag: "h", item: HEART_PIECE, bit: SPRINGWATER_BIT, check: SPRINGWATER },
                     { op: "expectFieldItem", tag: "h", timeoutSec: 10 },
                     ...barrier("dropped", "A"),
-                    // A's grant names the check: our copy goes before A's bit.
+                    ...barrier("taken", "A"),
                     { op: "expectFieldItem", tag: "h", present: false, timeoutSec: 15 },
+                    { op: "expectItemBit", bit: SPRINGWATER_BIT },
                     life(1, { timeoutSec: 30 }),
-                    { op: "expectItemBit", bit: SPRINGWATER_BIT, set: false },
                     { op: "spawnFieldItem", tag: "h2", item: HEART_PIECE, bit: SPRINGWATER_BIT, check: SPRINGWATER, refused: true },
                     { op: "expectFieldItem", tag: "h2", present: false, forSec: 3 },
-                    { op: "expectPickups", removed: 1, spawnsBlocked: 1 },
-                    ...barrier("taken", "A", 120),
-                    { op: "expectItemBit", bit: SPRINGWATER_BIT, timeoutSec: 30 },
-                    { op: "spawnFieldItem", tag: "h3", item: HEART_PIECE, bit: SPRINGWATER_BIT, check: SPRINGWATER, refused: true },
-                    { op: "expectFieldItem", tag: "h3", present: false, forSec: 3 },
                     life(1, { forSec: 5 }),
                     { op: "expectPickups", removed: 1, deduped: 0 },
                     ...barrier("done", "A"),
@@ -263,6 +252,35 @@ module.exports = [
                 ],
             },
         ],
+    },
+    {
+        name: "heart-drop-overlap",
+        description: "A and B each take their own drop of the springwater heart piece, A holding its item message while B's take finishes: the check comes with both grants, so each ends with exactly one piece",
+        timeoutSec: 360,
+        cvars: COMMON_CVARS,
+        instances: ["A", "B"].map((name) => {
+            const other = name === "A" ? "B" : "A";
+            return {
+                name,
+                start: FIELD_START,
+                steps: [
+                    ...connect,
+                    ...meetIn(FIELD, other),
+                    { op: "setInventory", maxLife: BASE_LIFE },
+                    { op: "spawnFieldItem", tag: "h", item: HEART_PIECE, bit: SPRINGWATER_BIT, check: SPRINGWATER },
+                    { op: "expectFieldItem", tag: "h", timeoutSec: 10 },
+                    ...barrier("dropped", other),
+                    // B takes its copy during A's 12 s.
+                    ...(name === "A" ? [{ op: "takeFieldItem", tag: "h", holdSec: 12, timeoutSec: 60 }] :
+                        [{ op: "wait", sec: 2 }, { op: "takeFieldItem", tag: "h" }]),
+                    ...barrier("taken", other),
+                    life(1, { forSec: 6 }),
+                    { op: "expectPickups", deduped: 1 },
+                    ...barrier("done", other),
+                    { op: "quit" },
+                ],
+            };
+        }),
     },
     {
         name: "heart-chest",

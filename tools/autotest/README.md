@@ -323,12 +323,12 @@ learned skill removes B's golden wolf, a taken golden wolf item vanishes and arr
 the corrections are English-only (the US disc forced to another language). `story-tears-tab`
 (`scenarios/story-late.js`) shows each teammate's tear count, and B's lost tear, in the Players tab.
 
-Heart pieces a teammate took (`scenarios/hearts.js`, **not run yet**): `heart-live` (A takes Hyrule
-Field's own tree heart piece, bit 0x81, with B in that room: B's copy vanishes, one piece each, gone
-when B comes back), `heart-away` (B in Link's house; B arrives while A still reads the item message,
-before A's bit: never placed, `spawnsBlocked` 1, and still gone after the bit), `heart-drop` (the
-springwater heart piece dropped at run time under `goron_springwater_rush`: B's copy goes on A's grant,
-B's drops during A's message and after A's bit are refused), `heart-chest` (Kakariko Gorge's own heart
+Heart pieces a teammate took (`scenarios/hearts.js`): `heart-live` (A takes Hyrule Field's own tree
+heart piece, bit 0x81, with B in that room: B's copy vanishes, one piece each, gone when B comes back),
+`heart-away` (B in Link's house: the bit lands in B's save slot, the piece is not there when B
+arrives), `heart-drop` (the springwater heart piece dropped at run time under `goron_springwater_rush`:
+B's dropped copy goes, B's next drop is refused), `heart-drop-overlap` (both take their own drop of it,
+A holding its message: one piece each), `heart-chest` (Kakariko Gorge's own heart
 piece chest 5: opens for B, refused to B, open after coming back), `heart-rando-reward` (randomizer:
 both win Plumm's reward check at once, one piece each) and, tag `boss-fight`, `heart-boss` (A takes
 Diababa's heart container in the temple, B's own kill in its arena drops none, +5 once) and
