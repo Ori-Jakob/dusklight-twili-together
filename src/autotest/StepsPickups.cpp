@@ -126,11 +126,18 @@ std::optional<bool> spawnChest(StepContext& ctx) {
 
 // What Link does on an A press next to it, pressing A through the item message; done once the
 // bit is set and the event ended. refused: for `frames` ticks the open must not start an event.
+// approach: Link first stands in front of the chest, facing it (a stage's own chest).
 std::optional<bool> openChest(StepContext& ctx) {
     daTbox_c* chest = chestOf(ctx.step);
     fopAc_ac_c* player = dComIfGp_getPlayer(0);
     const bool refused = ctx.step.value("refused", false);
     const bool running = dComIfGp_event_runCheck() != FALSE;
+    if (ctx.step.value("approach", false) && chest != nullptr && player != nullptr && !running) {
+        const s16 yaw = chest->shape_angle.y;
+        const cXyz front(chest->current.pos.x + 110.0f * cM_ssin(yaw), chest->current.pos.y,
+            chest->current.pos.z + 110.0f * cM_scos(yaw));
+        daPy_getPlayerActorClass()->setPlayerPosAndAngle(&front, static_cast<s16>(yaw + 0x8000), TRUE);
+    }
     if (refused && running) {
         ctx.fail("openChest: the open started an event");
         return false;
@@ -189,6 +196,8 @@ fopAc_ac_c* fieldItemOf(const nlohmann::json& step) {
 }
 
 // A field item, or a heart piece for items 0x21/0x22, with item bit `bit`, `dist` units ahead.
+// check: dropped the way a boss or NPC drops one, under that check name. refused: the create may
+// fail (a taken heart piece).
 std::optional<bool> spawnFieldItem(StepContext& ctx) {
     fopAc_ac_c* player = dComIfGp_getPlayer(0);
     const int roomNo = dStage_roomControl_c::getStayNo();
@@ -205,17 +214,20 @@ std::optional<bool> spawnFieldItem(StepContext& ctx) {
     const cXyz pos(player->current.pos.x + dist * cM_ssin(facing), player->current.pos.y + 20.0f,
         player->current.pos.z + dist * cM_scos(facing));
     const csXyz angle(0, facing, 0);
+    const std::string check = ctx.step.value("check", std::string{});
     layer_class* saved = fpcLy_CurrentLayer();
     fpcLy_SetCurrentLayer(&room->base.layer);
-    const fpc_ProcID id =
-        fopAcM_createItem(&pos, item, bit, roomNo, &angle, nullptr, daItem_c::TYPE_WAIT_e);
+    const fpc_ProcID id = check.empty() ?
+        fopAcM_createItem(&pos, item, bit, roomNo, &angle, nullptr, daItem_c::TYPE_WAIT_e) :
+        fopAcM_createItemForBoss(&pos, item, roomNo, &angle, nullptr, 0.0f, 0.0f, bit, check.c_str());
     fpcLy_SetCurrentLayer(saved);
-    if (id == fpcM_ERROR_PROCESS_ID_e) {
+    if (id == fpcM_ERROR_PROCESS_ID_e && !ctx.step.value("refused", false)) {
         ctx.fail("spawnFieldItem: create request failed");
         return false;
     }
     sFieldItems[ctx.step.value("tag", std::string("item"))] = id;
-    TwiliLog.info("[autotest] field item 0x{:02X} (bit {}) requested", item, bit);
+    TwiliLog.info("[autotest] field item 0x{:02X} (bit {}{}) requested{}", item, bit,
+        check.empty() ? "" : ", " + check, id == fpcM_ERROR_PROCESS_ID_e ? ": refused" : "");
     return true;
 }
 
@@ -256,9 +268,17 @@ void* findBitItem(void* proc, void* data) {
     return nullptr;
 }
 
-// Tags a stage's own item with item bit `bit` (the fishing hole's heart piece) for the item steps.
+// Tags a stage's own item with item bit `bit` (the fishing hole's heart piece) for the item steps;
+// present: false wants none there for `forSec` (default 3).
 std::optional<bool> findFieldItem(StepContext& ctx) {
     int bit = ctx.step.value("bit", 0x80);
+    if (!ctx.step.value("present", true)) {
+        if (fopAcM_Search(&findBitItem, &bit) != nullptr) {
+            ctx.fail(fmt::format("findFieldItem: an item with bit {} is there", bit));
+            return false;
+        }
+        return ctx.seconds >= ctx.step.value("forSec", 3.0);
+    }
     if (fopAc_ac_c* item = fopAcM_Search(&findBitItem, &bit)) {
         sFieldItems[ctx.step.value("tag", std::string("item"))] = fopAcM_GetID(item);
         return true;
@@ -408,6 +428,7 @@ std::optional<bool> expectPickups(StepContext& ctx) {
         {"grantsApplied", s.grantsApplied}, {"grantsQueued", s.grantsQueued},
         {"removed", s.freestandingRemoved}, {"blocked", s.freestandingBlocked},
         {"deduped", s.grantsDeduped}, {"actorsRemoved", s.actorsRemoved},
+        {"spawnsBlocked", s.spawnsBlocked},
     };
     std::string bad;
     for (const auto& [name, value] : have) {
