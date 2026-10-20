@@ -432,7 +432,7 @@ void handleUpdateWorldState(const nlohmann::json& packet) {
     RemoteApplyGuard guard;
 
     dSv_save_c& local = info->getSavedata();
-    holdMergeForBossFight(remote, local);
+    holdMergeForBossFight(remote);
     const MergeBaseline before = mergeBaseline(local);
     const TakeSnapshot takesBefore = takeSnapshot();
     uint32_t itemBitsBefore[dSv_save_c::STAGE_MAX];

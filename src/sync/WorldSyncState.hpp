@@ -152,7 +152,6 @@ bool isTrapGrant(const char* checkName);
 // `check`: the give's check name, sent along for placed checks (parsePlacedCheck).
 void sendGiveItem(uint8_t itemNo, const char* check);
 void handleGiveItem(const nlohmann::json& packet);
-void applyGiveItem(const nlohmann::json& packet);
 
 // DungeonItems.cpp
 void tickDungeonItemTracking();
@@ -162,8 +161,8 @@ void applyUpdateDungeonItems(const nlohmann::json& packet);
 
 // BossHold.cpp: while our boss fight runs, a teammate's flags from its arena wait (true: held).
 bool holdForBossFight(const std::string& type, const nlohmann::json& packet);
-// Takes out of a merge what we hold: the arena's boss bits and held bits, and a higher max life.
-void holdMergeForBossFight(dSv_save_c& remote, dSv_save_c& local);
+// Takes out of a merge what we hold: the arena's boss bits and the switches and event bits held.
+void holdMergeForBossFight(dSv_save_c& remote);
 void holdDanForBossFight(dSv_danBit_c& remote);
 void dropBossFightHolds();
 

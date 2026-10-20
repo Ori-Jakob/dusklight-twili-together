@@ -1,6 +1,8 @@
-// A teammate's flags from our boss arena wait while we fight there: a kill, clear or heart container of
-// theirs must not change our fight (doors, Midna's hints, switch-driven scenes, the restart point after
-// a game over, our own heart container). Everything else keeps flowing. Applied once the fight ends.
+// A teammate's flags that would interrupt our boss fight wait while we fight it: switches and event bits
+// from our arena (doors, Midna's hints and messages, switch-driven scenes) and the boss and mini-boss
+// bits of its stage (the restart point after a game over, a reload that empties the arena, Dangoro's
+// armor). Everything else keeps flowing, the heart container's STAGE_LIFE too: with it set our own kill
+// spawns no second one. Applied once the fight ends.
 
 #include "sync/WorldSyncState.hpp"
 
@@ -19,17 +21,15 @@ namespace twili::sync {
 namespace detail {
 namespace {
 
-// STAGE_BOSS_ENEMY, STAGE_LIFE, STAGE_BOSS_DEMO, OOCCOO_NOTE (set with the boss bit), STAGE_BOSS_ENEMY_2.
-constexpr uint8_t kBossBits = 0xF8;
+constexpr uint8_t kBossBits =
+    1 << dSv_memBit_c::STAGE_BOSS_ENEMY | 1 << dSv_memBit_c::STAGE_BOSS_ENEMY_2;
 // A teammate cannot grow this without bound.
 constexpr size_t kMaxHeld = 4096;
 
 constexpr int kMemorySwitchEnd = dSv_info_c::MEMORY_SWITCH;
 constexpr int kDanSwitchEnd = kMemorySwitchEnd + dSv_info_c::DAN_SWITCH;
-constexpr int kDanItemEnd = dSv_info_c::MEMORY_ITEM;
-constexpr int kMemoryItemEnd = kDanItemEnd + dSv_info_c::DAN_ITEM;
 
-enum Scope : uint32_t { kMemSwitch = 1, kDanSwitch, kMemItem, kDanItem, kTbox };
+enum Scope : uint32_t { kMemSwitch = 1, kDanSwitch };
 
 uint32_t key(Scope scope, int saveTbl, int no) {
     return scope << 24 | static_cast<uint32_t>(saveTbl & 0xFF) << 16 | static_cast<uint32_t>(no & 0xFFFF);
@@ -38,45 +38,33 @@ uint32_t key(Scope scope, int saveTbl, int no) {
 struct Held {
     // In arrival order; replayed through the same apply functions.
     std::vector<nlohmann::json> packets;
-    // Bits those packets set, taken out of world-state merges meanwhile.
-    std::set<uint32_t> bits;
+    // Switches and event bits those packets set, taken out of world-state merges meanwhile.
+    std::set<uint32_t> switches;
     std::set<uint16_t> events;
-    // From merges only: boss bits per stage table, and the highest max life.
+    // From merges only: boss bits per stage table.
     uint8_t dungeonBits[dSv_save_c::STAGE_MAX] = {};
-    uint16_t maxLife = 0;
 };
 
 Held s_held;
 
-void noteFlagBits(const nlohmann::json& packet) {
-    const std::string category = packet.value("category", std::string{});
+void noteSwitch(const nlohmann::json& packet) {
     const int no = packet.value("flagNo", -1);
     const int tbl = packet.value("saveTblNo", -1);
     if (no < 0 || tbl < 0 || tbl >= dSv_save_c::STAGE_MAX) {
         return;
     }
-    if (category == "SWITCH") {
-        if (no < kMemorySwitchEnd) {
-            s_held.bits.insert(key(kMemSwitch, tbl, no));
-        } else if (no < kDanSwitchEnd) {
-            s_held.bits.insert(key(kDanSwitch, tbl, no - kMemorySwitchEnd));
-        }
-    } else if (category == "ITEM") {
-        if (no < kDanItemEnd) {
-            s_held.bits.insert(key(kDanItem, tbl, no));
-        } else if (no < kMemoryItemEnd) {
-            s_held.bits.insert(key(kMemItem, tbl, no - kDanItemEnd));
-        }
-    } else if (category == "TBOX" && no < TBOX_MAX) {
-        s_held.bits.insert(key(kTbox, tbl, no));
+    if (no < kMemorySwitchEnd) {
+        s_held.switches.insert(key(kMemSwitch, tbl, no));
+    } else if (no < kDanSwitchEnd) {
+        s_held.switches.insert(key(kDanSwitch, tbl, no - kMemorySwitchEnd));
     }
 }
 
 bool held(Scope scope, int tbl, int no) {
-    return s_held.bits.count(key(scope, tbl, no)) != 0;
+    return s_held.switches.count(key(scope, tbl, no)) != 0;
 }
 
-void keep(const std::string& type, const nlohmann::json& packet, const char* what) {
+void keep(const std::string& type, const nlohmann::json& packet, const std::string& what) {
     if (s_held.packets.size() >= kMaxHeld) {
         TwiliLog.warn("[sync] boss fight: too many held packets, applying {} now", type);
         return;
@@ -87,14 +75,6 @@ void keep(const std::string& type, const nlohmann::json& packet, const char* wha
     state().stats.bossHeld++;
     TwiliLog.info("[sync] boss fight in {}: {} from client {} waits ({})", boss::arena().stage, type,
         packet.value("clientId", 0u), what);
-}
-
-bool isArenaCheck(const nlohmann::json& packet) {
-    const auto check = packet.find("check");
-    PlacedCheck c;
-    return check != packet.end() && check->is_string() &&
-           parsePlacedCheck(check->get_ref<const std::string&>().c_str(), c) &&
-           boss::inArena(c.stage.c_str(), boss::arena().room);
 }
 
 void applyHeld(const nlohmann::json& packet) {
@@ -109,8 +89,6 @@ void applyHeld(const nlohmann::json& packet) {
         applyUnsetEventBit(packet);
     } else if (type == "UPDATE_DUNGEON_ITEMS") {
         applyUpdateDungeonItems(packet);
-    } else if (type == "GIVE_ITEM") {
-        applyGiveItem(packet);
     }
 }
 
@@ -121,14 +99,14 @@ bool holdForBossFight(const std::string& type, const nlohmann::json& packet) {
         return false;
     }
     if (type == "SET_FLAG" || type == "UNSET_FLAG") {
-        if (!boss::fromArena(packet)) {
+        // Item flags and chests change nothing in the fight.
+        if (packet.value("category", std::string("SWITCH")) != "SWITCH" || !boss::fromArena(packet)) {
             return false;
         }
         if (type == "SET_FLAG") {
-            noteFlagBits(packet);
+            noteSwitch(packet);
         }
-        keep(type, packet, fmt::format("{} {}", packet.value("category", std::string("SWITCH")),
-                               packet.value("flagNo", -1)).c_str());
+        keep(type, packet, fmt::format("switch {}", packet.value("flagNo", -1)));
         return true;
     }
     if (type == "SET_EVENT_BIT" || type == "UNSET_EVENT_BIT") {
@@ -139,7 +117,7 @@ bool holdForBossFight(const std::string& type, const nlohmann::json& packet) {
         if (type == "SET_EVENT_BIT" && no <= 0xFFFF) {
             s_held.events.insert(static_cast<uint16_t>(no));
         }
-        keep(type, packet, fmt::format("0x{:04X}", no).c_str());
+        keep(type, packet, fmt::format("0x{:04X}", no));
         return true;
     }
     if (type == "UPDATE_DUNGEON_ITEMS") {
@@ -150,8 +128,8 @@ bool holdForBossFight(const std::string& type, const nlohmann::json& packet) {
         nlohmann::json boss = packet;
         boss["keyDelta"] = 0;
         boss["dungeonItemBits"] = bits & kBossBits;
-        keep(type, boss, fmt::format("boss bits 0x{:02X}", bits & kBossBits).c_str());
-        // Keys, map, compass and boss key go on now.
+        keep(type, boss, fmt::format("boss bits 0x{:02X}", bits & kBossBits));
+        // Keys, map, compass, boss key and the heart container's bit go on now.
         if (packet.value("keyDelta", 0) != 0 || (bits & ~kBossBits) != 0) {
             nlohmann::json rest = packet;
             rest["dungeonItemBits"] = bits & ~kBossBits;
@@ -159,18 +137,10 @@ bool holdForBossFight(const std::string& type, const nlohmann::json& packet) {
         }
         return true;
     }
-    if (type == "GIVE_ITEM") {
-        // The arena's heart container: its grant heals fully, and our own one comes after the fight.
-        if (!isArenaCheck(packet)) {
-            return false;
-        }
-        keep(type, packet, packet.value("check", std::string{}).c_str());
-        return true;
-    }
     return false;
 }
 
-void holdMergeForBossFight(dSv_save_c& remote, dSv_save_c& local) {
+void holdMergeForBossFight(dSv_save_c& remote) {
     if (!boss::guarded()) {
         return;
     }
@@ -187,26 +157,9 @@ void holdMergeForBossFight(dSv_save_c& remote, dSv_save_c& local) {
                 r.mSwitch[no >> 5] = static_cast<u32>(r.mSwitch[no >> 5]) & ~(1u << (no & 31));
             }
         }
-        for (int no = 0; no < dSv_info_c::DAN_ITEM; no++) {
-            if (held(kMemItem, tbl, no)) {
-                r.mItem[0] = static_cast<u32>(r.mItem[0]) & ~(1u << no);
-            }
-        }
-        for (int no = 0; no < TBOX_MAX; no++) {
-            if (held(kTbox, tbl, no)) {
-                r.mTbox[no >> 5] = static_cast<u32>(r.mTbox[no >> 5]) & ~(1u << (no & 31));
-            }
-        }
     }
     for (const uint16_t no : s_held.events) {
         remote.mEvent.mEvent[no >> 8] &= static_cast<uint8_t>(~(no & 0xFF));
-    }
-    // A teammate's heart container would raise our max life before our own one is picked up.
-    dSv_player_status_a_c& ra = remote.getPlayer().getPlayerStatusA();
-    const u16 ours = local.getPlayer().getPlayerStatusA().getMaxLife();
-    if (ra.getMaxLife() > ours) {
-        s_held.maxLife = std::max<uint16_t>(s_held.maxLife, ra.getMaxLife());
-        ra.setMaxLife(ours);
     }
 }
 
@@ -214,15 +167,9 @@ void holdDanForBossFight(dSv_danBit_c& remote) {
     if (!boss::guarded() || remote.mStageNo != boss::arena().saveTbl) {
         return;
     }
-    const int tbl = remote.mStageNo;
     for (int no = 0; no < dSv_info_c::DAN_SWITCH; no++) {
-        if (held(kDanSwitch, tbl, no)) {
+        if (held(kDanSwitch, remote.mStageNo, no)) {
             remote.mSwitch[no >> 5] &= ~(1u << (no & 31));
-        }
-    }
-    for (int no = 0; no < kDanItemEnd; no++) {
-        if (held(kDanItem, tbl, no)) {
-            remote.mItem[no >> 5] &= ~(1u << (no & 31));
         }
     }
 }
@@ -242,7 +189,7 @@ using namespace detail;
 void releaseBossFightHolds() {
     Held h = std::move(s_held);
     s_held = Held{};
-    if (h.packets.empty() && h.maxLife == 0 &&
+    if (h.packets.empty() &&
         std::all_of(std::begin(h.dungeonBits), std::end(h.dungeonBits), [](uint8_t b) { return b == 0; }))
     {
         return;
@@ -267,10 +214,6 @@ void releaseBossFightHolds() {
         if (live) {
             shiftDungeonItemBaseline(keyNum, before);
         }
-    }
-    dSv_player_status_a_c& a = info->getPlayer().getPlayerStatusA();
-    if (h.maxLife > a.getMaxLife()) {
-        a.setMaxLife(h.maxLife);
     }
 }
 

@@ -311,13 +311,10 @@ void sendGiveItem(uint8_t itemNo, const char* check) {
 }
 
 void handleGiveItem(const nlohmann::json& packet) {
-    if (acceptsWorldPacket(packet, "GIVE_ITEM") && !holdForBossFight("GIVE_ITEM", packet)) {
-        applyGiveItem(packet);
-    }
-}
-
-void applyGiveItem(const nlohmann::json& packet) {
     State& st = state();
+    if (!acceptsWorldPacket(packet, "GIVE_ITEM")) {
+        return;
+    }
     const Session& session = Session::instance();
     const int itemNo = packet.value("itemNo", -1);
     // A shield grant queued before the room made wooden shields personal is dropped too.
