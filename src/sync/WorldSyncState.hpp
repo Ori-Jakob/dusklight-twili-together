@@ -52,6 +52,8 @@ struct State {
 
     // Our grants waiting in ItemService's queue, oldest first.
     std::deque<uint8_t> pendingGrants;
+    // Per pending grant: the stage table the sender took it in (-1: unknown).
+    std::deque<int> pendingGrantTbls;
     bool grantWindow = false;
 
     std::set<std::string> layoutWarnedNames;

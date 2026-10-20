@@ -86,6 +86,7 @@ void checkSaveGeneration() {
     st.dungeonBaselineValid = false;
     invalidateCollectBaseline();
     st.pendingGrants.clear();
+    st.pendingGrantTbls.clear();
     st.exchangePending = true;
     resetFreestanding();
     resetTakes();

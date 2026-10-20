@@ -206,6 +206,8 @@ struct ActiveGrant {
     bool switch28 = false;
     bool stageLife = false;
     bool heldEarring = false;
+    // The stage table the sender took it in.
+    int senderTbl = -1;
 };
 
 ActiveGrant s_grant;
@@ -238,7 +240,10 @@ void undoStageEffects(const ActiveGrant& grant) {
         bit.mSwitch[kWoodStickSwitch >> 5] =
             static_cast<u32>(bit.mSwitch[kWoodStickSwitch >> 5]) & ~(1u << (kWoodStickSwitch & 31));
     }
-    if (grant.item == dItemNo_UTAWA_HEART_e && !grant.stageLife && liveStageLife()) {
+    // Taken in our stage table, STAGE_LIFE is the teammate's own bit for it: it stays.
+    if (grant.item == dItemNo_UTAWA_HEART_e && !grant.stageLife && liveStageLife() &&
+        (grant.senderTbl < 0 || grant.senderTbl != currentSaveTblNo()))
+    {
         bit.mDungeonItem &= static_cast<u8>(~(1 << dSv_memBit_c::STAGE_LIFE));
     }
     // A coral earring that got here first folds into the jewel rod, as ZORAS_JEWEL does.
@@ -268,7 +273,11 @@ void onItemGiven(ModContext*, const ItemGiveInfo* info, void*) {
     if (info->check_name != nullptr && std::strcmp(info->check_name, kRemoteGrant) == 0) {
         const auto it = std::find(st.pendingGrants.begin(), st.pendingGrants.end(), info->item);
         if (it != st.pendingGrants.end()) {
+            const auto i = it - st.pendingGrants.begin();
             st.pendingGrants.erase(it);
+            if (i < static_cast<std::ptrdiff_t>(st.pendingGrantTbls.size())) {
+                st.pendingGrantTbls.erase(st.pendingGrantTbls.begin() + i);
+            }
         }
         st.stats.grantsApplied++;
         TwiliLog.info("[sync] applied item 0x{:02X} from a teammate", info->item);
@@ -379,6 +388,7 @@ void handleGiveItem(const nlohmann::json& packet) {
         return;
     }
     st.pendingGrants.push_back(grant);
+    st.pendingGrantTbls.push_back(packet.value("saveTblNo", -1));
     st.stats.grantsQueued++;
     if (again) {
         st.stats.takeRegrants++;
@@ -489,20 +499,11 @@ void beforeItemGet(uint8_t itemNo) {
     s_grant.switch28 = liveSwitch28();
     s_grant.stageLife = liveStageLife();
     s_grant.heldEarring = dComIfGs_getItem(SLOT_20, false) == dItemNo_ZORAS_JEWEL_e;
+    s_grant.senderTbl = st.pendingGrantTbls.empty() ? -1 : st.pendingGrantTbls.front();
     RemoteApplyGuard::enter();
 }
 
 void afterItemGet(uint8_t itemNo) {
-    if (s_itemGetDepth > 0 && s_itemGetDepth <= static_cast<int>(s_liveBefore.size())) {
-        const LiveDungeonItems& before = s_liveBefore[s_itemGetDepth - 1];
-        if (before.absorb) {
-            shiftDungeonItemBaseline(before.keyNum, before.items);
-            if (isRandoDungeonKey(itemNo)) {
-                const int tbl = kRandoKeyTable[itemNo - kRandoKeyFirst];
-                state().keyCountAdoptable &= ~(1u << tbl);
-            }
-        }
-    }
     const bool remoteGrant =
         s_grant.active && s_grant.depth == s_itemGetDepth && s_grant.item == itemNo;
     if (remoteGrant) {
@@ -510,6 +511,17 @@ void afterItemGet(uint8_t itemNo) {
         restoreProgress(s_grant.kept);
         s_grant.active = false;
         RemoteApplyGuard::leave();
+    }
+    if (s_itemGetDepth > 0 && s_itemGetDepth <= static_cast<int>(s_liveBefore.size())) {
+        const LiveDungeonItems& before = s_liveBefore[s_itemGetDepth - 1];
+        // A kept STAGE_LIFE is the sender's, already on its way: not ours to send.
+        if (before.absorb || remoteGrant) {
+            shiftDungeonItemBaseline(before.keyNum, before.items);
+        }
+        if (before.absorb && isRandoDungeonKey(itemNo)) {
+            const int tbl = kRandoKeyTable[itemNo - kRandoKeyFirst];
+            state().keyCountAdoptable &= ~(1u << tbl);
+        }
     }
     if (s_itemGetDepth == 1) {
         takesAfterItemGet(itemNo, remoteGrant);
