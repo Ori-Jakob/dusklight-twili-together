@@ -1,4 +1,5 @@
 // Chests and keys a teammate took: the lid opens here too (no event, no item), the key vanishes.
+// Two of us opening one chest at once each get its item once (the chest: check).
 
 #include "sync/WorldSyncState.hpp"
 
@@ -111,7 +112,43 @@ void* removeTakenKey(void* proc, void* data) {
     return nullptr;
 }
 
+struct Opening {
+    int no;
+    bool found = false;
+};
+
+// Ordered or commanded to open, or the treasure event that gives its item still runs.
+void* findOpening(void* proc, void* data) {
+    auto* actor = static_cast<fopAc_ac_c*>(proc);
+    auto* opening = static_cast<Opening*>(data);
+    int no = kNoTbox;
+    if (fopAcM_GetName(actor) == fpcNm_TBOX_e) {
+        no = static_cast<daTbox_c*>(actor)->getTboxNo();
+    } else if (fopAcM_GetName(actor) == fpcNm_TBOX2_e) {
+        no = tbox2No(static_cast<daTbox2_c*>(actor));
+    }
+    if (no != opening->no) {
+        return nullptr;
+    }
+    const bool inEvent = dComIfGp_event_runCheck() && (dComIfGp_event_getPt2() == actor ||
+                                                          dComIfGp_event_getDoorPartner() == actor);
+    if (inEvent || ordered(actor) || actor->eventInfo.checkCommandDoor()) {
+        opening->found = true;
+        return actor;
+    }
+    return nullptr;
+}
+
 }  // namespace
+
+bool chestOpeningForUs(int tboxNo) {
+    if (tboxNo < 0 || tboxNo >= TBOX_MAX) {
+        return false;
+    }
+    Opening opening{tboxNo};
+    fopAcM_Search(&findOpening, &opening);
+    return opening.found;
+}
 
 void onRemoteTbox(int saveTblNo, int tboxNo, bool live) {
     if (saveTblNo != currentSaveTblNo() || tboxNo < 0 || tboxNo >= TBOX_MAX) {

@@ -135,25 +135,37 @@ void handleSetFlag(const nlohmann::json& packet) {
 
     RemoteApplyGuard guard;
     if (category == "SWITCH") {
+        // Newly set here: a Poe with this soul switch fades if it is in our stage.
+        bool had = true;
+        bool here = false;
         switch (switchScope(flagNo)) {
         case Scope::Memory:
             if (dSv_memBit_c* bit = memBitForSaveTbl(saveTblNo)) {
+                had = ((static_cast<u32>(bit->mSwitch[flagNo >> 5]) >> (flagNo & 31)) & 1u) != 0;
+                here = saveTblNo == currentSaveTblNo();
                 bit->onSwitch(flagNo);
                 noteMemorySwitch(saveTblNo, flagNo, true);
             }
             break;
         case Scope::Dan:
             if (dSv_danBit_c* dan = danBitForSaveTbl(saveTblNo)) {
+                had = ((dan->mSwitch[(flagNo - kMemorySwitchEnd) >> 5] >> (flagNo & 31)) & 1u) != 0;
+                here = true;
                 dan->onSwitch(flagNo - kMemorySwitchEnd);
             }
             break;
         case Scope::Zone:
             if (zoneIsLoaded(stageName, roomNo)) {
+                had = info->isSwitch(flagNo, roomNo) != FALSE;
+                here = true;
                 info->onSwitch(flagNo, roomNo);
             }
             break;
         default:
             break;
+        }
+        if (!had) {
+            onRemoteSwitch(saveTblNo, flagNo, roomNo, here);
         }
     } else if (category == "ITEM") {
         const bool had = itemBitSet(saveTblNo, flagNo, roomNo);
@@ -186,6 +198,9 @@ void handleSetFlag(const nlohmann::json& packet) {
     } else if (category == "TBOX") {
         if (flagNo >= 0 && flagNo < TBOX_MAX) {
             if (dSv_memBit_c* bit = memBitForSaveTbl(saveTblNo)) {
+                if (((static_cast<u32>(bit->mTbox[flagNo >> 5]) >> (flagNo & 31)) & 1u) == 0) {
+                    onRemoteTboxBit(saveTblNo, flagNo);
+                }
                 bit->onTbox(flagNo);
                 onRemoteTbox(saveTblNo, flagNo, true);
             }
@@ -235,8 +250,13 @@ void handleSetEventBit(const nlohmann::json& packet) {
         return;
     }
     RemoteApplyGuard guard;
-    dComIfGs_getSaveInfo()->getEvent().onEventBit(static_cast<uint16_t>(no));
+    dSv_event_c& event = dComIfGs_getSaveInfo()->getEvent();
+    const bool had = (event.mEvent[no >> 8] & static_cast<uint8_t>(no)) != 0;
+    event.onEventBit(static_cast<uint16_t>(no));
     noteEventBit(static_cast<uint16_t>(no), true);
+    if (!had) {
+        onRemoteEventBit(static_cast<uint16_t>(no), true);
+    }
 }
 
 void handleUnsetEventBit(const nlohmann::json& packet) {

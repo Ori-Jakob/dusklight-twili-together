@@ -89,17 +89,41 @@ void handleLightDrop(const nlohmann::json& packet);
 // Chests.cpp: a teammate's TBOX bit landed in that stage table (live: just now, from SET_FLAG).
 void onRemoteTbox(int saveTblNo, int tboxNo, bool live);
 void clearOpeningChests();
+// Our chest with that number is opening for us (its event commanded or its item demo running).
+bool chestOpeningForUs(int tboxNo);
+
+// Checks that stand for one thing in the world: GIVE_ITEM's `check`, granted once per team.
+enum class CheckKind : uint8_t { None, Freestanding, Boss, Poe, GoldenWolf, Fishing, Chest };
+struct PlacedCheck {
+    CheckKind kind = CheckKind::None;
+    std::string stage;
+    // Item bit, switch, event bit or chest number.
+    int no = -1;
+};
+bool parsePlacedCheck(const char* check, PlacedCheck& out);
 
 // Freestanding.cpp: item bits in dSv_info_c numbering (room only for zone bits).
 bool itemBitSet(int saveTblNo, int bit, int roomNo);
 // A teammate set this item bit here (it was not set): its item vanishes if it lies here.
 void onRemoteItemBit(int saveTblNo, int bit, int roomNo);
+// A teammate set this switch, TBOX bit or event bit (it was not set); `live`: just now, here.
+void onRemoteSwitch(int saveTblNo, int no, int roomNo, bool live);
+void onRemoteTboxBit(int saveTblNo, int no);
+void onRemoteEventBit(uint16_t no, bool live);
 // A teammate's GIVE_ITEM for `check`: false if that check already reached us.
 bool acceptTeamCheck(const std::string& check, int saveTblNo);
 void noteOwnCheck(const char* check);
 void tickFreestanding();
 void clearFreestandingStage();
 void resetFreestanding();
+
+// TakenActors.cpp: Poes and golden wolves a teammate's flag or check took.
+// A Poe with this soul switch dies for us right now (its soul is ours).
+bool poeDyingForUs(int bitSw);
+void removeTakenPoes(int bitSw, int roomNo);
+void removeTakenGoldenWolves(uint16_t eventBit);
+void tickTakenActors();
+void clearTakenActors();
 
 // The randomizer's trap item (dItemNo_Randomizer_FOOLISH_ITEM_e, an unused id in vanilla).
 inline constexpr uint8_t kFoolishItem = 0x13;
@@ -114,7 +138,7 @@ void handleSharePickup(const nlohmann::json& packet);
 bool isTrapGrant(const char* checkName);
 
 // GiveItem.cpp
-// `check`: the give's check name, sent along for freestanding and boss checks.
+// `check`: the give's check name, sent along for placed checks (parsePlacedCheck).
 void sendGiveItem(uint8_t itemNo, const char* check);
 void handleGiveItem(const nlohmann::json& packet);
 

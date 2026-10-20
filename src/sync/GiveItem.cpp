@@ -275,12 +275,11 @@ void onItemGiven(ModContext*, const ItemGiveInfo* info, void*) {
     sendGiveItem(info->item, info->check_name);
 }
 
-// Checks that stand for one item lying in the world; a receiver drops a second copy.
+// Checks that stand for one thing in the world (an item, a chest, a Poe); a receiver drops a
+// second copy.
 bool isPlacedCheck(const char* check) {
-    return check != nullptr &&
-           (std::strncmp(check, ITEM_CHECK_FREESTANDING_PREFIX,
-                sizeof(ITEM_CHECK_FREESTANDING_PREFIX) - 1) == 0 ||
-               std::strncmp(check, ITEM_CHECK_BOSS_PREFIX, sizeof(ITEM_CHECK_BOSS_PREFIX) - 1) == 0);
+    PlacedCheck placed;
+    return parsePlacedCheck(check, placed);
 }
 
 }  // namespace

@@ -101,6 +101,8 @@ struct Stats {
     uint32_t freestandingRemoved = 0;
     uint32_t freestandingBlocked = 0;
     uint32_t grantsDeduped = 0;
+    // Poes and golden wolves a teammate's flag or check took, removed here.
+    uint32_t actorsRemoved = 0;
 };
 const Stats& stats();
 // True once the incompatible-layout toast was shown for this teammate name.

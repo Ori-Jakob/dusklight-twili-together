@@ -106,6 +106,7 @@ set(TWILI_SOURCES
     src/sync/GiveItem.cpp
     src/sync/LightDrops.cpp
     src/sync/Pickups.cpp
+    src/sync/TakenActors.cpp
     src/sync/WorldState.cpp
     src/sync/WorldSync.cpp
     src/teleport/Teleport.cpp

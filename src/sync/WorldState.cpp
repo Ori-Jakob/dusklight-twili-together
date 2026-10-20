@@ -367,9 +367,20 @@ void handleUpdateWorldState(const nlohmann::json& packet) {
     dSv_save_c& local = info->getSavedata();
     const MergeBaseline before = mergeBaseline(local);
     uint32_t itemBitsBefore[dSv_save_c::STAGE_MAX];
+    // Switches and TBOX bits the merge brings were a teammate's (Poe souls, chests).
+    uint32_t switchesBefore[dSv_save_c::STAGE_MAX][4];
+    uint32_t tboxesBefore[dSv_save_c::STAGE_MAX][2];
     for (int s = 0; s < dSv_save_c::STAGE_MAX; s++) {
-        itemBitsBefore[s] = static_cast<u32>(local.mSave[s].getBit().mItem[0]);
+        const dSv_memBit_c& bit = local.mSave[s].getBit();
+        itemBitsBefore[s] = static_cast<u32>(bit.mItem[0]);
+        for (int i = 0; i < 4; i++) {
+            switchesBefore[s][i] = static_cast<u32>(bit.mSwitch[i]);
+        }
+        tboxesBefore[s][0] = static_cast<u32>(bit.mTbox[0]);
+        tboxesBefore[s][1] = static_cast<u32>(bit.mTbox[1]);
     }
+    uint8_t eventsBefore[MAX_EVENTS];
+    std::memcpy(eventsBefore, local.mEvent.mEvent, sizeof(eventsBefore));
     mergePlayer(local.getPlayer(), remote.getPlayer(), session.roomState().shareWoodenShield);
     for (int s = 0; s < dSv_save_c::STAGE_MAX; s++) {
         mergeMemBit(local.mSave[s].getBit(), remote.mSave[s].getBit(),
@@ -400,11 +411,29 @@ void handleUpdateWorldState(const nlohmann::json& packet) {
         }
     }
     for (int s = 0; s < dSv_save_c::STAGE_MAX; s++) {
-        const uint32_t gained =
-            static_cast<u32>(local.mSave[s].getBit().mItem[0]) & ~itemBitsBefore[s];
+        const dSv_memBit_c& bit = local.mSave[s].getBit();
+        const uint32_t gained = static_cast<u32>(bit.mItem[0]) & ~itemBitsBefore[s];
         for (int no = 0; gained != 0 && no < 32; no++) {
             if ((gained >> no) & 1u) {
                 onRemoteItemBit(s, dSv_info_c::MEMORY_ITEM + no, -1);
+            }
+        }
+        for (int no = 0; no < dSv_info_c::MEMORY_SWITCH; no++) {
+            if (((static_cast<u32>(bit.mSwitch[no >> 5]) & ~switchesBefore[s][no >> 5]) >> (no & 31)) & 1u) {
+                onRemoteSwitch(s, no, -1, false);
+            }
+        }
+        for (int no = 0; no < TBOX_MAX; no++) {
+            if (((static_cast<u32>(bit.mTbox[no >> 5]) & ~tboxesBefore[s][no >> 5]) >> (no & 31)) & 1u) {
+                onRemoteTboxBit(s, no);
+            }
+        }
+    }
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        const auto gained = static_cast<uint8_t>(local.mEvent.mEvent[i] & ~eventsBefore[i]);
+        for (int b = 0; gained != 0 && b < 8; b++) {
+            if ((gained >> b) & 1u) {
+                onRemoteEventBit(static_cast<uint16_t>(i << 8 | 1 << b), false);
             }
         }
     }
@@ -416,7 +445,13 @@ void handleUpdateWorldState(const nlohmann::json& packet) {
     {
         dSv_danBit_c& dan = info->getDan();
         for (int i = 0; i < 2; i++) {
+            const u32 gained = remoteDan.mSwitch[i] & ~dan.mSwitch[i];
             dan.mSwitch[i] |= remoteDan.mSwitch[i];
+            for (int no = 0; gained != 0 && no < 32; no++) {
+                if ((gained >> no) & 1u) {
+                    onRemoteSwitch(dan.mStageNo, dSv_info_c::MEMORY_SWITCH + i * 32 + no, -1, false);
+                }
+            }
         }
         for (int i = 0; i < 4; i++) {
             const u32 gained = remoteDan.mItem[i] & ~dan.mItem[i];
