@@ -54,6 +54,10 @@ const char* resultName(Result result);
 // The roster name, or "#<id>".
 std::string clientName(uint32_t clientId);
 
+// For an event tag's area check (daTag_Event_c::checkArea): true while a teleport landed Link in
+// that tag's area and he has not left it since, so landing beside a target never starts its event.
+bool holdAreaTrigger(uint32_t tagId, bool inArea);
+
 bool handlePacket(const std::string& type, const nlohmann::json& packet);
 // Every Session::update, connected or not: a stage change under way is seen through.
 void tick();

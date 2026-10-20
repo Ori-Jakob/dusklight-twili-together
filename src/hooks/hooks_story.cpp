@@ -6,9 +6,11 @@
 #include "story/Story.hpp"
 #include "story/StoryNpc.hpp"
 #include "sync/WorldSync.hpp"
+#include "teleport/Teleport.hpp"
 
 #include "d/actor/d_a_npc.h"
 #include "d/actor/d_a_obj_drop.h"
+#include "d/actor/d_a_tag_event.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_event.h"
 
@@ -19,6 +21,7 @@ namespace twili::hooks {
 DEFINE_HOOK(&dEvt_control_c::setParam, EventSetParam);
 DEFINE_HOOK(&daObjDrop_c::dropGet, ObjDropGet);
 DEFINE_HOOK(&daNpcT_c::evtOrder, NpcTEvtOrder);
+DEFINE_HOOK(&daTag_Event_c::checkArea, TagEventCheckArea);
 DEFINE_HOOK(static_cast<void (*)(const char*, s16, s8, s8, f32, u32, int, s8, s16, int, int)>(
                 &dComIfGp_setNextStage),
     SetNextStage);
@@ -53,6 +56,15 @@ HookAction onDropGetPre(ModContext*, void* args, void*, void*) {
 void onDropGetPost(ModContext*, void* args, void*, void*) {
     if (Session::active()) {
         sync::afterDropGet(mods::arg<daObjDrop_c*>(args, 0));
+    }
+}
+
+// A teleport landing in an event tag's area does not count as walking into it.
+void onTagEventCheckAreaPost(ModContext*, void* args, void* retval, void*) {
+    auto* tag = mods::arg<daTag_Event_c*>(args, 0);
+    auto& inArea = *static_cast<BOOL*>(retval);
+    if (tag != nullptr && teleport::holdAreaTrigger(fopAcM_GetID(tag), inArea != FALSE)) {
+        inArea = FALSE;
     }
 }
 
@@ -102,6 +114,10 @@ ModResult installStory(std::string& error) {
     }
     if (result == MOD_OK) {
         result = addPre<NpcTEvtOrder>(onNpcTEvtOrderPre, kObserve, "daNpcT_c::evtOrder", error);
+    }
+    if (result == MOD_OK) {
+        result = addPost<TagEventCheckArea>(
+            onTagEventCheckAreaPost, kDefault, "daTag_Event_c::checkArea", error);
     }
     return result;
 }

@@ -14,6 +14,7 @@
 
 #include "SSystem/SComponent/c_math.h"
 #include "d/actor/d_a_alink.h"
+#include "d/actor/d_a_scene_exit.h"
 #include "d/d_bg_s_gnd_chk.h"
 #include "d/d_bg_s_lin_chk.h"
 #include "d/d_bg_s_roof_chk.h"
@@ -33,6 +34,7 @@
 #include <cstring>
 #include <limits>
 #include <optional>
+#include <vector>
 
 namespace twili::teleport {
 namespace {
@@ -67,6 +69,8 @@ constexpr float kWaterProbe = 500.0f;
 constexpr float kLoadedProbeDepth = 5000.0f;
 // DEFAULT_START: map event 0 would play the destination's story cutscene (South Faron).
 constexpr int kStartEventDefaultStart = 0xCA;
+// Ticks after an arrival in which the event tags whose area Link stands in are held.
+constexpr int kLandingTicks = 5;
 
 struct Destination {
     char stageName[8] = {};
@@ -115,6 +119,9 @@ struct State {
 State s_state;
 SafeSpot s_safeSpot;
 float s_testOffset[3] = {};
+// Event tags (process ids) a teleport landed Link in; each waits until he has left its area.
+std::vector<uint32_t> s_heldTags;
+int s_landingTicks = 0;
 
 Session& session() {
     return Session::instance();
@@ -201,6 +208,20 @@ std::optional<Spot> standableAt(const cXyz& at, bool wolf) {
     return Spot{floor, roomNo};
 }
 
+void* findSceneExitAt(void* proc, void* data) {
+    auto* actor = static_cast<fopAc_ac_c*>(proc);
+    if (fopAcM_GetName(actor) != fpcNm_SCENE_EXIT_e) {
+        return nullptr;
+    }
+    auto* exit = static_cast<daScex_c*>(actor);
+    return exit->checkWork() && exit->checkArea(static_cast<const cXyz*>(data)) ? actor : nullptr;
+}
+
+// Inside a live scene exit's volume Link would take that exit at once.
+bool inSceneExit(const cXyz& pos) {
+    return fopAcM_Search(&findSceneExitAt, const_cast<cXyz*>(&pos)) != nullptr;
+}
+
 bool lineBlocked(const cXyz& from, const cXyz& to) {
     dBgS_LinkLinChk line;
     const cXyz a(from.x, from.y + kWaist, from.z);
@@ -209,14 +230,15 @@ bool lineBlocked(const cXyz& from, const cXyz& to) {
     return dComIfG_Bgsp().LineCross(&line);
 }
 
-// To their right, left, behind or in front, reachable from them; else on their spot.
+// To their right, left, behind or in front, reachable from them and outside scene exits; else on
+// their spot.
 std::optional<Spot> spotBeside(const Pose& p, bool wolf) {
     const cXyz at(p.x, p.y, p.z);
     for (const int side : {0x4000, -0x4000, 0x8000, 0}) {
         const s16 dir = static_cast<s16>(p.angleY + side);
         const cXyz c(p.x + cM_ssin(dir) * kSideOffset, p.y, p.z + cM_scos(dir) * kSideOffset);
         if (!lineBlocked(at, c)) {
-            if (std::optional<Spot> spot = standableAt(c, wolf)) {
+            if (std::optional<Spot> spot = standableAt(c, wolf); spot && !inSceneExit(spot->pos)) {
                 return spot;
             }
         }
@@ -365,6 +387,7 @@ void finish(Result result, std::string reason, std::string message, bool cooldow
 // We made it: beside the target, or on the spot it sent when the ground beside it would not do.
 void arrived(Result result, bool exact, const std::string& name) {
     finish(result, "", fmt::format("Teleported to {}.", name));
+    s_landingTicks = kLandingTicks;
     s_state.status.placement = exact ? "exact" : "fallback";
     if (!exact) {
         ui::toast("Teleport",
@@ -647,6 +670,7 @@ void handleTeleportTo(const nlohmann::json& packet) {
     t.dest = d;
     t.exact = exact;
     t.executeDeadline = Clock::now() + kExecuteWindow;
+    s_heldTags.clear();
     t.status.phase = Phase::Executing;
     t.status.message = fmt::format("Teleporting to {}...", name);
     TwiliLog.info("[teleport] destination {} room {} layer {} ({:.0f}, {:.0f}, {:.0f}), spot {} ms "
@@ -907,6 +931,28 @@ bool idle() {
     return s_state.status.phase == Phase::Idle;
 }
 
+bool holdAreaTrigger(uint32_t tagId, bool inArea) {
+    const auto it = std::find(s_heldTags.begin(), s_heldTags.end(), tagId);
+    if (!inArea) {
+        if (it != s_heldTags.end()) {
+            s_heldTags.erase(it);
+            TwiliLog.info("[teleport] event tag {} armed again: Link left its area", tagId);
+        }
+        return false;
+    }
+    if (it != s_heldTags.end()) {
+        return true;
+    }
+    // From the stage load until a few ticks after Link was put down.
+    const Phase phase = s_state.status.phase;
+    if (phase != Phase::AwaitingArrival && phase != Phase::Placing && s_landingTicks <= 0) {
+        return false;
+    }
+    s_heldTags.push_back(tagId);
+    TwiliLog.info("[teleport] holding event tag {} until Link leaves the area he landed in", tagId);
+    return true;
+}
+
 bool handlePacket(const std::string& type, const nlohmann::json& packet) {
     if (type == "REQUEST_TELEPORT") {
         handleRequestTeleport(packet);
@@ -920,6 +966,9 @@ bool handlePacket(const std::string& type, const nlohmann::json& packet) {
 
 void tick() {
     tickSafeSpot();
+    if (s_landingTicks > 0) {
+        --s_landingTicks;
+    }
 
     State& t = s_state;
     if (t.status.phase == Phase::Idle) {
