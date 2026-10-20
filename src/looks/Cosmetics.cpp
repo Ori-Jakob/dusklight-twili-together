@@ -179,6 +179,16 @@ std::optional<CosmeticsValues> parseCosmetics(const nlohmann::json& json) {
     return values;
 }
 
+// Once a second: the cosmetics mod may be turned on or off, its colours changed.
+void refreshLocal() {
+    const auto now = Clock::now();
+    if (!sLocalRead || now - sReadAt >= kReadInterval) {
+        sLocalRead = true;
+        sReadAt = now;
+        sLocal = readLocal();
+    }
+}
+
 const Client* clientOf(uint32_t clientId) {
     const auto& clients = Session::instance().clients();
     const auto it = clients.find(clientId);
@@ -276,12 +286,8 @@ void tick() {
         return;
     }
     warmUpCosmeticsKeys();
+    refreshLocal();
     const auto now = Clock::now();
-    if (!sLocalRead || now - sReadAt >= kReadInterval) {
-        sLocalRead = true;
-        sReadAt = now;
-        sLocal = readLocal();
-    }
     for (auto it = sShared.begin(); it != sShared.end();) {
         it = session.clients().contains(it->first) ? std::next(it) : sShared.erase(it);
     }
@@ -358,6 +364,7 @@ bool cosmeticsApproximate(const CosmeticsValues& values) {
 }
 
 std::string cosmeticsStatusText() {
+    refreshLocal();
     std::string mine;
     if (!canRead()) {
         mine = "This Dusklight cannot read your cosmetics (host too old), so nobody sees them.";
