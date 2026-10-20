@@ -291,20 +291,20 @@ Chests, freestanding items, shared pickups and traps (`StepsPickups.cpp`):
 | op | fields | does |
 | --- | --- | --- |
 | `spawnChest` | `tag`, `tbox` (TBOX number), `shape` (0 small, 1 big, 2 boss), `item`, `dist` (110) | a closed chest `dist` units in front of our player, facing him |
-| `openChest` | `tag` or `tbox`; `refused`, `frames` (60); `timeoutSec` | orders the chest's open as an A press does and presses A through the item message, until its bit is set and the event ended / with `refused`: for `frames` ticks no open may start an event |
+| `openChest` | `tag` or `tbox`; `refused`, `frames` (60), `approach`; `timeoutSec` | orders the chest's open as an A press does and presses A through the item message, until its bit is set and the event ended / with `refused`: for `frames` ticks no open may start an event. `approach`: our player first stands in front of the chest, facing it (a stage's own chest) |
 | `expectChestOpen` | `tag` or `tbox`, `open` (true), `forSec`, `timeoutSec` | the chest's TBOX bit is set and its lid at the last frame, with no event of ours (or, `open: false`, still closed) |
 | `expectTbox` | `no`, `tbl` (another stage table: its save slot), `set`, `forSec`, `timeoutSec` | a TBOX bit |
-| `spawnFieldItem` | `tag`, `item` (0x21/0x22: a heart piece or container), `bit` (item bit), `dist` (150) | a resting field item `dist` units in front of our player |
+| `spawnFieldItem` | `tag`, `item` (0x21/0x22: a heart piece or container), `bit` (item bit), `dist` (150), `check`, `refused` | a resting field item `dist` units in front of our player. `check`: dropped as a boss or NPC drops one (`fopAcM_createItemForBoss`) under that check name; `refused`: a failed create is fine (a taken heart piece) |
 | `takeFieldItem` | `tag`, `holdSec` (0), `timeoutSec` | puts the item on our player until he takes it, pressing A through its message only after `holdSec`; done when it is gone and no event runs |
 | `holdFieldItem` | `tag`, `hold` (true) | marks the item as pulled by the clawshot, or lets it go |
-| `findFieldItem` | `tag`, `bit` (0x80), `timeoutSec` | tags the stage's own item (or heart piece) with that item bit, like the fishing hole's heart piece |
+| `findFieldItem` | `tag`, `bit` (0x80), `present` (true), `forSec` (3), `timeoutSec` | tags the stage's own item (or heart piece) with that item bit, like the fishing hole's heart piece / with `present: false`, fails if one is there before `forSec` passed |
 | `markFieldItem` | `tag`, `wolfFlag` (event bit), `hooked` | turns a heart piece into the randomizer's golden wolf item with that flag / hooks it on a lure (the rod's `startCtrl`) |
 | `takeCheck` | `check`, `item`, `switch`, `itemBit`, `eventBit`, `eventLabel` (a `saveBitLabels` index), `tag` | takes a check as its game code does without the actor: sets the flags given, deletes the tagged field item and grants `item` silently under the check name |
 | `expectFieldItem` | `tag`, `present` (true), `forSec`, `timeoutSec` | the item exists |
 | `expectItemBit` | `bit` (below 0x80 dungeon, else memory), `tbl` (another stage table: its save slot), `set`, `forSec`, `timeoutSec` | an item bit |
 | `setInventory` | `rupees`, `life` (quarter hearts), `arrows`, `maxLife` (heart pieces, 5 a heart) | sets them in the save |
 | `expectInventory` | `rupees`, `life`, `arrows`, `bombs` (bag 0), `seeds`, `poes`, `bottles` (filled slots), `maxLife`, `keys` with `tbl`; `forSec`, `timeoutSec` | waits until each given value matches (and holds `forSec`) |
-| `expectPickups` | `sent`, `applied`, `skipped`, `rupees`, `life`, `arrows`, `seeds`, `bombs`, `trapsSent`, `trapsReceived`, `trapsApplied`, `grantsApplied`, `grantsQueued`, `removed`, `blocked`, `deduped`, `actorsRemoved` (freestanding items removed, pickups stopped, GIVE_ITEMs dropped, Poes and golden wolves removed); `min`/`max` objects of the same; `forSec`, `timeoutSec` | the SHARE_PICKUP, GIVE_ITEM and placed-check counters |
+| `expectPickups` | `sent`, `applied`, `skipped`, `rupees`, `life`, `arrows`, `seeds`, `bombs`, `trapsSent`, `trapsReceived`, `trapsApplied`, `grantsApplied`, `grantsQueued`, `removed`, `blocked`, `deduped`, `actorsRemoved`, `spawnsBlocked` (freestanding items removed, pickups stopped, GIVE_ITEMs dropped or a second own heart piece taken back, Poes and golden wolves removed, heart pieces and containers never placed); `min`/`max` objects of the same; `forSec`, `timeoutSec` | the SHARE_PICKUP, GIVE_ITEM and placed-check counters |
 | `setLightDrops` | `area`, `num` | sets that area's tear count here only (a lost tear) |
 | `itemNamesEnglish` | `value` (true, false, null = the disc's) | forces the item names' disc language |
 | `expectItemNames` | `english`, `items` (`item`, `name`, `source`: `game`, `mod`, `fallback`, `unknown`), `timeoutSec` | the language the names see and each item's name and source |
@@ -322,6 +322,17 @@ learned skill removes B's golden wolf, a taken golden wolf item vanishes and arr
 `fishing-heart-sync` (the fishing hole's heart piece leaves B's lure); `item-name-language` checks
 the corrections are English-only (the US disc forced to another language). `story-tears-tab`
 (`scenarios/story-late.js`) shows each teammate's tear count, and B's lost tear, in the Players tab.
+
+Heart pieces a teammate took (`scenarios/hearts.js`, **not run yet**): `heart-live` (A takes Hyrule
+Field's own tree heart piece, bit 0x81, with B in that room: B's copy vanishes, one piece each, gone
+when B comes back), `heart-away` (B in Link's house; B arrives while A still reads the item message,
+before A's bit: never placed, `spawnsBlocked` 1, and still gone after the bit), `heart-drop` (the
+springwater heart piece dropped at run time under `goron_springwater_rush`: B's copy goes on A's grant,
+B's drops during A's message and after A's bit are refused), `heart-chest` (Kakariko Gorge's own heart
+piece chest 5: opens for B, refused to B, open after coming back), `heart-rando-reward` (randomizer:
+both win Plumm's reward check at once, one piece each) and, tag `boss-fight`, `heart-boss` (A takes
+Diababa's heart container in the temple, B's own kill in its arena drops none, +5 once) and
+`heart-boss-rando` (randomizer: A's check before its bit, B's kill places nothing, `spawnsBlocked` 1).
 
 Items held up: chests, item gets, trades (`StepsGetItem.cpp`):
 

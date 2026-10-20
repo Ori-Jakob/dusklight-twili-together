@@ -178,7 +178,7 @@ repairs the stream.
 | --- | --- | --- |
 | `SET_FLAG` / `UNSET_FLAG` | `category`, `flagNo`, `roomNo`, `stageName`, `saveTblNo` | switches, chests, item flags. A new item flag removes the receiver's copy of that freestanding item (field item, heart piece or container, Ordon Sword) if it lies in a loaded room, with no item and no event; one the receiver is taking stays, one being pulled goes once let go, and a pickup of it gives nothing. A new switch fades the receiver's Poe with that soul switch unless it is dying for the receiver |
 | `SET_EVENT_BIT` / `UNSET_EVENT_BIT` | `no`, `stageName`, `roomNo` | story event bits; a few local-only bits are never sent. `stageName` and `roomNo`: where the sender stood. A new event bit removes a golden wolf whose skill it is and the randomizer's golden wolf item with that flag |
-| `GIVE_ITEM` | `itemNo`, optional `check`, `saveTblNo` | the receiver grants it through the game's item service, so a randomizer applies its own logic. Skipped when the receiver has it, except items that come more than once (heart pieces and containers, bottles, bomb bags, Poe souls, the randomizer's dungeon small keys and Sky Characters). A bottle found filled arrives empty. Randomizer items in unused ids (portals, dungeon keys, maps, compasses) travel here too; its trap does not. `check` (with the sender's stage table) names the one thing in the world it came from: `freestanding:<stage>:<bit>` or `boss:<stage>` (bits below 0xA0), `fishing_heart_piece` (the same as the fishing hole's freestanding bit 0x80), `golden_wolf:<event bit>`, `poe:<stage>:<switch>` (not 255) or `chest:<stage>:<box>`. The receiver removes its copy (a Poe fades, a hooked heart piece leaves the lure) and skips a check it took itself (its pickup, kill or chest open under way, or the flag set but not by a teammate) or already got from a teammate |
+| `GIVE_ITEM` | `itemNo`, optional `check`, `saveTblNo` | the receiver grants it through the game's item service, so a randomizer applies its own logic. Skipped when the receiver has it, except items that come more than once (heart pieces and containers, bottles, bomb bags, Poe souls, the randomizer's dungeon small keys and Sky Characters). A bottle found filled arrives empty. Randomizer items in unused ids (portals, dungeon keys, maps, compasses) travel here too; its trap does not. `saveTblNo`: the sender's stage table. `check` names the one thing in the world it came from: `freestanding:<stage>:<bit>` or `boss:<stage>` (bits below 0xA0), `fishing_heart_piece` (the same as the fishing hole's freestanding bit 0x80), `goron_springwater_rush` (the same as Hyrule Field's freestanding bit 0x80), `golden_wolf:<event bit>`, `poe:<stage>:<switch>` (not 255), `chest:<stage>:<box>`, or an NPC's heart piece (`goats_reward`, `archery_reward:F_SP109`, `prayer_reward`, `plumm_minigame_reward`, `snowboard_race_reward`, taken once its event bit is set). The receiver removes its copy (a Poe fades, a hooked heart piece leaves the lure), places no heart piece or container of that check from then on, and skips a check it took itself (its pickup, kill or chest open under way, or the flag set but not by a teammate) or already got from a teammate. Any other named check (no shop, no unparsed placed name) comes along for items that come more than once and reaches each player once in a session. A heart piece or container a player's own game gives for a check a teammate's grant already brought is taken back (its max life) |
 | `UPDATE_DUNGEON_ITEMS` | `saveTblNo`, `keyDelta`, `dungeonItemBits` | small keys, map, compass, boss key, and the boss bits (boss and mini-boss defeated, heart container taken) |
 | `COLLECT_REWARD` | `crystal`, `mirror` | Fused Shadow and Mirror Shard bits the sender just got (`mCrystal`, `mMirror`): the boss warp's Midna scene sets them with no item get. The receiver sets them and shows "<name> got Fused Shadow" or "Mirror Shard"; a later clear of its own sets them again, nothing doubles. Not sent in randomizer games, where the reward is a check and travels as `GIVE_ITEM` |
 | `LIGHT_DROP` | `area`, `tbl`, `tbox` | a tear of light picked up. Unless that tear's TBOX bit is already set, the receiver sets it, adds one to the area's count (at most 16) and removes the tear from its screen; the bit keeps replays from counting twice |
@@ -209,6 +209,41 @@ replaces the cache and drops from the queue what it holds: its sender's own pack
 others' up to `seenSeq`. The others' later packets stay queued (all of them when `seenEpoch` is not
 this queue's epoch); a state without `seenSeq` empties the queue. A `TAKE_ITEM` with `firstBit`
 stays queued past every state: a save cannot tell a taken pumpkin from one never had.
+
+#### Heart pieces
+
+The 45 heart pieces of the unmodded game (from `tools/cutscenes/heart-pieces.js`, which lists the
+disc's placements, the decomp for the givers, and the randomizer's location list). Stage tables in
+hex. Every one of them, and every randomizer check at these places, reaches each teammate once:
+
+| Heart pieces | Where | Taken when set | Appears |
+| --- | --- | --- | --- |
+| 17 overworld chests | F_SP108 r14 26 (lantern switch 0x5C), r5 30; F_SP117 r2 1; F_SP109 r0 21; F_SP110 r0 22; F_SP115 r0 0, r1 29 (switch 0x14); F_SP121 r0 2 and 3, r3 5, r11 8; D_SB00 r0 0; D_SB02 r0 62 (0x5F); D_SB03 r0 3 (0x2D); D_SB04 r10 62; D_SB06 r1 2 and 3 (0x02, 0x03) | TBOX bit | placed; a lantern or grotto chest after its switch |
+| 16 dungeon chests | D_MN05 r3 31, r5 19; D_MN04 r4 20, r6 9; D_MN01 r3 5, r8 8; D_MN10 r2 19, r13 26; D_MN11 r0 21, r7 25; D_MN06 r3 5 (zone switch 0xE2), r4 12; D_MN07 r11 6, r12 9; D_MN08 r1 30, r4 0 | TBOX bit | placed or after a switch |
+| Faron Field tree, Kakariko Gorge spire | F_SP121 r6, r3 (`htPiece`) | memory item bit 0x81, 0x82 (table 6) | placed |
+| Kakariko bomb rock spire | F_SP109 r0 layers 2-4 | 0x8C (table 3) | placed |
+| Cats' hide and seek | F_SP128 r0 layers 1-2 | 0x8B (table 3) | placed |
+| Fishing hole | F_SP127 r0 | 0x80 (table 0xB) | placed; also the rod's catch (`fishing_heart_piece`) |
+| Bulblin Camp roasted boar | F_SP118 r1 `Obj_rw` | 0x9F (table 0xA), check `boss:F_SP118` | dropped when the boar breaks, or at load once its switch 0x01 is set |
+| Goron springwater rush | F_SP121 r0 `grA` | 0x80 (table 6), check `goron_springwater_rush` | dropped by the Goron once `M_070` and `F_0377` are set |
+| Fado, Talo, Charlo, Plumm, Yeta | F_SP00, F_SP109, F_SP116, F_SP115, F_SP114 | event bit `F_0539`, `M_042`, `F_0294`, `F_286`, `F_0483` | the NPC's reward event; the giver checks its bit |
+
+Before this was fixed: chests were covered (bit synced and merged, open on load, the lid opens live,
+a second open refused, two at once each got one). The placed heart pieces and the boar had their bit
+synced and vanished live, but the bit is set only when the item message closes, so in that window
+a teammate entering the room still found one. The springwater heart piece's grant carried no check,
+so the receiver's copy stayed until the bit and two takes counted twice. The NPC rewards gave a
+second piece to a teammate who won the same reward before the bit arrived (offline or at the same
+time), and a restart could replay the grant. Now the receiver keeps a check it got from a teammate:
+a heart piece or container of that check is never placed (`daObjLife_Create` fails, Checks hooks),
+the NPC rewards and the springwater rush are checks, and a second piece of one is taken back.
+
+Boss heart containers (`UTAWA_HEART`, bit 0x9F of the dungeon's table and its `STAGE_LIFE`; Zant's is
+placed in D_MN08A r10, bit 0x80): the teammate's grant, bit and `STAGE_LIFE` reach a receiver in its
+own fight, elsewhere (into that table's save slot) or offline (merged), so its own kill drops none
+(the bosses check `STAGE_LIFE`, the container its bit). A grant taken in the receiver's own table keeps
+the `STAGE_LIFE` its item function sets. In a randomizer game the container is the check's item and
+ignores `STAGE_LIFE`; the check itself stops it until the bit arrives.
 
 ### Kills and story (teammates only)
 

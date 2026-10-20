@@ -207,6 +207,9 @@ older builds go without it or without those clicks.
   follow prompts and catch-up offers wait until you leave the arena (a game over that brings you
   back keeps the wait), and nobody is pulled into a cutscene. The team gets one heart container per
   boss: once a teammate took it, your own kill drops none and their pickup reaches you.
+- Every heart piece (in a randomizer game, whatever check holds one) reaches each teammate once:
+  one a teammate took is never there for you, not even while their item message is still open, and
+  an NPC's heart piece that two of you win at the same time counts once.
 - Sync Blocks and Chains covers push blocks and gravestones, Snowpeak's ice blocks, turning
   switches, Castle Town's push doors and chain switches. Beamos statues, the walls pulled by a
   chain, the wolf's ceiling chains and Snowpeak's cannons still move only for whoever moves them;
