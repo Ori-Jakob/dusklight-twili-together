@@ -37,6 +37,9 @@ Kind kindOf(s16 procName) {
     case fpcNm_Obj_Movebox_e: return Kind::Movebox;
     case fpcNm_Obj_IceBlock_e: return Kind::IceBlock;
     case fpcNm_Obj_SwChain_e: return Kind::SwChain;
+    case fpcNm_Obj_SwTurn_e: return Kind::SwTurn;
+    case fpcNm_Obj_Lv6SwTurn_e: return Kind::Lv6SwTurn;
+    case fpcNm_Obj_PushDoor_e: return Kind::PushDoor;
     default: return Kind::None;
     }
 }
@@ -147,18 +150,31 @@ Record* findByKey(const Key& key) {
     return nullptr;
 }
 
+// A turn object's spots travel as steps.
+bool parseSpot(const json& packet, Kind kind, const char* key, XZ& out) {
+    if (!isTurn(kind)) {
+        return parseXZ(packet, key, out);
+    }
+    int64_t step;
+    if (!intField(packet, std::strcmp(key, "from") == 0 ? "step" : "toStep", -12, 12, step)) {
+        return false;
+    }
+    out = turnSpot(static_cast<int>(step));
+    return true;
+}
+
 void handleMove(Record& r, uint32_t client, const json& packet) {
-    if (r.kind != Kind::Movebox && r.kind != Kind::IceBlock) {
+    if (r.kind == Kind::SwChain) {
         return;
     }
     Move m;
     int64_t dir, walk = 1;
-    if (!parseXZ(packet, "from", m.from) || !intField(packet, "dir", 0, 3, dir) ||
+    if (!parseSpot(packet, r.kind, "from", m.from) || !intField(packet, "dir", 0, 3, dir) ||
         (packet.contains("walk") && !intField(packet, "walk", 1, 2, walk)))
     {
         return;
     }
-    m.hasTo = parseXZ(packet, "to", m.to);
+    m.hasTo = parseSpot(packet, r.kind, "to", m.to);
     m.client = client;
     m.dir = static_cast<uint8_t>(dir);
     m.pull = boolField(packet, "pull", false);
@@ -170,11 +186,11 @@ void handleMove(Record& r, uint32_t client, const json& packet) {
 }
 
 void handleRest(Record& r, uint32_t client, const json& packet) {
-    if (r.kind != Kind::Movebox && r.kind != Kind::IceBlock) {
+    if (r.kind == Kind::SwChain) {
         return;
     }
     XZ from, pos;
-    if (!parseXZ(packet, "from", from) || !parseXZ(packet, "pos", pos)) {
+    if (!parseSpot(packet, r.kind, "from", from) || !parseSpot(packet, r.kind, "pos", pos)) {
         return;
     }
     if (takeAuthority(r, client, from)) {
@@ -210,6 +226,9 @@ const char* kindName(Kind kind) {
     case Kind::Movebox: return "movebox";
     case Kind::IceBlock: return "iceblock";
     case Kind::SwChain: return "swchain";
+    case Kind::SwTurn: return "swturn";
+    case Kind::Lv6SwTurn: return "lv6swturn";
+    case Kind::PushDoor: return "pushdoor";
     default: return "none";
     }
 }
@@ -218,6 +237,9 @@ Kind kindFromName(const std::string& name) {
     if (name == "movebox") return Kind::Movebox;
     if (name == "iceblock") return Kind::IceBlock;
     if (name == "swchain") return Kind::SwChain;
+    if (name == "swturn") return Kind::SwTurn;
+    if (name == "lv6swturn") return Kind::Lv6SwTurn;
+    if (name == "pushdoor") return Kind::PushDoor;
     return Kind::None;
 }
 

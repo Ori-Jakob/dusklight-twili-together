@@ -20,7 +20,7 @@ namespace twili::push::detail {
 
 using Clock = std::chrono::steady_clock;
 
-enum class Kind : uint8_t { None, Movebox, IceBlock, SwChain };
+enum class Kind : uint8_t { None, Movebox, IceBlock, SwChain, SwTurn, Lv6SwTurn, PushDoor };
 
 const char* kindName(Kind kind);
 Kind kindFromName(const std::string& name);
@@ -138,12 +138,28 @@ nlohmann::json keyJson(const Key& key);
 
 // PushBlocks.cpp
 XZ blockPos(const Record& r);
+// Our Link's move: sends it and follows it (`to` for grid blocks and turns only).
+void sendMove(Record& r, const XZ& from, const XZ* to, int dir, bool pull, int walkType);
+// The walk (or turn) stopped: a local one sends its rest.
+void endWalk(Record& r);
 bool blockAtRest(const Record& r);
 void tickBlock(Record& r);
 void queueMove(Record& r, const Move& m);
 void queueRest(Record& r, uint32_t client, const XZ& from, const XZ& pos);
 // Autotest: what a push from our Link does, before the block's next wait.
 void pushForTest(Record& r, int dir, bool pull);
+
+// PushTurns.cpp: a turn object's spot is its step, x = step * kTurnScale.
+inline constexpr float kTurnScale = 100.0f;
+bool isTurn(Kind kind);
+int turnStep(const Record& r);
+int turnDir(const Record& r);
+bool turnRotating(const Record& r);
+XZ turnSpot(int step);
+int turnStepOf(const XZ& spot);
+void startTurn(Record& r, int dir);
+void setTurnStep(Record& r, int step);
+void pushTurnForTest(Record& r, int dir);
 
 // PushChains.cpp
 void tickChain(Record& r);

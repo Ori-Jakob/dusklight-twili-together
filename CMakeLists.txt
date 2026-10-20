@@ -95,6 +95,7 @@ set(TWILI_SOURCES
     src/push/PushBlocks.cpp
     src/push/PushChains.cpp
     src/push/PushSync.cpp
+    src/push/PushTurns.cpp
     src/story/StoryEvent.cpp
     src/story/StoryLog.cpp
     src/story/StoryMove.cpp

@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace twili::push {
 namespace detail {
@@ -79,11 +80,26 @@ bool walking(const Record& r) {
     if (r.kind == Kind::Movebox) {
         return boxOf(r)->field_0x5ac == 1;
     }
+    if (isTurn(r.kind)) {
+        return turnRotating(r);
+    }
     return iceOf(r)->mMode == Ice::MODE_PROC_WALK_e;
 }
 
 float spotTolerance(const Record& r) {
+    if (isTurn(r.kind)) {
+        return kTurnScale * 0.25f;
+    }
     return r.kind == Kind::Movebox ? kBoxSpot : kIceSpot;
+}
+
+// A turn object's spots travel as steps.
+void putSpot(nlohmann::json& packet, const Record& r, const char* key, const XZ& spot) {
+    if (isTurn(r.kind)) {
+        packet[std::strcmp(key, "from") == 0 ? "step" : "toStep"] = turnStepOf(spot);
+    } else {
+        packet[key] = xzJson(spot);
+    }
 }
 
 // Moves our Link out of a block that just appeared around him.
@@ -150,6 +166,8 @@ void startIceWalk(Record& r, int dir, uint8_t walkType) {
 void startReplay(Record& r, const Move& m) {
     if (r.kind == Kind::Movebox) {
         startBoxWalk(r, m.dir, m.pull);
+    } else if (isTurn(r.kind)) {
+        startTurn(r, m.dir);
     } else {
         startIceWalk(r, m.dir, m.walk);
     }
@@ -160,6 +178,20 @@ void startReplay(Record& r, const Move& m) {
 
 void snapTo(Record& r, const XZ& to) {
     ++r.snapped;
+    if (isTurn(r.kind)) {
+        const int step = turnStep(r);
+        const int want = turnStepOf(to);
+        // One step away: turn it, with its own sound and rotation.
+        if (want == step + 1 || want == step - 1) {
+            startTurn(r, want > step ? 0 : 1);
+            TwiliLog.info("[push] {} ({}): turns one step to where a teammate left it",
+                kindName(r.kind), keyText(r.key));
+            return;
+        }
+        setTurnStep(r, want);
+        TwiliLog.info("[push] {} ({}): set to step {}", kindName(r.kind), keyText(r.key), want);
+        return;
+    }
     if (r.kind == Kind::Movebox) {
         Box* b = boxOf(r);
         int gx, gz;
@@ -200,14 +232,24 @@ void snapTo(Record& r, const XZ& to) {
     TwiliLog.info("[push] iceblock ({}): snapped to {:.0f} {:.0f}", keyText(r.key), to.x, to.z);
 }
 
+// mode_wait does not recurse into another box's.
+int s_boxMode = -1;
+int s_boxGx = 0;
+int s_boxGz = 0;
+bool s_boxGuard = false;
+fopAc_ac_c* s_walkBox = nullptr;
+bool s_walkKeep = false;
+uint8_t s_iceMode = 0xFF;
+fopAc_ac_c* s_iceGuard = nullptr;
+
+}  // namespace
+
 void endWalk(Record& r) {
     if (r.localWalk) {
         r.localWalk = false;
-        const nlohmann::json packet = {
-            {"type", "PUSH_REST"},
-            {"from", xzJson(r.localFrom)},
-            {"pos", xzJson(blockPos(r))},
-        };
+        nlohmann::json packet = {{"type", "PUSH_REST"}};
+        putSpot(packet, r, "from", r.localFrom);
+        putSpot(packet, r, "pos", blockPos(r));
         if (sendPacket(packet, r)) {
             ++r.sent;
         }
@@ -233,12 +275,12 @@ void sendMove(Record& r, const XZ& from, const XZ* to, int dir, bool pull, int w
     setOwnAuthority(r, from);
     nlohmann::json packet = {
         {"type", "PUSH_MOVE"},
-        {"from", xzJson(from)},
         {"dir", dir},
         {"pull", pull},
     };
+    putSpot(packet, r, "from", from);
     if (to != nullptr) {
-        packet["to"] = xzJson(*to);
+        putSpot(packet, r, "to", *to);
     }
     if (r.kind == Kind::IceBlock) {
         packet["walk"] = walkType;
@@ -250,19 +292,10 @@ void sendMove(Record& r, const XZ& from, const XZ* to, int dir, bool pull, int w
     }
 }
 
-// mode_wait does not recurse into another box's.
-int s_boxMode = -1;
-int s_boxGx = 0;
-int s_boxGz = 0;
-bool s_boxGuard = false;
-fopAc_ac_c* s_walkBox = nullptr;
-bool s_walkKeep = false;
-uint8_t s_iceMode = 0xFF;
-fopAc_ac_c* s_iceGuard = nullptr;
-
-}  // namespace
-
 XZ blockPos(const Record& r) {
+    if (isTurn(r.kind)) {
+        return turnSpot(turnStep(r));
+    }
     if (r.kind == Kind::Movebox) {
         const Box* b = boxOf(r);
         if (b->field_0x5ac == 0) {
@@ -275,6 +308,9 @@ XZ blockPos(const Record& r) {
 bool blockAtRest(const Record& r) {
     if (r.localWalk || r.remoteWalk) {
         return false;
+    }
+    if (isTurn(r.kind)) {
+        return !turnRotating(r);
     }
     if (r.kind == Kind::Movebox) {
         const Box* b = boxOf(r);
@@ -347,7 +383,9 @@ void tickBlock(Record& r) {
 }
 
 void pushForTest(Record& r, int dir, bool pull) {
-    if (r.kind == Kind::Movebox) {
+    if (isTurn(r.kind)) {
+        pushTurnForTest(r, dir);
+    } else if (r.kind == Kind::Movebox) {
         Box* b = boxOf(r);
         for (int i = 0; i < 4; ++i) {
             b->field_0x8f0[i] = i == dir ? 100 : 0;

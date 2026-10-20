@@ -25,6 +25,11 @@ void iceWaitPre(fopAc_ac_c* block);
 void iceWaitPost(fopAc_ac_c* block);
 void iceWalkPre(fopAc_ac_c* block);
 void iceWalkPost(fopAc_ac_c* block);
+// daObjSwTurn_c, daObjLv6SwTurn_c and daObjPDoor_c::modeWait / modeRotate.
+void turnWaitPre(fopAc_ac_c* turn);
+void turnWaitPost(fopAc_ac_c* turn);
+void turnRotatePre(fopAc_ac_c* turn);
+void turnRotatePost(fopAc_ac_c* turn);
 // daObjSwChain_c::execute.
 void chainExecutePre(fopAc_ac_c* chain);
 void chainExecutePost(fopAc_ac_c* chain);
