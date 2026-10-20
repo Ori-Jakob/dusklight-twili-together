@@ -5,6 +5,7 @@
 #include "sync/WorldSync.hpp"
 
 #include "d/d_com_inf_game.h"
+#include "d/d_item_data.h"
 #include "d/d_save.h"
 
 #include <nlohmann/json.hpp>
@@ -12,9 +13,11 @@
 #include <chrono>
 #include <cstdint>
 #include <deque>
+#include <iterator>
 #include <map>
 #include <set>
 #include <string>
+#include <vector>
 
 namespace twili::sync::detail {
 
@@ -149,5 +152,40 @@ void handleGiveItem(const nlohmann::json& packet);
 void tickDungeonItemTracking();
 void shiftDungeonItemBaseline(int keyNumBefore, uint8_t dungeonItemsBefore);
 void handleUpdateDungeonItems(const nlohmann::json& packet);
+
+// Takes.cpp: items the game takes away (the monkey's lantern, trade items handed over), taken from
+// teammates too as TAKE_ITEM. Not in randomizer games, never shields.
+inline constexpr int kTakeSlots[] = {SLOT_1, SLOT_19, SLOT_21, SLOT_22};
+// The pumpkin and cheese have no slot: their first-get bit is the item.
+inline constexpr uint8_t kTakeFirstBits[] = {dItemNo_TOMATO_PUREE_e, dItemNo_TASTE_e};
+// The items the game takes from this slot (the lantern, Auru's memo, the trade line, the Sky Book).
+bool isTakeableSlotItem(int slot, uint8_t itemNo);
+bool isTakeableFirstBit(uint8_t itemNo);
+// Our own take of this item, or a teammate's we applied.
+bool hasTakeRecord(uint8_t itemNo);
+// Taken from us and its slot (or bit) still empty: a teammate's GIVE_ITEM grants it again.
+bool mayGrantAgain(uint8_t itemNo);
+// What our tracked slots and bits held; remote applies shift the take baseline by their changes.
+struct TakeSnapshot {
+    uint8_t slots[std::size(kTakeSlots)] = {};
+    bool bits[std::size(kTakeFirstBits)] = {};
+};
+TakeSnapshot takeSnapshot();
+void shiftTakeBaseline(const TakeSnapshot& before);
+// A merge found this item taken from the sender (its slot empty, its first-get bit set).
+struct SlotTake {
+    int slot = -1;
+    uint8_t itemNo = 0;
+};
+void queueMergeTakes(const std::vector<SlotTake>& takes, const nlohmann::json& packet);
+// execItemGet's outermost pre/post: takes earlier this frame are ours, the get's changes are not.
+void takesBeforeItemGet();
+void takesAfterItemGet(uint8_t itemNo, bool remoteGrant);
+// A teammate's GIVE_ITEM of this item came after its take: the take waiting here is void.
+void cancelPendingTakes(uint8_t itemNo);
+void handleTakeItem(const nlohmann::json& packet);
+void tickTakes();
+void invalidateTakeBaseline();
+void resetTakes();
 
 }  // namespace twili::sync::detail

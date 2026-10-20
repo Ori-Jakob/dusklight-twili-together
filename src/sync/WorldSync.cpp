@@ -87,6 +87,7 @@ void checkSaveGeneration() {
     st.pendingGrants.clear();
     st.exchangePending = true;
     resetFreestanding();
+    resetTakes();
 }
 
 bool acceptsWorldPacket(const nlohmann::json& packet, const char* what) {
@@ -223,6 +224,8 @@ bool handlePacket(const std::string& type, const nlohmann::json& packet) {
         handleTearCount(packet);
     } else if (type == "SHARE_PICKUP") {
         handleSharePickup(packet);
+    } else if (type == "TAKE_ITEM") {
+        handleTakeItem(packet);
     } else if (type == "REQUEST_WORLD_STATE") {
         handleRequestWorldState(packet);
     } else if (type == "UPDATE_WORLD_STATE") {
@@ -237,6 +240,8 @@ void tick() {
     State& st = s_state;
     checkSaveGeneration();
     checkRosterLayouts();
+    // Before any world state goes out, so it shows what the takes did.
+    tickTakes();
 
     // Request first, publish later: publishing a stale save would replace the team's cached state.
     const Session& session = Session::instance();
@@ -277,12 +282,15 @@ void resetSession() {
     st.layoutWarnedIds.clear();
     st.merges.clear();
     resetTearCounts();
+    // Changes made offline are not deltas; the exchange's merges carry them.
+    invalidateTakeBaseline();
 }
 
 void shutdown() {
     removeItemObserver();
     resetFreestanding();
     resetTearCounts();
+    resetTakes();
     s_state = State{};
     RemoteApplyGuard::reset();
 }

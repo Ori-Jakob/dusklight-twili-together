@@ -327,6 +327,7 @@ void handleGiveItem(const nlohmann::json& packet) {
     // The toast names what the teammate found; a filled bottle arrives empty.
     const uint8_t grant = isFilledNewBottle(item) ? dItemNo_EMPTY_BOTTLE_e : item;
     const uint32_t senderId = packet.value("clientId", 0u);
+    cancelPendingTakes(item);
     const auto source =
         packet.value("fromQueue", false) ? item_toasts::Source::Replay : item_toasts::Source::Live;
     const auto check = packet.find("check");
@@ -340,7 +341,9 @@ void handleGiveItem(const nlohmann::json& packet) {
     }
     const bool pending =
         std::find(st.pendingGrants.begin(), st.pendingGrants.end(), grant) != st.pendingGrants.end();
-    if (!isRepeatableItem(grant) && (pending || receiverHasItem(grant))) {
+    // Taken from us earlier (the lantern from the monkey): its first-get bit no longer means we hold it.
+    const bool again = !pending && mayGrantAgain(grant);
+    if (!isRepeatableItem(grant) && !again && (pending || receiverHasItem(grant))) {
         TwiliLog.info(
             "[sync] skipped item 0x{:02X} from client {}: already have it", itemNo, senderId);
         item_toasts::noteItem(item_toasts::senderOf(session, packet), item, 1, -1, source, false);
@@ -354,6 +357,10 @@ void handleGiveItem(const nlohmann::json& packet) {
     }
     st.pendingGrants.push_back(grant);
     st.stats.grantsQueued++;
+    if (again) {
+        st.stats.takeRegrants++;
+        TwiliLog.info("[sync] item 0x{:02X} was taken from us: granting it again", itemNo);
+    }
     TwiliLog.info("[sync] received item 0x{:02X} from client {}", itemNo, senderId);
     item_toasts::noteItem(item_toasts::senderOf(session, packet), item, 1, -1, source, true);
 }
@@ -439,6 +446,9 @@ void removeItemObserver() {
 void beforeItemGet(uint8_t itemNo) {
     State& st = state();
     s_itemGetDepth++;
+    if (s_itemGetDepth == 1) {
+        takesBeforeItemGet();
+    }
     if (s_itemGetDepth <= static_cast<int>(s_liveBefore.size())) {
         const dSv_memBit_c& bit = dComIfGs_getSaveInfo()->getMemory().getBit();
         s_liveBefore[s_itemGetDepth - 1] = {givesDungeonItems(itemNo), bit.mKeyNum, bit.mDungeonItem};
@@ -470,11 +480,16 @@ void afterItemGet(uint8_t itemNo) {
             }
         }
     }
-    if (s_grant.active && s_grant.depth == s_itemGetDepth && s_grant.item == itemNo) {
+    const bool remoteGrant =
+        s_grant.active && s_grant.depth == s_itemGetDepth && s_grant.item == itemNo;
+    if (remoteGrant) {
         undoStageEffects(s_grant);
         restoreProgress(s_grant.kept);
         s_grant.active = false;
         RemoteApplyGuard::leave();
+    }
+    if (s_itemGetDepth == 1) {
+        takesAfterItemGet(itemNo, remoteGrant);
     }
     if (s_itemGetDepth > 0) {
         s_itemGetDepth--;

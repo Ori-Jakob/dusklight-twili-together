@@ -52,6 +52,8 @@ void afterDropGet(void* drop);
 bool insideDropGet();
 #if TWILI_ENABLE_AUTOTEST
 void keepTakenTearsForTest(bool keep);
+// Teammates' takes wait, as if it were never safe, until released.
+void holdTakesForTest(bool hold);
 #endif
 bool installItemObserver();
 void removeItemObserver();
@@ -111,6 +113,16 @@ struct Stats {
     uint32_t grantsDeduped = 0;
     // Poes and golden wolves a teammate's flag or check took, removed here.
     uint32_t actorsRemoved = 0;
+    // TAKE_ITEM: our takes sent, teammates' received, removed here or already gone, takes a merge
+    // found, takes that had to wait, grants of a taken item, and items back without an item get.
+    uint32_t takesSent = 0;
+    uint32_t takesReceived = 0;
+    uint32_t takesApplied = 0;
+    uint32_t takesSkipped = 0;
+    uint32_t mergeTakes = 0;
+    uint32_t takesDeferred = 0;
+    uint32_t takeRegrants = 0;
+    uint32_t returnsSent = 0;
 };
 const Stats& stats();
 // True once the incompatible-layout toast was shown for this teammate name.
