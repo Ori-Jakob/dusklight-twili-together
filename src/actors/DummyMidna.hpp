@@ -43,6 +43,14 @@ public:
         J3DModel* hands;
         J3DModel* hairHand;
         J3DAnmTevRegKey* tiredBrk[4];
+        // daMidna_c's shadow from Midna.arc, null where it failed to load
+        J3DModel* shadowBody;  // s_md.bmd, posed from md.bmd's joints
+        J3DModel* shadowMask;
+        J3DModel* shadowHands;
+        J3DModel* shadowHairHand;
+        J3DModel* gokou;
+        J3DAnmTextureSRTKey* moyaBtk[4];  // body, mask, hands, hair hand
+        J3DAnmTevRegKey* appearBrk[4];    // body, mask, hair hand, gokou
     };
 
     // Forgets every pointer, without freeing
@@ -66,6 +74,12 @@ public:
     uint32_t sfxPlayed() const { return mSfxPlayed; }
     uint32_t apartTicks() const { return mApartTicks; }
     uint32_t shownTicks() const { return mShownTicks; }
+    bool shadowReady() const { return mShadowReady; }
+    // Drew through the shadow branch (gokou and invisible models) on one of the last updates.
+    bool drawsShadow() const {
+        return mActive && mShadowDraws != 0 && mUpdates - mShadowDrawnAt <= 2;
+    }
+    uint32_t shadowDraws() const { return mShadowDraws; }
     bool eyeMoving() const { return mActive && (mEyeFlags & kMidnaEyeMove) != 0; }
     // daMidna_c::baseModelCallBack for md.bmd's joints (calc timing 0).
     void jointCallBack(u16 jnt);
@@ -105,6 +119,9 @@ private:
     void chaseHairColours(bool big);
     void bindSound();
     void updateSound(const RemoteMidnaPose& pose, bool shown);
+    bool createShadow(const Models& models);
+    void updateShadow();
+    void drawShadow(const dKy_tevstr_c& owner);
 
     mDoExt_McaMorfSO* mpMorf = nullptr;
     DummyMidnaHairCB mHairCB;
@@ -163,6 +180,23 @@ private:
     uint32_t mApartTicks = 0;
     uint32_t mShownTicks = 0;
     bool mSilhouette = false;
+    // daMidna_c::draw's shadow branch
+    J3DModel* mpShadowBody = nullptr;
+    J3DModel* mpShadowMask = nullptr;
+    J3DModel* mpShadowHands = nullptr;
+    J3DModel* mpShadowHairHand = nullptr;
+    J3DModel* mpGokou = nullptr;
+    J3DAnmTextureSRTKey* mMoyaBtk[4] = {};
+    J3DAnmTevRegKey* mAppearBrk[4] = {};
+    mDoExt_invisibleModel mInvBody;
+    mDoExt_invisibleModel mInvMask;
+    mDoExt_invisibleModel mInvHands;
+    mDoExt_invisibleModel mInvHairHand;
+    bool mShadowReady = false;
+    bool mShadowPosed = false;  // its matrices are this pose's, not an old one's
+    uint32_t mUpdates = 0;
+    uint32_t mShadowDrawnAt = 0;
+    uint32_t mShadowDraws = 0;
 };
 
 }  // namespace twili

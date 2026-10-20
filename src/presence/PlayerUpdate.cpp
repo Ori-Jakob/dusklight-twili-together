@@ -246,7 +246,10 @@ bool Session::captureLocalMidna(bool inCutscene, RemoteMidnaPose& out) {
     if (!shadow || !asBack) {
         out.flags |= kMidnaNoShadow;
     }
-    if (!asBack && !realBody) {
+    // daMidna_c::draw's gokou/inv branch, not its md.bmd one
+    if (!asBack &&
+        (md == nullptr || m->checkNoDraw() || m->checkShadowModelDrawDemoForce()))
+    {
         out.flags |= kMidnaSilhouette;
     }
     if (!asBack) {
@@ -292,8 +295,9 @@ bool Session::captureLocalMidna(bool inCutscene, RemoteMidnaPose& out) {
     auto hand = [](u16 i) -> uint8_t { return i >= 0xFD ? 0xFE : static_cast<uint8_t>(i); };
     out.leftHand = hand(m->mLeftHandShapeIdx);
     out.rightHand = hand(m->mRightHandShapeIdx);
-    // setBodyPartMatrix shows one of the hair hand's three materials.
-    J3DModel* hair = swapping ? nullptr : link->getMidnaHairHandModel();
+    // setBodyPartMatrix shows one of the hair hand's three materials, the same on her shadow's
+    // (which a human Link's Midna has too).
+    J3DModel* hair = m->mpShadowHairhandBmd;
     out.hairHand = shapeShown(hair, 2) ? 2 : shapeShown(hair, 1) ? 1 : 0;
     if ((daMidna_c::checkMidnaTired() || m->checkForceTiredColor()) &&
         !m->checkForceNormalColor())

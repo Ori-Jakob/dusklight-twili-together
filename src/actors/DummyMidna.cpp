@@ -4,6 +4,7 @@
 #include "core/Log.hpp"
 #include "presence/RemoteFrame.hpp"
 
+#include "d/actor/d_a_alink.h"
 #include "d/actor/d_a_midna.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_kankyo.h"
@@ -20,6 +21,8 @@
 #include "SSystem/SComponent/c_lib.h"
 #include "SSystem/SComponent/c_math.h"
 #include "Z2AudioLib/Z2SeMgr.h"
+
+#include <mods/svc/interp.h>
 
 #include <algorithm>
 
@@ -185,7 +188,9 @@ J3DModel* DummyMidna::bodyModel() const {
 }
 
 void DummyMidna::snap() {
-    for (J3DModel* model : {bodyModel(), mpMask, mpHands, mpHairHand}) {
+    for (J3DModel* model : {bodyModel(), mpMask, mpHands, mpHairHand, mpShadowBody, mpShadowMask,
+                            mpShadowHands, mpShadowHairHand, mpGokou})
+    {
         if (model != nullptr) {
             model->forgetMtx();
         }
@@ -222,6 +227,16 @@ void DummyMidna::clearPointers() {
     mLeftHand = mRightHand = 0xFE;
     mTired = mReady = mActive = false;
     mFresh = true;
+    mpShadowBody = mpShadowMask = mpShadowHands = mpShadowHairHand = mpGokou = nullptr;
+    for (int i = 0; i < 4; i++) {
+        mMoyaBtk[i] = nullptr;
+        mAppearBrk[i] = nullptr;
+    }
+    for (mDoExt_invisibleModel* inv : {&mInvBody, &mInvMask, &mInvHands, &mInvHairHand}) {
+        inv->mModel = nullptr;
+        inv->mpPackets = nullptr;
+    }
+    mShadowReady = mShadowPosed = false;
 }
 
 bool DummyMidna::createHeap(const Models& models) {
@@ -294,6 +309,54 @@ bool DummyMidna::createHeap(const Models& models) {
             return false;
         }
     }
+    mShadowReady = createShadow(models);
+    if (!mShadowReady) {
+        TwiliLog.warn("[dummy] Midna: shadow models unavailable; her shadow form will not show");
+    }
+    return true;
+}
+
+// daMidna_c::createHeap and create for the models of her shadow form.
+bool DummyMidna::createShadow(const Models& models) {
+    if (models.shadowBody == nullptr || models.shadowMask == nullptr ||
+        models.shadowHands == nullptr || models.shadowHairHand == nullptr ||
+        models.gokou == nullptr || models.shadowBody->getModelData()->getJointNum() != kJointNum ||
+        materialCount(models.shadowBody) < 3 || materialCount(models.shadowHairHand) < 3)
+    {
+        return false;
+    }
+    if (!mInvBody.create(models.shadowBody, 1) || !mInvMask.create(models.shadowMask, 1) ||
+        !mInvHands.create(models.shadowHands, 1) || !mInvHairHand.create(models.shadowHairHand, 1))
+    {
+        return false;
+    }
+    mpShadowBody = models.shadowBody;
+    mpShadowMask = models.shadowMask;
+    mpShadowHands = models.shadowHands;
+    mpShadowHairHand = models.shadowHairHand;
+    mpGokou = models.gokou;
+    // setSimpleBtk / setSimpleBrk
+    J3DModel* moyaOwners[4] = {mpShadowBody, mpShadowMask, mpShadowHands, mpShadowHairHand};
+    J3DModel* appearOwners[4] = {mpShadowBody, mpShadowMask, mpShadowHairHand, mpGokou};
+    for (int i = 0; i < 4; i++) {
+        mMoyaBtk[i] = models.moyaBtk[i];
+        if (mMoyaBtk[i] != nullptr) {
+            J3DModelData* data = moyaOwners[i]->getModelData();
+            mMoyaBtk[i]->searchUpdateMaterialID(data);
+            data->entryTexMtxAnimator(mMoyaBtk[i]);
+            mMoyaBtk[i]->setFrame(0.0f);
+        }
+        mAppearBrk[i] = models.appearBrk[i];
+        if (mAppearBrk[i] != nullptr) {
+            J3DModelData* data = appearOwners[i]->getModelData();
+            mAppearBrk[i]->searchUpdateMaterialID(data);
+            data->entryTevRegAnimator(mAppearBrk[i]);
+            mAppearBrk[i]->setFrame(mAppearBrk[i]->getFrameMax() - 0.001f);
+        }
+    }
+    for (u16 i = 0; i < 4; i++) {
+        showShape(mpShadowHands, i, false);
+    }
     return true;
 }
 
@@ -337,6 +400,7 @@ void DummyMidna::destroyHeaps() {
 
 void DummyMidna::deactivate() {
     mActive = false;
+    mShadowPosed = false;
     if (mSoundReady) {
         mSound.framework(0, dComIfGp_getReverb(dComIfGp_roomControl_getStayNo()));
     }
@@ -577,9 +641,13 @@ void DummyMidna::update(const RemoteMidnaPose& pose, J3DModel* wolf, float frame
     const bool fresh = !mActive || mFresh;  // no morph from a pose of before
     mActive = true;
     mFresh = false;
+    mUpdates++;
     mMode = pose.mode;
     mNoShadow = (pose.flags & kMidnaNoShadow) != 0;
     mSilhouette = apart && (pose.flags & kMidnaSilhouette) != 0;
+    if (!mSilhouette) {
+        mShadowPosed = false;
+    }
     if (shown && (mMode == kMidnaDrawn || apart)) {
         mShownTicks++;
     }
@@ -649,6 +717,9 @@ void DummyMidna::update(const RemoteMidnaPose& pose, J3DModel* wolf, float frame
         mApartTicks++;
         mpMorf->modelCalc();
         updateParts(pose);
+        if (mSilhouette && mShadowReady) {
+            updateShadow();
+        }
         updateSound(pose, shown);
         return;
     }
@@ -714,6 +785,73 @@ void DummyMidna::updateParts(const RemoteMidnaPose& pose) {
     chaseHairColours(pose.hairHand != 0);
     setHandShapes(pose.leftHand, pose.rightHand);
     setTired((pose.flags & kMidnaTired) != 0);
+}
+
+// setBodyPartMatrix and allAnimePlay for her shadow models, on md.bmd's pose.
+void DummyMidna::updateShadow() {
+    J3DModel* md = mpMorf->getModel();
+    if (!mShadowPosed) {
+        // Nothing blends from the pose they showed last time
+        for (J3DModel* model :
+             {mpShadowBody, mpShadowMask, mpShadowHands, mpShadowHairHand, mpGokou})
+        {
+            model->forgetMtx();
+        }
+        mShadowPosed = true;
+    }
+    // As vanilla poses the wolf's md.bmd from her shadow, the other way round
+    mpShadowBody->setBaseTRMtx(md->getBaseTRMtx());
+    for (u16 i = 0; i < kJointNum; i++) {
+        mpShadowBody->setAnmMtx(i, md->getAnmMtx(i));
+    }
+    mpShadowBody->calcWeightEnvelopeMtx();
+    for (u16 i = 0; i < mpShadowBody->getModelData()->getWEvlpMtxNum(); i++) {
+        svc_interp->record_mtx(mod_ctx, mpShadowBody->getWeightAnmMtx(i));
+    }
+    mpShadowHands->setBaseTRMtx(md->getBaseTRMtx());
+    mpShadowHands->calc();
+    mpShadowHands->setAnmMtx(1, md->getAnmMtx(MD_JNT_HAND_L_e));
+    mpShadowHands->setAnmMtx(2, md->getAnmMtx(MD_JNT_HAND_R_e));
+    mpShadowMask->setBaseTRMtx(md->getAnmMtx(MD_JNT_HEAD_e));
+    mpShadowMask->calc();
+    mpShadowHairHand->setBaseTRMtx(mpHairHand->getBaseTRMtx());
+    mpShadowHairHand->calc();
+    MtxP backbone = md->getAnmMtx(MD_JNT_BACKBONE1_e);
+    mDoMtx_stack_c::transS(backbone[0][3], backbone[1][3] + 20.0f, backbone[2][3]);
+    mpGokou->setBaseTRMtx(mDoMtx_stack_c::get());
+    mpGokou->calc();
+
+    for (u16 i = 0; i < 3; i++) {
+        showShape(mpShadowHairHand, i, i == mHairHand);
+    }
+    // setLeftHandShape / setRightHandShape: her own hands are the body's materials 1 and 2
+    const u16 count = (std::min)(materialCount(mpShadowHands), static_cast<u16>(4));
+    showShape(mpShadowBody, 1, mLeftHand >= count);
+    showShape(mpShadowBody, 2, mRightHand >= count);
+    for (u16 i = 0; i < count; i++) {
+        showShape(mpShadowHands, i, i == mLeftHand || i == mRightHand);
+    }
+
+    for (J3DAnmTextureSRTKey* btk : mMoyaBtk) {
+        daAlink_c::simpleAnmPlay(btk);
+    }
+    auto clip = [](int anm) { return daMidna_c::m_anmDataTable[anm].mResID; };
+    const f32 frame = mpMorf->getFrame();
+    const bool appearing =
+        mBodyId == clip(daMidna_c::ANM_S_APPEAR) || mBodyId == clip(daMidna_c::ANM_S_APPEARBL);
+    for (int i = 0; i < 4; i++) {
+        J3DAnmTevRegKey* brk = mAppearBrk[i];
+        if (brk == nullptr) {
+            continue;
+        }
+        if (appearing) {
+            brk->setFrame(frame);
+        } else if (i == 3 && mBodyId == clip(daMidna_c::ANM_S_RETURN)) {
+            brk->setFrame(mpMorf->getEndFrame() - frame);  // the glow fades as she sinks
+        } else {
+            brk->setFrame(brk->getFrameMax() - 0.001f);
+        }
+    }
 }
 
 // setLeftHandShape / setRightHandShape
@@ -792,15 +930,19 @@ void DummyMidna::draw(const dKy_tevstr_c& owner, bool ownerTinted) {
     if (!mActive || (mMode != kMidnaDrawn && mMode != kMidnaApart)) {
         return;
     }
+    if (mSilhouette) {
+        // Without the shadow's models she is left out rather than shown as her real body
+        if (mShadowReady) {
+            drawShadow(owner);
+        }
+        return;
+    }
     J3DModel* md = mpMorf->getModel();
     dComIfGd_setListDark();
     mTevStr.room_no = owner.room_no;
     mTevStr.YukaCol = owner.YukaCol;
     g_env_light.settingTevStruct(3, &mPos, &mTevStr);
-    // Off the back as her shadow: the gokou/inv branch's dark figure, here from md.bmd.
-    if (mSilhouette) {
-        mTevStr.TevColor.r = mTevStr.TevColor.g = mTevStr.TevColor.b = -220;
-    } else if (mBodyId == dRes_ID_ALANM_BCK_MD_RETURN_e && mpMorf->getEndFrame() > 0.0f) {
+    if (mBodyId == dRes_ID_ALANM_BCK_MD_RETURN_e && mpMorf->getEndFrame() > 0.0f) {
         // MD_RETURN fades her into the wolf's shadow.
         const s16 fade = static_cast<s16>(mpMorf->getFrame() / mpMorf->getEndFrame() * -32.0f);
         mTevStr.TevColor.r = mTevStr.TevColor.g = mTevStr.TevColor.b = fade;
@@ -826,6 +968,34 @@ void DummyMidna::draw(const dKy_tevstr_c& owner, bool ownerTinted) {
     mDoExt_modelEntryDL(mpMask);
     mTevStr.TevColor.r = mTevStr.TevColor.g = mTevStr.TevColor.b = 0;
     dComIfGd_setList();
+}
+
+// daMidna_c::draw's shadow branch: the glow, and each part through its mDoExt_invisibleModel.
+void DummyMidna::drawShadow(const dKy_tevstr_c& owner) {
+    dComIfGd_setListDark();
+    mTevStr.room_no = owner.room_no;
+    mTevStr.YukaCol = owner.YukaCol;
+    g_env_light.settingTevStruct(1, &mPos, &mTevStr);
+    g_env_light.setLightTevColorType_MAJI(mpGokou, &mTevStr);
+    mDoExt_modelEntryDL(mpGokou);
+    // The parts' depth passes sort 200 units behind her root
+    MtxP root = mpShadowBody->getAnmMtx(MD_JNT_WORLD_ROOT_e);
+    cXyz behind(root[0][3], root[1][3], root[2][3]);
+    MTXMultVec(dComIfGd_getViewMtx(), &behind, &behind);
+    behind.z -= 200.0f;
+    MTXMultVec(dComIfGd_getInvViewMtx(), &behind, &behind);
+    g_env_light.setLightTevColorType_MAJI(mpShadowBody, &mTevStr);
+    mInvBody.entryDL(&behind);
+    g_env_light.setLightTevColorType_MAJI(mpShadowMask, &mTevStr);
+    mInvMask.entryDL(&behind);
+    g_env_light.setLightTevColorType_MAJI(mpShadowHands, &mTevStr);
+    mInvHands.entryDL(&behind);
+    g_env_light.setLightTevColorType_MAJI(mpShadowHairHand, &mTevStr);
+    mInvHairHand.entryDL(&behind);
+    mTevStr.TevColor.r = mTevStr.TevColor.g = mTevStr.TevColor.b = 0;
+    dComIfGd_setList();
+    mShadowDraws++;
+    mShadowDrawnAt = mUpdates;
 }
 
 // The wolf's real shadow carries her whenever she rides, drawn or not (daAlink_c::draw).

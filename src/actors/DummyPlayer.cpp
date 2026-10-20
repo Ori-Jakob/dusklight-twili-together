@@ -34,6 +34,7 @@
 #include "res/Object/CWShd.h"
 #include "res/Object/HyShd.h"
 #include "res/Object/Kmdl.h"
+#include "res/Object/Midna.h"
 #include "res/Object/SWShd.h"
 #include "res/Object/Wmdl.h"
 #include "SSystem/SComponent/c_bg_w.h"
@@ -58,6 +59,7 @@ static constexpr const char* kOrdonShieldArcPath = "/res/Object/CWShd.arc";
 static constexpr const char* kWoodShieldArcPath = "/res/Object/SWShd.arc";
 static constexpr const char* kWolfArcPath = "/res/Object/Wmdl.arc";
 static constexpr const char* kCasualArcPath = "/res/Object/Bmdl.arc";
+static constexpr const char* kMidnaArcPath = "/res/Object/Midna.arc";
 static constexpr u16 kNoAnm = 0xFFFF;
 static constexpr u16 kSwordEquipItem = 0x0103;
 static constexpr u32 kPlayerBckBufferSize = 0x10800;
@@ -487,13 +489,15 @@ static J3DModelData* loadPrivateBmd(JKRArchive* archive, u16 bmdIndex, u32* outT
 
 enum PrivateArc {
     kArcKmdl, kArcMmdl, kArcZmdl, kArcBmdl, kArcAlink, kArcHyShd, kArcCWShd, kArcSWShd, kArcWmdl,
+    kArcMidna,
     kArcCount,
 };
 constexpr const char* kPrivateArcPaths[kArcCount] = {
     kLinkArcPath, kMagicArmorArcPath, kZoraArcPath, kCasualArcPath, kAlinkArcPath,
-    kHylianShieldArcPath, kOrdonShieldArcPath, kWoodShieldArcPath, kWolfArcPath,
+    kHylianShieldArcPath, kOrdonShieldArcPath, kWoodShieldArcPath, kWolfArcPath, kMidnaArcPath,
 };
-// About 0x270000 decompressed; trimmed once they are mounted.
+static_assert(kArcCount <= PrivateArchives::kMax);
+// About 0x290000 decompressed; trimmed once they are mounted.
 constexpr u32 kPrivateArcHeapSize = 0x400000;
 
 static J3DModel* makeModelEx(JKRArchive* archive, u16 bmdId, u32 modelFlags, u32 diffFlags) {
@@ -543,6 +547,24 @@ static void clearEyeTextureMaxLod(J3DModel* faceModel) {
         clearTextureMaxLod(faceModel, "al_eyeball");
         clearTextureMaxLod(faceModel, "highlight02");
         clearTextureMaxLod(faceModel, "eye_kage01");
+    }
+}
+
+// daMidna_c::createHeap's PC fix for her shadow's eyes
+static void disableTextureMipmap(J3DModel* model, const char* texName) {
+    J3DModelData* data = model != nullptr ? model->getModelData() : nullptr;
+    J3DTexture* tex = data != nullptr ? data->getTexture() : nullptr;
+    JUTNameTab* names = data != nullptr ? data->getTextureName() : nullptr;
+    if (!tex || !names) {
+        return;
+    }
+    for (u16 i = 0; i < tex->getNum(); i++) {
+        const char* name = names->getName(i);
+        if (name && std::strcmp(name, texName) == 0) {
+            tex->getResTIMG(i)->mipmapEnabled = false;
+            tex->loadGXTexObj(i);
+            break;
+        }
     }
 }
 
@@ -1282,6 +1304,12 @@ int daDummyPlayer_c::createHeapImpl() {
         }
         if (mpDummyWolfModel && chainsOk) {
             clearTextureMaxLod(mpDummyWolfModel, "wl_eyeball");
+            // Her shadow form, flags as daMidna_c::createHeap
+            JKRArchive* const shadow = mDummyArchives.get(kArcMidna);
+            if (!shadow) {
+                TwiliLog.warn("[dummy {}] createHeap: private {} mount failed",
+                             mDummyClientId, kMidnaArcPath);
+            }
             // Midna rides on this body
             const twili::DummyMidna::Models midna = {
                 loadPrivateBmd(mpDummyWmdlArchive, dRes_ID_WMDL_BMD_MD_e),
@@ -1294,7 +1322,25 @@ int daDummyPlayer_c::createHeapImpl() {
                     loadPrivateBrk(mpDummyWmdlArchive, dRes_ID_WMDL_BRK_MD_HANDS_D_COLOR_e),
                     loadPrivateBrk(mpDummyWmdlArchive, dRes_ID_WMDL_BRK_MD_HAIR_HAND_D_COLOR_e),
                 },
+                makeModelEx(shadow, dRes_ID_MIDNA_BMD_S_MD_e, 0, 0x200),
+                makeModelEx(shadow, dRes_ID_MIDNA_BMD_S_MD_MASK_e, 0, 0x200),
+                makeModelEx(shadow, dRes_ID_MIDNA_BMD_S_MD_HANDS_e, 0, 0x200),
+                makeModelEx(shadow, dRes_ID_MIDNA_BMD_S_MD_HAIR_HAND_e, 0, 0x200),
+                makeModelEx(shadow, dRes_ID_MIDNA_BMD_S_MD_GOKOU_e, 0x80000, 0),
+                {
+                    loadPrivateBtk(shadow, dRes_ID_MIDNA_BTK_S_MD_MOYA_e),
+                    loadPrivateBtk(shadow, dRes_ID_MIDNA_BTK_S_MD_MASK_MOYA_e),
+                    loadPrivateBtk(shadow, dRes_ID_MIDNA_BTK_S_MD_HANDS_MOYA_e),
+                    loadPrivateBtk(shadow, dRes_ID_MIDNA_BTK_S_MD_HAIR_HAND_MOYA_e),
+                },
+                {
+                    loadPrivateBrk(shadow, dRes_ID_MIDNA_BRK_S_MD_APPEAR_e),
+                    loadPrivateBrk(shadow, dRes_ID_MIDNA_BRK_S_MD_MASK_APPEAR_e),
+                    loadPrivateBrk(shadow, dRes_ID_MIDNA_BRK_S_MD_HAIR_HAND_APPEAR_e),
+                    loadPrivateBrk(shadow, dRes_ID_MIDNA_BRK_S_MD_GOKOU_APPEAR_e),
+                },
             };
+            disableTextureMipmap(midna.shadowBody, "midona_eye");
             if (mDummyMidna.createHeap(midna)) {
                 clearTextureMaxLod(mDummyMidna.bodyModel(), "midona_eyeball");
             } else {
@@ -3413,6 +3459,9 @@ void daDummyPlayer_c::getDebugInfo(twili::DummyPlayerDebugInfo& out) const {
                                        out.midnaMode == twili::kMidnaApart);
     out.midnaApartTicks = mDummyMidna.apartTicks();
     out.midnaShownTicks = mDummyMidna.shownTicks();
+    out.midnaShadowReady = mDummyMidna.shadowReady();
+    out.midnaShadowDrawn = mDummyMidna.drawsShadow();
+    out.midnaShadowDraws = mDummyMidna.shadowDraws();
     out.midnaEyeMove = mDummyMidna.eyeMoving();
     out.midnaBodyAnm = mDummyMidna.bodyId();
     out.midnaUpperAnm = mDummyMidna.upperId();

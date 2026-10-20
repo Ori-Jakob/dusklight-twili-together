@@ -97,6 +97,9 @@ struct DummyPlayerDebugInfo {
     uint32_t midnaApartTicks = 0;  // ticks posed off the wolf's back (kMidnaApart)
     uint32_t midnaShownTicks = 0;  // ticks she was drawn, on the back or off it
     bool midnaEyeMove = false;     // her eyes follow the sender's offsets this tick
+    bool midnaShadowReady = false; // her shadow form's models loaded
+    bool midnaShadowDrawn = false; // drawn as her shadow (gokou, invisible models) just now
+    uint32_t midnaShadowDraws = 0; // draws through the shadow branch
     // PvP (pvp/)
     bool hurtbox = false;
     bool hurtboxGuard = false;
