@@ -235,6 +235,10 @@ constexpr std::pair<uint8_t, const char*> kToastNames[] = {
     {dItemNo_MIRROR_PIECE_2_e, "Mirror Shard"},
     {dItemNo_MIRROR_PIECE_3_e, "Mirror Shard"},
     {dItemNo_MIRROR_PIECE_4_e, "Mirror Shard"},
+    // COLLECT_REWARD toasts the Fused Shadows under the randomizer's ids.
+    {0xD8, "Fused Shadow"},
+    {0xD9, "Fused Shadow"},
+    {0xDA, "Fused Shadow"},
     {dItemNo_M_BEETLE_e, "Male Beetle"},
     {dItemNo_F_BEETLE_e, "Female Beetle"},
     {dItemNo_M_BUTTERFLY_e, "Male Butterfly"},

@@ -159,6 +159,13 @@ void shiftDungeonItemBaseline(int keyNumBefore, uint8_t dungeonItemsBefore);
 void handleUpdateDungeonItems(const nlohmann::json& packet);
 void applyUpdateDungeonItems(const nlohmann::json& packet);
 
+// CollectRewards.cpp: Fused Shadows and Mirror Shards, set by the boss warp's scene, not an item get.
+void tickCollectRewards();
+// A remote apply changed them: not ours to send.
+void shiftCollectBaseline(uint8_t crystalBefore, uint8_t mirrorBefore);
+void invalidateCollectBaseline();
+void handleCollectReward(const nlohmann::json& packet);
+
 // BossHold.cpp: while our boss fight runs, a teammate's flags from its arena wait (true: held).
 bool holdForBossFight(const std::string& type, const nlohmann::json& packet);
 // Takes out of a merge what we hold: the arena's boss bits and the switches and event bits held.

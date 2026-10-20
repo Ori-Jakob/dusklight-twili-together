@@ -84,6 +84,7 @@ void checkSaveGeneration() {
     st.keyCountAdoptable = 0;
     st.catchUpRequested = false;
     st.dungeonBaselineValid = false;
+    invalidateCollectBaseline();
     st.pendingGrants.clear();
     st.exchangePending = true;
     resetFreestanding();
@@ -219,6 +220,8 @@ bool handlePacket(const std::string& type, const nlohmann::json& packet) {
         handleGiveItem(packet);
     } else if (type == "UPDATE_DUNGEON_ITEMS") {
         handleUpdateDungeonItems(packet);
+    } else if (type == "COLLECT_REWARD") {
+        handleCollectReward(packet);
     } else if (type == "LIGHT_DROP") {
         handleLightDrop(packet);
     } else if (type == "TEAR_COUNT") {
@@ -261,6 +264,7 @@ void tick() {
         }
     }
     tickDungeonItemTracking();
+    tickCollectRewards();
     flushPickups();
     tickFreestanding();
     tickTearCount();
@@ -279,6 +283,7 @@ void resetSession() {
     st.cleared = {};
     st.keyCountAdoptable = 0;
     st.dungeonBaselineValid = false;
+    invalidateCollectBaseline();
     st.versionMismatchLogged.clear();
     st.layoutWarnedIds.clear();
     st.merges.clear();

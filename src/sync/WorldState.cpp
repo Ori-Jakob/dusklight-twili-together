@@ -433,6 +433,8 @@ void handleUpdateWorldState(const nlohmann::json& packet) {
 
     dSv_save_c& local = info->getSavedata();
     holdMergeForBossFight(remote);
+    const uint8_t crystalBefore = local.getPlayer().getCollect().mCrystal;
+    const uint8_t mirrorBefore = local.getPlayer().getCollect().mMirror;
     const MergeBaseline before = mergeBaseline(local);
     const TakeSnapshot takesBefore = takeSnapshot();
     uint32_t itemBitsBefore[dSv_save_c::STAGE_MAX];
@@ -544,6 +546,7 @@ void handleUpdateWorldState(const nlohmann::json& packet) {
     }
 
     shiftDungeonItemBaseline(liveKeyNumBefore, liveDungeonItemsBefore);
+    shiftCollectBaseline(crystalBefore, mirrorBefore);
     shiftTakeBaseline(takesBefore);
     queueMergeTakes(mergeTakes, packet);
 

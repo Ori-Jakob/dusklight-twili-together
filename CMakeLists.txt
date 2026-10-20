@@ -107,6 +107,7 @@ set(TWILI_SOURCES
     src/story/StoryUi.cpp
     src/sync/BossHold.cpp
     src/sync/Chests.cpp
+    src/sync/CollectRewards.cpp
     src/sync/DungeonItems.cpp
     src/sync/Flags.cpp
     src/sync/Freestanding.cpp
