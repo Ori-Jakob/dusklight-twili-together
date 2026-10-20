@@ -255,6 +255,35 @@ and sheathes it with A. Written for the item takes, **not run yet** (the machine
 `take-live`, `take-lantern`, `take-first-bits`, `take-offline-join`, `take-shields`,
 `take-randomizer`, `take-lantern-in-hand`, `take-wood-sword`.
 
+Boss fights (`StepsBoss.cpp`, scenarios in `scenarios/boss.js`). Each player fights their own boss;
+while B fights, a teammate's kill, heart container and warp out of the arena must change nothing:
+
+| op | fields | does |
+| --- | --- | --- |
+| `bossGuard` | `on` | off: our fights are still seen, but nothing is held, deferred or kept out (the observe scenarios) |
+| `keepLife` | `on` (true) | refills our hearts every tick, so standing in the arena never ends in a game over |
+| `waitBossFight` | `value` (true), `quietTicks` (60), `pressA`, `timeoutSec` (120) | our boss fight runs (`value`) and, for true, no event ran for `quietTicks` (the intro is over) |
+| `expectBossFight` | `value`, `timeoutSec` (10) | whether our boss fight runs |
+| `killBoss` | `how` (`real`, `flags`), `timeoutSec` (30) | the live boss of our room ends its fight. `real` as its own code does (Diababa: `ACTION_END` with demo mode 50, Fyrus: `ACTION_END`, the paths of their debug pads): death scene, heart container, warp and BOSSCLEAR. `flags`: only the flag writes that end its defeat scene (Dangoro: the mini-boss bit and switch 14; Diababa and Fyrus: their boss bit, switches and clear bit) |
+| `bossWatch` | `tag`, `expect` (true), `sec` (20) or `until`/`from` (a peer's signal) with `holdSec` (15), `timeoutSec` | watches our fight: we stay in the room, the boss lives and is not dying, no event starts that it did not order, no warp or heart container appears, no story prompt or load, and our boss and mini-boss bits stay clear (Dangoro draws its armor only while the mini-boss bit is clear). `expect`: the first change fails the step; else each is logged once as `[autotest] BOSSWATCH <tag> interrupt <what>`. The end logs `BOSSWATCH <tag> end` with the switches, item, dungeon and event bits and max life that changed |
+| `expectBossClear` | `heart` (1), `warp` (1), `soft`, `timeoutSec` (240) | after our kill: our boss or mini-boss bit is set and no event ran for 90 ticks (A pressed through the text), then that many boss heart containers and warps lie here; `soft` only logs a difference |
+| `expectBossHeld` | `min`, `max`, `released`, `timeoutSec` (20) | teammates' packets held for our fight now, and applied after one so far |
+| `expectDungeonBit` | `stage` (ours), `bit` (3), `set` (true), `timeoutSec` (20) | a dungeon bit of that stage's table (0 map, 1 compass, 2 boss key, 3 boss beaten, 4 heart container taken, 7 mini-boss beaten) |
+| `expectStageSwitch` | `stage` (ours), `no`, `set` (true), `timeoutSec` (20) | a memory switch of that stage's table |
+| `markMaxLife` / `expectMaxLife` | `delta` (5 per heart container), `forSec`, `timeoutSec` (30) | our max life since the mark |
+| `expectEventCount` | `name`, `prefix`, `count` (1) | events of that name (or prefix) accepted here since the script began |
+| `expectNoCutsceneJoin` | `name`, `sec` (20), `tag` | no pull-in copy of a teammate's event of that name for `sec` (logs `CUTSCENE PASS`) |
+
+`boss-diababa` and `boss-fyrus` (tag `boss-fight`): both start in the arena with the boss alive
+(lib.js's boss checkpoints without `stageBoss`) and wait for its intro. A kills its boss for real,
+takes the heart container and leaves through the warp; B's `bossWatch` runs until 20 s after A
+arrived (A's world state merged). Then B kills its own boss: one BOSSCLEAR, one heart container (+5
+max life), one warp, the prompt still waiting; B warps out, the held packets apply, no prompt comes
+(A went where B's own warp went), and both end with +5 max life and the boss and heart bits.
+`boss-dangoro` does the same for a mini-boss with `killBoss` `flags` and a walk out of the stage.
+The `-observe` variants (manual, tag `boss-fight-observe`) turn B's guard off and only log what A's
+kill changes in B's fight, then B's own clear (`expectBossClear` `soft`).
+
 Chests, freestanding items, shared pickups and traps (`StepsPickups.cpp`):
 
 | op | fields | does |
@@ -523,12 +552,13 @@ catalog `tools/cutscenes/extract.js` builds from the disc image and the decomp (
 its synthetic checkpoint (stage, room, a start point near the trigger, the layer when no flags pick
 it, the milestone's event bits and levels), A triggers it (`triggerStory` `walk` into its tag,
 `arrival` at its point, or `npc` with the NPC's table entry, allowlisted for the test), A checks the
-event name, B must join it (`expectCutsceneJoin`), both settle and meet in one stage again. They are
-all manual and tagged `cutscene`, `cutscene-a` / `-b` / `-c` and, where StoryEvent's rules say B
-should be pulled in, `cutscene-likely`; the description says what today's code is expected to do.
+event name, B must join it (`expectCutsceneJoin`), both settle and meet in one stage again; for a
+boss scene (class b) B must stay out (`expectNoCutsceneJoin`). They are all manual and tagged
+`cutscene`, `cutscene-a` / `-b` / `-c` and, where StoryEvent's rules say B should be pulled in,
+`cutscene-likely`; the description says what today's code is expected to do.
 
-For a batch, `cut-batch-story-<stage>-<n>` (classes a and b) and `cut-batch-npc-<stage>-<n>` (class c)
-run a stage's cutscenes in story order on one boot, setting the flags that grow between them before
+For a batch, `cut-batch-story-<stage>-<n>` (class a), `cut-batch-boss-<stage>-<n>` (class b, B stays
+out) and `cut-batch-npc-<stage>-<n>` (class c) run a stage's cutscenes in story order on one boot, setting the flags that grow between them before
 each warp, with soft checks; rerun a `CUTSCENE FAIL` by its `cut-<id>` name. Rough lengths: all
 batches about 9 hours (`--tag cutscene-batch-story` about 6, `--tag cutscene-batch-npc` about 3),
 every isolated scenario about 13 hours (`--tag cutscene-likely` about 7). Regenerate the catalog after

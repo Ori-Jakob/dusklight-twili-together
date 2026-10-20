@@ -112,7 +112,7 @@ the others see the owner's values, greyed out.
 | Sync Enemy Deaths | off | a regular enemy a teammate defeats near you disappears for you too (not bosses; the drop goes to whoever defeated it) |
 | Share Enemy Damage | on | with Sync Enemy Deaths: teammates wear down the same enemies, so your hits weaken their copy too |
 | Sync Blocks and Chains | on | with Sync World State: a block a teammate in your area pushes or pulls, a turning switch or push door they turn, or a chain switch they pull, moves for you too and stops on the same spot; only their game flips the switch |
-| Cutscene Sync | on | teammates standing safely in the same room watch a story cutscene together |
+| Cutscene Sync | on | teammates standing safely in the same room watch a story cutscene together; never a boss scene |
 | PvP Mode | off | players can hurt each other |
 | Friendly Fire | off | PvP within a team too |
 | Lethal PvP | off | off: PvP hits never take you below one heart |
@@ -202,6 +202,10 @@ older builds go without it or without those clicks.
   those destinations per game for later catch-ups. Cutscenes started by NPCs or objects play only
   for the player who triggers them; teammates in the room get the follow prompt if the scene moves
   them.
+- Everyone fights their own bosses and mini-bosses. While you fight one, a teammate's kill, heart
+  container and warp out of that arena change nothing for you: their flags from there, follow
+  prompts and catch-up offers wait until you leave the arena (a game over that brings you back
+  keeps the wait), and nobody is pulled into a cutscene. You get one heart container per boss.
 - Sync Blocks and Chains covers push blocks and gravestones, Snowpeak's ice blocks, turning
   switches, Castle Town's push doors and chain switches. Beamos statues, the walls pulled by a
   chain, the wolf's ceiling chains and Snowpeak's cannons still move only for whoever moves them;
