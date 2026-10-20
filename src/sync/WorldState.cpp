@@ -124,8 +124,32 @@ uint8_t eventRegisterMask(int byte) {
     }
 }
 
+bool rawFirstBit(const dSv_player_get_item_c& bits, uint8_t itemNo) {
+    return ((static_cast<u32>(bits.mItemFlags[itemNo >> 5]) >> (itemNo & 31)) & 1u) != 0;
+}
+
+// Takes in a merge; off in randomizer games, which keep the plain merge.
+struct TakeRules {
+    bool active = false;
+    // The monkey holds the team's lantern: stolen (F_0224/F_0225) and not returned (F_0226).
+    bool lanternWithMonkey = false;
+};
+
+// Event bit `no` as this merge leaves it.
+bool mergedEventBit(const dSv_save_c& local, const dSv_save_c& remote, uint16_t no,
+    const ClearedFlags& cleared) {
+    const int byte = no >> 8;
+    const auto keepLocal = static_cast<uint8_t>(
+        eventRegisterMask(byte) | localOnlyEventMask(byte) | cleared.eventBits[byte]);
+    const auto merged =
+        static_cast<uint8_t>(local.mEvent.mEvent[byte] | (remote.mEvent.mEvent[byte] & ~keepLocal));
+    return (merged & static_cast<uint8_t>(no)) != 0;
+}
+
 // Without shareWoodenShield the Ordon and Wooden Shields stay as our save has them (burnt = gone).
-void mergePlayer(dSv_player_c& local, dSv_player_c& remote, bool shareWoodenShield) {
+// Items the game took stay taken; ones `mergeTakes` lists are taken here once safe.
+void mergePlayer(dSv_player_c& local, dSv_player_c& remote, bool shareWoodenShield,
+    const TakeRules& takes, std::vector<SlotTake>& mergeTakes) {
     dSv_player_status_a_c& la = local.getPlayerStatusA();
     dSv_player_status_a_c& ra = remote.getPlayerStatusA();
     la.mMaxLife = maxOf<u16>(la.mMaxLife, ra.mMaxLife);
@@ -148,17 +172,35 @@ void mergePlayer(dSv_player_c& local, dSv_player_c& remote, bool shareWoodenShie
 
     dSv_player_item_c& li = local.getItem();
     dSv_player_item_c& ri = remote.getItem();
+    // First-get bits as they were before this merge.
+    const dSv_player_get_item_c& lg0 = local.getGetItem();
+    const dSv_player_get_item_c& rg0 = remote.getGetItem();
     for (int slot = 0; slot < MAX_ITEM_SLOTS; slot++) {
         // Ooccoo is situational and per player.
         if (slot == SLOT_18) {
             continue;
         }
-        if (li.mItems[slot] != dItemNo_NONE_e || ri.mItems[slot] == dItemNo_NONE_e) {
+        const u8 held = li.mItems[slot];
+        // Their slot is empty though they got what we hold here: it was taken from them.
+        if (takes.active && held != dItemNo_NONE_e && ri.mItems[slot] == dItemNo_NONE_e &&
+            isTakeableSlotItem(slot, held) && rawFirstBit(rg0, held) &&
+            (held != dItemNo_KANTERA_e || takes.lanternWithMonkey))
+        {
+            mergeTakes.push_back({slot, held});
+            continue;
+        }
+        if (held != dItemNo_NONE_e || ri.mItems[slot] == dItemNo_NONE_e) {
             continue;
         }
         if (isBottleSlot(slot)) {
             li.mItems[slot] = dItemNo_EMPTY_BOTTLE_e;
         } else {
+            // We had it and it left us; the lantern comes back once the monkey gave it up.
+            if (takes.active && !isBombBagSlot(slot) && rawFirstBit(lg0, ri.mItems[slot]) &&
+                (slot != SLOT_1 || takes.lanternWithMonkey))
+            {
+                continue;
+            }
             li.mItems[slot] = ri.mItems[slot];
             if (isBombBagSlot(slot)) {
                 const u8 bag = static_cast<u8>(slot - kBombBagSlotFirst);
@@ -176,6 +218,10 @@ void mergePlayer(dSv_player_c& local, dSv_player_c& remote, bool shareWoodenShie
     dSv_player_get_item_c& rg = remote.getGetItem();
     const bool hadWood = lg.isFirstBit(dItemNo_WOOD_SHIELD_e);
     const bool hadOrdon = lg.isFirstBit(dItemNo_SHIELD_e);
+    bool hadTaken[std::size(kTakeFirstBits)];
+    for (size_t i = 0; i < std::size(kTakeFirstBits); i++) {
+        hadTaken[i] = rawFirstBit(lg, kTakeFirstBits[i]);
+    }
     for (int i = 0; i < 8; i++) {
         lg.mItemFlags[i] = static_cast<u32>(lg.mItemFlags[i]) | static_cast<u32>(rg.mItemFlags[i]);
     }
@@ -184,6 +230,12 @@ void mergePlayer(dSv_player_c& local, dSv_player_c& remote, bool shareWoodenShie
             lg.offFirstBit(dItemNo_WOOD_SHIELD_e);
         if (!hadOrdon)
             lg.offFirstBit(dItemNo_SHIELD_e);
+    }
+    // The pumpkin and cheese are their bit: one taken from us stays taken.
+    for (size_t i = 0; i < std::size(kTakeFirstBits); i++) {
+        if (takes.active && !hadTaken[i] && hasTakeRecord(kTakeFirstBits[i])) {
+            lg.offFirstBit(kTakeFirstBits[i]);
+        }
     }
 
     dSv_player_item_max_c& lm = local.getItemMax();
@@ -366,6 +418,7 @@ void handleUpdateWorldState(const nlohmann::json& packet) {
 
     dSv_save_c& local = info->getSavedata();
     const MergeBaseline before = mergeBaseline(local);
+    const TakeSnapshot takesBefore = takeSnapshot();
     uint32_t itemBitsBefore[dSv_save_c::STAGE_MAX];
     // Switches and TBOX bits the merge brings were a teammate's (Poe souls, chests).
     uint32_t switchesBefore[dSv_save_c::STAGE_MAX][4];
@@ -381,7 +434,15 @@ void handleUpdateWorldState(const nlohmann::json& packet) {
     }
     uint8_t eventsBefore[MAX_EVENTS];
     std::memcpy(eventsBefore, local.mEvent.mEvent, sizeof(eventsBefore));
-    mergePlayer(local.getPlayer(), remote.getPlayer(), session.roomState().shareWoodenShield);
+    TakeRules takeRules;
+    takeRules.active = !randoGame();
+    takeRules.lanternWithMonkey =
+        (mergedEventBit(local, remote, dSv_event_flag_c::F_0224, st.cleared) ||
+            mergedEventBit(local, remote, dSv_event_flag_c::F_0225, st.cleared)) &&
+        !mergedEventBit(local, remote, dSv_event_flag_c::F_0226, st.cleared);
+    std::vector<SlotTake> mergeTakes;
+    mergePlayer(local.getPlayer(), remote.getPlayer(), session.roomState().shareWoodenShield,
+        takeRules, mergeTakes);
     for (int s = 0; s < dSv_save_c::STAGE_MAX; s++) {
         mergeMemBit(local.mSave[s].getBit(), remote.mSave[s].getBit(),
             ((st.keyCountAdoptable >> s) & 1u) != 0, st.cleared.switches[s]);
@@ -465,6 +526,8 @@ void handleUpdateWorldState(const nlohmann::json& packet) {
     }
 
     shiftDungeonItemBaseline(liveKeyNumBefore, liveDungeonItemsBefore);
+    shiftTakeBaseline(takesBefore);
+    queueMergeTakes(mergeTakes, packet);
 
     // The server's cache and an answer to our request are the catch-up; a broadcast is live.
     const uint32_t from = packet.value("clientId", 0u);
