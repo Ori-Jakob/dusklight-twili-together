@@ -84,6 +84,7 @@ keys and wrong types are ignored, numbers are clamped. The state:
 | `syncNPCs` | false | enemy deaths sync within a stage |
 | `syncEnemyDamage` | true | with `syncNPCs`: teammates' hits on an enemy weaken our copy too |
 | `cutsceneSync` | true | story cutscenes pull in teammates in the same room |
+| `syncPushPull` | true | with `syncWorldState`: teammates' block pushes and chain pulls play for everyone in the room (`PUSH_MOVE`, `PUSH_REST`, `CHAIN_PULL`) |
 | `pvpMode`, `pvpFriendlyFire`, `pvpLethal` | false | PvP rules |
 | `showLocationsMode` | true | map markers |
 | `teleportMode` | false | teleport to a player |
@@ -207,6 +208,21 @@ stays queued past every state: a save cannot tell a taken pumpkin from one never
 | `ENEMY_DAMAGE` | teammates in the same stage and layer | `{v: 1, quiet: true, stageName, layerNo, hits: [...]}`; a hit is a spawn key as in `ENEMY_DEFEATED` plus `dmg` (0 to 30000), `pct` (the sender's health percent for that enemy, 100 to 500), `hpAfter` (the sender's health left at 100%, or -1) and, only when not 0, `hits` (1 to 4: counted hits of a Chu Worm, which dies at four whatever its health; `dmg` may then be 0). The receiver lowers its copy's health by `dmg` converted to its own percent, and further to `hpAfter` if that is lower (a hit it missed), never below 2 (11 for Wooden Puppets and Skulltulas), and a Chu Worm's hits left by `hits`, never below 1: deaths stay with `ENEMY_DEFEATED`. A helmeted Helmasaur's health is what its helmet still takes. Never cached |
 | `STORY_EVENT` | teammates in the same stage and layer | `ph` = `start`, `joined` or `end`; a story cutscene teammates in the same room may watch too. With `req: "npc"` it carries `npc: {prof, room, params, set, home, k, sd}`: the NPC's spawn key, the entry of its event table it ordered and a digest of the story flags; a teammate joins through its own copy of that NPC, only for allowlisted events and never in a randomizer game |
 | `STORY_MOVE` | the whole team | `ph: "arrive"`: a story event moved the sender to another stage. Teammates get a prompt to follow. The last 16 per team are replayed on catch-up, oldest first. Besides `from`, `to`, `event`, `qual` and `hops` it carries `hl` (each arrival: `at`, the arrival demo's `m`, `sw`, `name`), `bits` (event bits the move set), `key`, `th` (it ended on a cutscene or battle layer) and `boss` |
+
+### Blocks and chains (teammates only, while `syncPushPull` is on)
+
+| Packet | Goes to | Notes |
+| --- | --- | --- |
+| `PUSH_MOVE` | teammates in the same stage and layer | `{v: 1, stageName, layerNo, key, from: {x, z}, to: {x, z}, dir, pull, walk}`: a block the sender's Link (or iron ball) just set moving. `key` is the object's placement `{roomNo, procName, params, setId, home: {x, y, z}, angle: [x, y, z]}`; `dir` 0 to 3 in the object's own frame; `to` only for grid blocks (`Obj_Movebox`), `walk` only for ice blocks (1 a push, 2 an iron ball hit) |
+| `PUSH_REST` | teammates in the same stage and layer | `{v: 1, stageName, layerNo, key, from, pos: {x, z}}`: where that move stopped |
+| `CHAIN_PULL` | teammates in the same stage and layer | `{v: 1, stageName, layerNo, key, held, hook, out, cap, end: {x, y, z}, rel: {x, y, z}}`: a chain switch the sender holds (by hand, or `hook` by the clawshot), ten a second and once more with `held: false` on release. `out` is the links out, `cap` the stepped chains' limit, `end` the handle; `rel` the handle from the sender's feet in its facing frame (hand only) |
+
+A receiver plays a move with its own copy of the object only if that copy stands where the move
+started (else it walks one cell or jumps to `to` or `pos`). Two moves from the same spot within five
+seconds are concurrent: everyone follows the one from the lower client id, and the other sender's
+copy goes where it ended. Its chain copy follows the puppet's hand and never sets or clears the
+chain's switch itself; the puller's switch reaches it as a flag. All three are live only: never
+cached or queued, so a player who arrives later sees what the switches saved.
 
 ### Teleport (one target, while `teleportMode` is on)
 
