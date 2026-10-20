@@ -4721,6 +4721,18 @@ void daDummyPlayer_c::drawRemoteShadow() {
         mDummyMidna.addRealShadow(field_0x31a4);
         return;
     }
+    // Head, hat and hands are their own models, as in daAlink_c::shadowDraw.
+    for (J3DModel* part : {mpLinkFaceModel, mpLinkHatModel, mpLinkHandModel}) {
+        if (part != nullptr) {
+            dComIfGd_addRealShadow(field_0x31a4, part);
+        }
+    }
+    if (mLeftHandIndex == 0xFB && mpDemoHLTmpModel != nullptr) {
+        dComIfGd_addRealShadow(field_0x31a4, mpDemoHLTmpModel);
+    }
+    if (mRightHandIndex == 0xFB && mpDemoHRTmpModel != nullptr) {
+        dComIfGd_addRealShadow(field_0x31a4, mpDemoHRTmpModel);
+    }
     if (checkItemDraw()) {
         dComIfGd_addRealShadow(field_0x31a4, mHeldItemModel);
     }
