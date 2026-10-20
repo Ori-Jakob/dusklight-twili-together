@@ -247,6 +247,19 @@ void undoStageEffects(const ActiveGrant& grant) {
     }
 }
 
+// The max life a heart piece or container added; its item function may not have applied it yet.
+void takeBackSecondHeart(uint8_t itemNo, const char* check) {
+    const int value = itemNo == dItemNo_KAKERA_HEART_e ? 1 : itemNo == dItemNo_UTAWA_HEART_e ? 5 : 0;
+    dSv_player_status_a_c& status = dComIfGs_getSaveInfo()->getPlayer().getPlayerStatusA();
+    if (value == 0 || status.getMaxLife() < value) {
+        return;
+    }
+    status.setMaxLife(static_cast<u16>(status.getMaxLife() - value));
+    state().stats.grantsDeduped++;
+    TwiliLog.info("[sync] item 0x{:02X} from {} reached us from a teammate first: max life -{}",
+        itemNo, check, value);
+}
+
 void onItemGiven(ModContext*, const ItemGiveInfo* info, void*) {
     if (info == nullptr) {
         return;
@@ -269,6 +282,10 @@ void onItemGiven(ModContext*, const ItemGiveInfo* info, void*) {
     if (RemoteApplyGuard::active()) {
         return;
     }
+    // A teammate's grant of this check came first (both won the same reward): ours is a second one.
+    if (teamTookCheck(info->check_name)) {
+        takeBackSecondHeart(info->item, info->check_name);
+    }
     // Checks the game hands out through the item queue (Poe souls, rewards) count as pickups too.
     notePickup(info->item, info->check_name);
     noteOwnCheck(info->check_name);
@@ -280,6 +297,11 @@ void onItemGiven(ModContext*, const ItemGiveInfo* info, void*) {
 bool isPlacedCheck(const char* check) {
     PlacedCheck placed;
     return parsePlacedCheck(check, placed);
+}
+
+// A receiver keeps these to one grant: placed checks, and named ones of items that come again.
+bool isOnceCheck(const char* check, uint8_t itemNo) {
+    return isPlacedCheck(check) || (isRepeatableItem(itemNo) && isNamedCheck(check));
 }
 
 }  // namespace
@@ -301,10 +323,10 @@ void sendGiveItem(uint8_t itemNo, const char* check) {
     nlohmann::json packet = {
         {"type", "GIVE_ITEM"},
         {"itemNo", static_cast<unsigned>(itemNo)},
+        {"saveTblNo", currentSaveTblNo()},
     };
-    if (isPlacedCheck(check)) {
+    if (isOnceCheck(check, itemNo)) {
         packet["check"] = check;
-        packet["saveTblNo"] = currentSaveTblNo();
     }
     stampWorldPacket(packet, true);
     send(std::move(packet));
@@ -332,6 +354,7 @@ void handleGiveItem(const nlohmann::json& packet) {
         packet.value("fromQueue", false) ? item_toasts::Source::Replay : item_toasts::Source::Live;
     const auto check = packet.find("check");
     if (check != packet.end() && check->is_string() &&
+        isOnceCheck(check->get_ref<const std::string&>().c_str(), grant) &&
         !acceptTeamCheck(check->get<std::string>(), packet.value("saveTblNo", -1)))
     {
         TwiliLog.info("[sync] skipped item 0x{:02X} from client {}: {} already reached us", itemNo,

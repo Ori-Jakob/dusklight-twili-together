@@ -104,7 +104,8 @@ void clearOpeningChests();
 bool chestOpeningForUs(int tboxNo);
 
 // Checks that stand for one thing in the world: GIVE_ITEM's `check`, granted once per team.
-enum class CheckKind : uint8_t { None, Freestanding, Boss, Poe, GoldenWolf, Fishing, Chest };
+// Reward: an NPC's or minigame's heart piece, taken once its event bit is set.
+enum class CheckKind : uint8_t { None, Freestanding, Boss, Poe, GoldenWolf, Fishing, Chest, Reward };
 struct PlacedCheck {
     CheckKind kind = CheckKind::None;
     std::string stage;
@@ -112,6 +113,8 @@ struct PlacedCheck {
     int no = -1;
 };
 bool parsePlacedCheck(const char* check, PlacedCheck& out);
+// Any other named give (no shop, no unparsed placed name): each player gets it once.
+bool isNamedCheck(const char* check);
 
 // Freestanding.cpp: item bits in dSv_info_c numbering (room only for zone bits).
 bool itemBitSet(int saveTblNo, int bit, int roomNo);
@@ -121,9 +124,11 @@ void onRemoteItemBit(int saveTblNo, int bit, int roomNo);
 void onRemoteSwitch(int saveTblNo, int no, int roomNo, bool live);
 void onRemoteTboxBit(int saveTblNo, int no);
 void onRemoteEventBit(uint16_t no, bool live);
-// A teammate's GIVE_ITEM for `check`: false if that check already reached us.
+// A teammate's GIVE_ITEM for `check` (placed or named): false if that check already reached us.
 bool acceptTeamCheck(const std::string& check, int saveTblNo);
 void noteOwnCheck(const char* check);
+// A teammate's grant for this check already reached us.
+bool teamTookCheck(const char* check);
 void tickFreestanding();
 void clearFreestandingStage();
 void resetFreestanding();

@@ -1,6 +1,7 @@
 // Freestanding items a teammate took (field items with a save bit, heart pieces and containers, the
-// Ordon Sword, golden wolf items, the fishing hole's heart piece): they vanish here too. Each
-// placed check (these, chests, Poe souls) reaches each of us once.
+// Ordon Sword, golden wolf items, the fishing hole's heart piece): they vanish here too, and one whose
+// check a teammate took is never placed. Each placed check (these, chests, Poe souls, NPC heart
+// pieces) and each other named give reaches each of us once.
 
 #include "sync/WorldSyncState.hpp"
 
@@ -40,6 +41,27 @@ constexpr int kBossItemBit = 0x9F;
 // The fishing hole's heart piece (its htPiece and the rod's fopAcM_onItem use this memory bit).
 constexpr const char* kFishingStage = "F_SP127";
 constexpr int kFishingHeartBit = 0x80;
+// The Goron's heart piece after the springwater rush: a life container with this Hyrule Field bit.
+constexpr const char* kSpringwaterStage = "F_SP121";
+constexpr int kSpringwaterHeartBit = 0x80;
+
+// NPC and minigame heart pieces, by the event bit that records them (their giver checks it).
+struct RewardCheck {
+    const char* name;
+    uint16_t flag;
+};
+constexpr RewardCheck kRewardChecks[] = {
+    {ITEM_CHECK_GOATS_REWARD, dSv_event_flag_c::F_0539},
+    {ITEM_CHECK_ARCHERY_REWARD, dSv_event_flag_c::M_042},
+    {ITEM_CHECK_PRAYER_REWARD, dSv_event_flag_c::F_0294},
+    {ITEM_CHECK_PLUMM_REWARD, dSv_event_flag_c::F_286},
+    {ITEM_CHECK_SNOWBOARD_REWARD, dSv_event_flag_c::F_0483},
+};
+
+// Names that parsePlacedCheck turns down under these are shared by many things; shops sell again.
+constexpr const char* kNotNamedPrefixes[] = {ITEM_CHECK_FREESTANDING_PREFIX, ITEM_CHECK_BOSS_PREFIX,
+    ITEM_CHECK_POE_PREFIX, ITEM_CHECK_GOLDEN_WOLF_PREFIX, ITEM_CHECK_CHEST_PREFIX,
+    ITEM_CHECK_SHOP_PREFIX};
 // Ticks a busy item stays on the retry list (a boomerang or clawshot pull is shorter).
 constexpr int kPendingTicks = 30 * 30;
 
@@ -323,6 +345,13 @@ std::string checkKey(const PlacedCheck& c) {
     case CheckKind::Poe: return fmt::format("{}{}:{}", ITEM_CHECK_POE_PREFIX, c.stage, c.no);
     case CheckKind::GoldenWolf: return fmt::format("{}{}", ITEM_CHECK_GOLDEN_WOLF_PREFIX, c.no);
     case CheckKind::Chest: return fmt::format("{}{}:{}", ITEM_CHECK_CHEST_PREFIX, c.stage, c.no);
+    case CheckKind::Reward:
+        for (const RewardCheck& r : kRewardChecks) {
+            if (r.flag == c.no) {
+                return r.name;
+            }
+        }
+        return {};
     default: return {};
     }
 }
@@ -382,6 +411,7 @@ bool tookBefore(const PlacedCheck& c, int saveTbl) {
     case CheckKind::Poe:
         return rawSwitch(saveTbl, c.no) && s_remoteSwitches.count(switchKey(saveTbl, c.no, -1)) == 0;
     case CheckKind::GoldenWolf:
+    case CheckKind::Reward:
         return rawEvent(c.no) && s_remoteEvents.count(static_cast<uint16_t>(c.no)) == 0;
     case CheckKind::Chest:
         return rawTbox(saveTbl, c.no) && s_remoteTboxes.count(tboxKey(saveTbl, c.no)) == 0;
@@ -458,13 +488,38 @@ bool parsePlacedCheck(const char* check, PlacedCheck& out) {
         out.kind = CheckKind::Fishing;
     } else if (parseStageNo(check, ITEM_CHECK_CHEST_PREFIX, true, stage, no)) {
         out.kind = no < TBOX_MAX ? CheckKind::Chest : CheckKind::None;
+    } else if (std::strcmp(check, ITEM_CHECK_GORON_SPRINGWATER_RUSH) == 0) {
+        stage = kSpringwaterStage;
+        no = kSpringwaterHeartBit;
+        out.kind = CheckKind::Freestanding;
+    } else {
+        for (const RewardCheck& r : kRewardChecks) {
+            if (std::strcmp(check, r.name) == 0) {
+                no = r.flag;
+                out.kind = CheckKind::Reward;
+            }
+        }
     }
-    if (out.kind == CheckKind::None || (out.kind != CheckKind::GoldenWolf && stage.empty())) {
+    const bool stageless = out.kind == CheckKind::GoldenWolf || out.kind == CheckKind::Reward;
+    if (out.kind == CheckKind::None || (!stageless && stage.empty())) {
         out = {};
         return false;
     }
     out.stage = std::move(stage);
     out.no = no;
+    return true;
+}
+
+bool isNamedCheck(const char* check) {
+    PlacedCheck placed;
+    if (check == nullptr || check[0] == '\0' || parsePlacedCheck(check, placed)) {
+        return false;
+    }
+    for (const char* prefix : kNotNamedPrefixes) {
+        if (std::strncmp(check, prefix, std::strlen(prefix)) == 0) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -536,22 +591,25 @@ void onRemoteEventBit(uint16_t no, bool live) {
 
 bool acceptTeamCheck(const std::string& check, int packetSaveTbl) {
     PlacedCheck c;
-    if (!parsePlacedCheck(check.c_str(), c)) {
+    const bool placed = parsePlacedCheck(check.c_str(), c);
+    if (!placed && !isNamedCheck(check.c_str())) {
         return true;
     }
     State& st = state();
-    const std::string key = checkKey(c);
+    const std::string key = placed ? checkKey(c) : check;
     if (s_teamChecks.count(key) != 0 || s_ownChecks.count(key) != 0) {
         st.stats.grantsDeduped++;
         return false;
     }
-    if (takingNow(c) || tookBefore(c, saveTblOf(c, packetSaveTbl))) {
+    if (placed && (takingNow(c) || tookBefore(c, saveTblOf(c, packetSaveTbl)))) {
         s_ownChecks.insert(key);
         st.stats.grantsDeduped++;
         return false;
     }
     s_teamChecks.insert(key);
-    removeTakenBy(c);
+    if (placed) {
+        removeTakenBy(c);
+    }
     return true;
 }
 
@@ -559,7 +617,17 @@ void noteOwnCheck(const char* check) {
     PlacedCheck c;
     if (parsePlacedCheck(check, c)) {
         s_ownChecks.insert(checkKey(c));
+    } else if (isNamedCheck(check)) {
+        s_ownChecks.insert(check);
     }
+}
+
+bool teamTookCheck(const char* check) {
+    PlacedCheck c;
+    if (parsePlacedCheck(check, c)) {
+        return s_teamChecks.count(checkKey(c)) != 0;
+    }
+    return isNamedCheck(check) && s_teamChecks.count(check) != 0;
 }
 
 void tickFreestanding() {
