@@ -67,14 +67,14 @@ module.exports = [
     {
         name: "overlay-churn-alloc",
         description: "an AlAnm entry overlay stays installed through 50 overlay add/remove cycles; copy-style reads "
-            + "after each rebuild allocate no entry overlay copies",
+            + "reuse the archive's copy within a frame and each rebuild replaces it, so live copies do not grow",
         timeoutSec: 150,
         cvars: COMMON_CVARS,
         instances: [{
             name: "solo",
             steps: [
                 waitStage(STAGES.linksHouse),
-                { op: "overlayChurnAlloc", cycles: 50, maxGrowth: 0 },
+                { op: "overlayChurnAlloc", cycles: 50, maxLiveGrowth: 0 },
                 { op: "looksDump" },
                 { op: "quit" },
             ],

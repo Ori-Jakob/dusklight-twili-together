@@ -591,13 +591,25 @@ void endChurn() {
     sChurn = {};
 }
 
-// A copy-style read, as Link's animation loads do; true when it came from our padded overlay.
+// A copy-style read, as Link's animation loads do; true when it came from our padded overlay and
+// a second read in the same frame reused the archive's copy.
 bool readThroughOverlay(StepContext& ctx) {
     const uint32_t size = sChurn.arc->readIdxResource(sChurn.buffer, sChurn.bufferSize, sChurn.index);
     const uint32_t want = static_cast<uint32_t>(sChurn.vanilla.size()) + 32;
     if (size != want || std::memcmp(sChurn.buffer, sChurn.vanilla.data(), sChurn.vanilla.size()) != 0) {
         ctx.fail(fmt::format("overlayChurnAlloc: read {} B at cycle {}, want the overlay's {} B", size,
             sChurn.cycle, want));
+        endChurn();
+        return false;
+    }
+    ModOverlayStats first = MOD_OVERLAY_STATS_INIT;
+    ModOverlayStats second = MOD_OVERLAY_STATS_INIT;
+    svc_mods->debug_overlay_stats(mod_ctx, &first);
+    const uint32_t again = sChurn.arc->readIdxResource(sChurn.buffer, sChurn.bufferSize, sChurn.index);
+    svc_mods->debug_overlay_stats(mod_ctx, &second);
+    if (again != want || second.total_entry_buffers != first.total_entry_buffers) {
+        ctx.fail(fmt::format("overlayChurnAlloc: a second read at cycle {} got {} B and made {} copies",
+            sChurn.cycle, again, second.total_entry_buffers - first.total_entry_buffers));
         endChurn();
         return false;
     }
@@ -617,18 +629,14 @@ bool beginChurn(StepContext& ctx) {
         return false;
     }
     std::string entryPath;
-    const auto& root = sChurn.arc->mNodes[0];
-    if (!arcEntryPath(*sChurn.arc, 0, std::string(&sChurn.arc->mStringTable[root.name_offset]) + "/",
-            sChurn.index, entryPath))
-    {
+    if (!arcEntryPath(*sChurn.arc, 0, arcRoot(*sChurn.arc), sChurn.index, entryPath)) {
         ctx.fail(fmt::format("overlayChurnAlloc: no path for AlAnm file {:#x}", sChurn.index));
         return false;
     }
 
     sChurn.bufferSize = 1u << 20;
     sChurn.storage = std::make_unique<uint8_t[]>(sChurn.bufferSize + 32);
-    sChurn.buffer = reinterpret_cast<uint8_t*>(
-        (reinterpret_cast<uintptr_t>(sChurn.storage.get()) + 31) & ~uintptr_t{31});
+    sChurn.buffer = align32(sChurn.storage.get());
     const uint32_t size = sChurn.arc->readIdxResource(sChurn.buffer, sChurn.bufferSize, sChurn.index);
     if (size == 0 || size + 32 > sChurn.bufferSize) {
         ctx.fail(fmt::format("overlayChurnAlloc: AlAnm file {:#x} read {} B", sChurn.index, size));
@@ -685,11 +693,12 @@ bool overlayChurnAlloc(StepContext& ctx) {
         return false;
     }
 
+    // Each rebuild replaces the entry's copy, so only the one overlaid entry stays in memory.
     ModOverlayStats end = MOD_OVERLAY_STATS_INIT;
     svc_mods->debug_overlay_stats(mod_ctx, &end);
-    const uint64_t maxGrowth = ctx.step.value("maxGrowth", 0ull);
-    const uint64_t liveGrowth = end.live_entry_buffers - sChurn.base.live_entry_buffers;
-    const uint64_t madeGrowth = end.total_entry_buffers - sChurn.base.total_entry_buffers;
+    const int64_t maxLiveGrowth = ctx.step.value("maxLiveGrowth", int64_t{0});
+    const int64_t liveGrowth = static_cast<int64_t>(end.live_entry_buffers) -
+                               static_cast<int64_t>(sChurn.base.live_entry_buffers);
     const uint64_t syncs = end.overlay_syncs - sChurn.base.overlay_syncs;
     TwiliLog.info("[autotest] overlay churn: {} cycles, {} overlay syncs, entry buffers live {} -> {}, "
                   "made {} -> {}",
@@ -697,9 +706,8 @@ bool overlayChurnAlloc(StepContext& ctx) {
         sChurn.base.total_entry_buffers, end.total_entry_buffers);
     if (syncs < static_cast<uint64_t>(cycles) * 2) {
         ctx.fail(fmt::format("overlayChurnAlloc: only {} overlay syncs for {} cycles", syncs, cycles));
-    } else if (liveGrowth > maxGrowth || madeGrowth > maxGrowth) {
-        ctx.fail(fmt::format("overlayChurnAlloc: entry overlay copies grew by {} live, {} made", liveGrowth,
-            madeGrowth));
+    } else if (liveGrowth > maxLiveGrowth) {
+        ctx.fail(fmt::format("overlayChurnAlloc: live entry overlay copies grew by {}", liveGrowth));
     }
     endChurn();
     return true;
