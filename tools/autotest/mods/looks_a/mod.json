@@ -1,0 +1,9 @@
+{
+  "id": "dev.n0ted.tt_fixture_looks_a",
+  "name": "Twili-Together test: looks A",
+  "version": "1.0.0",
+  "author": "Twili-Together autotest",
+  "description": "Autotest fixture: overlay files, an archive entry and a texture nothing in the game uses.",
+  "multiplayer": {"share": true},
+  "ttFixture": "looks-a-marker"
+}

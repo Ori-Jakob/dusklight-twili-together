@@ -150,6 +150,7 @@ if (TWILI_ENABLE_AUTOTEST)
         src/autotest/StepsHorse.cpp
         src/autotest/StepsItemFx.cpp
         src/autotest/StepsItemToast.cpp
+        src/autotest/StepsLooks.cpp
         src/autotest/StepsMapCursor.cpp
         src/autotest/StepsMotion.cpp
         src/autotest/StepsNameTags.cpp
@@ -185,4 +186,20 @@ target_compile_definitions(twili_together PRIVATE
 # The game headers pick C++11 features by __cplusplus, which MSVC only reports right with this.
 if (MSVC)
     target_compile_options(twili_together PRIVATE /Zc:__cplusplus)
+endif ()
+
+# Asset-only fixture mods for the look scenarios, in mods/autotest/ where the game does not look;
+# the runner installs them into an instance's own mods folder (tools/autotest/README.md).
+if (TWILI_ENABLE_AUTOTEST)
+    add_mod(tt_fixture_looks_a
+        MOD_JSON     tools/autotest/mods/looks_a/mod.json
+        OVERLAY_DIR  tools/autotest/mods/looks_a/overlay
+        TEXTURES_DIR tools/autotest/mods/looks_a/textures
+        OUTPUT_DIR   "${DUSK_MODS_OUTPUT_DIR}/autotest"
+    )
+    add_mod(tt_fixture_looks_b
+        MOD_JSON     tools/autotest/mods/looks_b/mod.json
+        OVERLAY_DIR  tools/autotest/mods/looks_b/overlay
+        OUTPUT_DIR   "${DUSK_MODS_OUTPUT_DIR}/autotest"
+    )
 endif ()

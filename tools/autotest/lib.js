@@ -9,7 +9,13 @@ const CONFIG_PREFIX = `mod.${escapeModId(MOD_ID)}.`;
 const tt = (name, value) => `${CONFIG_PREFIX}${name}=${value}`;
 
 // For a scenario's enableMods; every other mod next to the exe is disabled.
-const MODS = { randomizer: "dev.twilitrealm.randomizer" };
+const MODS = {
+    randomizer: "dev.twilitrealm.randomizer",
+    cosmetics: "dev.twilitrealm.cosmetics",
+    // Fixture bundles in mods/autotest/, installed only where enabled.
+    looksFixtureA: "dev.n0ted.tt_fixture_looks_a",
+    looksFixtureB: "dev.n0ted.tt_fixture_looks_b",
+};
 
 // Load without a forced cutscene on a fresh save.
 const STAGES = {

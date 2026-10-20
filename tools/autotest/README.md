@@ -600,6 +600,18 @@ Colouring (`StepsRecolor.cpp`):
 | `setRupees` | `value`, `timeoutSec` | in Magic Armor, done once its BRK follows |
 | `recolorCamera` | `target` (`dummy`, `self`), `dist`, `height`, `up`, `side` | our camera close on the dummy, for captures |
 
+Looks (`StepsLooks.cpp`), the host side of look sharing:
+
+| op | fields | does |
+| --- | --- | --- |
+| `looksDump` | `hashes` | tt.looks.dump: logs ModsService's view, every active mod with its overrides (and with `hashes`, the SHA-256 of each winning one, read on the game thread) and the shared cosmetics values |
+| `checkLooksInventory` | `fixtureA`, `fixtureB`, `manifestMarker`, `sharedPath`, `aOnlyPath`, `aOnlySize`, `aOnlySha`, `arcEntryPath`, `arcEntryArchive`, `textureBundlePath`, `textureHash`, `textureWidth`, `textureHeight`, `textureFormat`, `baseFile`, `aliasPath`, `runtimePath`, `runtimeBytes`, `runtimeSha`, `cosmetics` (`strings`, `ints`: values to read back; `refused`: `{mod, name}` that must be `MOD_UNAVAILABLE`) | registers a runtime overlay, a base alias of `baseFile`, an overlay over `baseFile` itself and a runtime POINTER texture, then two frames later checks ModsService: both fixtures listed with the raw `mod.json`, exactly the later-loaded one winning `sharedPath`, sizes, hashes and reads, the archive entry and texture keys, our runtime entries, the alias reading the disc, `baseFile` read from the disc under the overlay, `debug_texture_source`, the var allowlist, the watch callback and the generation |
+| `overlayChurnAlloc` | `index` (an AlAnm file, default `BCK_WAITCANOEFISHL`), `cycles` (50), `maxGrowth` (0) | overlays that AlAnm entry with its own bytes plus 32 padding bytes, then adds and removes another overlay `cycles` times (each a rebuild and a generation bump), reading the entry copy-style after each; fails unless every read comes from the overlay and ModsService's entry overlay copies (live and made) grow by at most `maxGrowth` |
+
+Written for the look sharing host pieces, **not run yet** (the machine was in use):
+`looks-inventory` (with the cosmetics mod and both looks fixtures) and `overlay-churn-alloc`
+(`scenarios/looks.js`). Both need a host with ModsService and OverlayService 1.1.
+
 Hook cost (`StepsPerf.cpp`):
 
 | op | fields | does |

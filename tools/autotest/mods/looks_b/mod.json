@@ -1,0 +1,7 @@
+{
+  "id": "dev.n0ted.tt_fixture_looks_b",
+  "name": "Twili-Together test: looks B",
+  "version": "1.0.0",
+  "author": "Twili-Together autotest",
+  "description": "Autotest fixture: overrides the same path as looks A."
+}
