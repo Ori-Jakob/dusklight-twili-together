@@ -50,7 +50,17 @@ constexpr int kMaxSummaryIcons = 4;
 constexpr size_t kHistoryMax = 64;
 constexpr double kMinNameContrast = 3.0;
 
-enum class Kind { Item, Own, Summary, Merged };
+enum class Kind { Item, Own, Summary, Merged, Taken };
+
+// One item from one sender, shown on its own line.
+bool isSingle(Kind k) {
+    return k == Kind::Item || k == Kind::Own || k == Kind::Taken;
+}
+
+// Toasts a sender's backlog may fold into one "got N items".
+bool mergeable(Kind k) {
+    return k != Kind::Summary && k != Kind::Taken;
+}
 
 struct Entry {
     uint32_t seq = 0;
@@ -92,6 +102,7 @@ const char* kindName(Kind k) {
     case Kind::Own: return "own";
     case Kind::Summary: return "summary";
     case Kind::Merged: return "merged";
+    case Kind::Taken: return "taken";
     }
     return "?";
 }
@@ -221,6 +232,12 @@ std::string entryText(const Entry& e, bool rml) {
         return rml ? fmt::format("{} got <b>{}</b>", senderRml(who, true), ui::escapeRml(label))
                    : fmt::format("{} got {}", senderText(who, true), label);
     }
+    case Kind::Taken: {
+        const std::string label = itemLabel(e.items.front());
+        return rml ? fmt::format("<b>{}</b> was taken from {}", ui::escapeRml(label),
+                         senderRml(who, false))
+                   : fmt::format("{} was taken from {}", label, senderText(who, false));
+    }
     case Kind::Merged:
         return fmt::format("{} got {}", rml ? senderRml(who, true) : senderText(who, true), items);
     case Kind::Summary:
@@ -270,7 +287,7 @@ std::string batchRml(const std::vector<Entry>& batch) {
 }
 
 std::string entryRml(const Entry& e) {
-    if (e.kind == Kind::Item || e.kind == Kind::Own) {
+    if (isSingle(e.kind)) {
         return fmt::format("<row class=\"item-line\">{}<span class=\"text\">{}</span></row>",
             iconRml(e.items.front().itemNo), entryText(e, true));
     }
@@ -311,7 +328,7 @@ void fillRecord(Record& r, const Entry& e) {
     for (const ItemCount& ic : e.items) {
         r.items.push_back(ic.itemNo);
     }
-    r.count = e.kind == Kind::Item || e.kind == Kind::Own ? e.items.front().count : e.total;
+    r.count = isSingle(e.kind) ? e.items.front().count : e.total;
     r.text = entryText(e, false);
     r.rml = entryRml(e);
     const IconProbe& icon = iconInfo(e.items.front().itemNo);
@@ -337,7 +354,7 @@ void mergeSender(const Sender& who, const Entry* extra) {
     std::vector<size_t> taken;
     for (size_t i = 0; i < sPending.size(); i++) {
         const Entry& q = sPending[i];
-        if (q.kind == Kind::Summary || !sameSender(q.senders.front(), who)) {
+        if (!mergeable(q.kind) || !sameSender(q.senders.front(), who)) {
             continue;
         }
         if (taken.empty()) {
@@ -385,7 +402,7 @@ void enqueue(Entry e) {
             const Sender& who = e.senders.front();
             const bool senderPending =
                 std::any_of(sPending.begin(), sPending.end(), [&](const Entry& q) {
-                    return q.kind != Kind::Summary && sameSender(q.senders.front(), who);
+                    return mergeable(q.kind) && sameSender(q.senders.front(), who);
                 });
             if (senderPending) {
                 mergeSender(who, &e);
@@ -396,7 +413,7 @@ void enqueue(Entry e) {
             const Sender* busiest = nullptr;
             int most = 1;
             for (const Entry& q : sPending) {
-                if (q.kind == Kind::Summary) {
+                if (!mergeable(q.kind)) {
                     continue;
                 }
                 const Sender& s = q.senders.front();
@@ -605,6 +622,13 @@ void noteOwnItem(uint8_t itemNo, int saveTbl) {
     enqueueItem(Kind::Own, self, {itemNo, 1, isDungeonItem(itemNo) ? saveTbl : -1});
 }
 
+void noteTaken(const Sender& from, uint8_t itemNo) {
+    if (!teammateToastsOn() || !isToastableItem(itemNo)) {
+        return;
+    }
+    enqueueItem(Kind::Taken, from, {itemNo, 1, -1});
+}
+
 void beginCatchUp() {
     touchWindow(clock::now());
     TwiliLog.info("[toast] catch-up window open");
@@ -646,7 +670,7 @@ void tick() {
 
     std::vector<Sender> stale;
     for (const Entry& e : sPending) {
-        if (e.kind != Kind::Summary && now - e.queuedAt >= kStaleAfter &&
+        if (mergeable(e.kind) && now - e.queuedAt >= kStaleAfter &&
             std::none_of(stale.begin(), stale.end(),
                 [&](const Sender& s) { return sameSender(s, e.senders.front()); }))
         {
@@ -655,7 +679,7 @@ void tick() {
     }
     for (const Sender& who : stale) {
         const auto n = std::count_if(sPending.begin(), sPending.end(), [&](const Entry& e) {
-            return e.kind != Kind::Summary && sameSender(e.senders.front(), who);
+            return mergeable(e.kind) && sameSender(e.senders.front(), who);
         });
         if (n >= 2) {
             mergeSender(who, nullptr);
@@ -668,11 +692,12 @@ void tick() {
         sPending.pop_front();
     }
     const Entry& first = batch.front();
-    const bool single = batch.size() == 1 && (first.kind == Kind::Item || first.kind == Kind::Own);
+    const bool single = batch.size() == 1 && isSingle(first.kind);
     const auto duration = batch.size() > 1 ? kBatchDuration
                           : single         ? kItemDuration
                                            : kSummaryDuration;
     const char* title = batch.size() == 1 && first.kind == Kind::Summary ? "Items synced"
+                        : single && first.kind == Kind::Taken            ? "Item taken"
                         : single                                          ? "Item"
                                                                           : "Items";
     ui::toastRml(fmt::format("<toast-title>{}</toast-title>", title),

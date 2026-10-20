@@ -49,6 +49,8 @@ void noteItem(const Sender& who, uint8_t itemNo, int count, int saveTbl, Source 
 void noteMerge(const Sender& who, Source src, const std::vector<ItemCount>& items);
 // Our own pickup (ItemService give with origin GAME), shown only with item_toasts_own.
 void noteOwnItem(uint8_t itemNo, int saveTbl);
+// A teammate's take removed our item; always its own toast, never summarized.
+void noteTaken(const Sender& from, uint8_t itemNo);
 // Our catch-up request went out: replays and merges in the next seconds are summarized.
 void beginCatchUp();
 // Once per tick, connected or not.
@@ -59,7 +61,7 @@ void resetSession();
 // Autotest readback.
 struct Record {
     uint32_t seq = 0;
-    std::string kind;  // "item", "own", "summary" (catch-up) or "merged" (backlog)
+    std::string kind;  // "item", "own", "summary" (catch-up), "merged" (backlog) or "taken"
     uint32_t senderId = 0;
     std::vector<std::string> senderNames;  // as shown; several for a summary, "self" for us
     bool nameFromPacket = false;
