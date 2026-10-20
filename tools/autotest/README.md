@@ -271,6 +271,7 @@ while B fights, a teammate's kill, heart container and warp out of the arena mus
 | `expectDungeonBit` | `stage` (ours), `bit` (3), `set` (true), `timeoutSec` (20) | a dungeon bit of that stage's table (0 map, 1 compass, 2 boss key, 3 boss beaten, 4 heart container taken, 7 mini-boss beaten) |
 | `expectStageSwitch` | `stage` (ours), `no`, `set` (true), `timeoutSec` (20) | a memory switch of that stage's table |
 | `markMaxLife` / `expectMaxLife` | `delta` (5 per heart container), `forSec`, `timeoutSec` (30) | our max life since the mark |
+| `expectCollect` | `crystal` or `mirror` (bit), `set` (true), `timeoutSec` (30) | a Fused Shadow or Mirror Shard bit of our collection |
 | `expectEventCount` | `name`, `prefix`, `count` (1) | events of that name (or prefix) accepted here since the script began |
 | `expectNoCutsceneJoin` | `name`, `sec` (20), `tag` | no pull-in copy of a teammate's event of that name for `sec` (logs `CUTSCENE PASS`) |
 
@@ -278,7 +279,7 @@ while B fights, a teammate's kill, heart container and warp out of the arena mus
 (lib.js's boss checkpoints without `stageBoss`) and wait for its intro. A kills its boss for real,
 takes the heart container and leaves through the warp; B's `bossWatch` runs until 20 s after A
 arrived (A's world state merged); the heart container's bit and grant came through meanwhile (+5 max
-life), the boss bit did not. Then B kills its own boss: one BOSSCLEAR, one warp, no heart container (A
+life), and so did A's Fused Shadow with its toast; the boss bit did not. Then B kills its own boss: one BOSSCLEAR, one warp, no heart container (A
 took the team's), the prompt still waiting; B warps out, the held packets apply, no prompt comes (A
 went where B's own warp went), and both end with +5 max life and the boss and heart bits.
 `boss-dangoro` does the same for a mini-boss with `killBoss` `flags` and a walk out of the stage.
