@@ -7,6 +7,7 @@ const { COMMON_CVARS, STAGES, STORY, barrier, connect } = require("../lib");
 const QUAL_BOSS = 64;
 // fopAcM_createItemForBoss's item bit; dungeon bits STAGE_BOSS_ENEMY, STAGE_LIFE, STAGE_BOSS_ENEMY_2.
 const HEART_BIT = 0x9f;
+const HEART_ITEM = 0x22;
 const BOSS_BIT = 3;
 const LIFE_BIT = 4;
 const MINIBOSS_BIT = 7;
@@ -41,15 +42,14 @@ const killAndLeave = (b) => [
     { op: "signal", name: "a-out" },
 ];
 
-// B's own clear: one death, one BOSSCLEAR, one heart container (+5), one warp.
+// B's own clear: one death, one BOSSCLEAR, one warp, and no heart container: A took the team's
+// (its STAGE_LIFE came through, its grant gave us the +5).
 const ownClear = (b) => [
     { op: "killBoss", how: "real" },
-    { op: "expectBossClear", heart: 1, warp: 1, timeoutSec: 300 },
+    { op: "expectBossClear", heart: 0, warp: 1, timeoutSec: 300 },
     { op: "expectEventCount", name: "BOSSCLEAR", prefix: true, count: 1 },
-    { op: "findFieldItem", bit: HEART_BIT, tag: "heart" },
-    { op: "takeFieldItem", tag: "heart", timeoutSec: 90 },
     settle(),
-    { op: "expectMaxLife", delta: 5 },
+    { op: "expectMaxLife", delta: 5, forSec: 5 },
     // Still in the arena: the held flags and A's prompt still wait.
     { op: "expectBossFight", value: true },
     { op: "expectNoPrompt", sec: 5 },
@@ -58,7 +58,7 @@ const ownClear = (b) => [
 function bossScenario(b) {
     return {
         name: `boss-${b.id}`,
-        description: `B fights ${b.name} while A kills its own copy, takes the heart container and warps out: B's fight goes on (boss alive, no event, warp or heart container, no prompt); then B's own clear plays once and the held flags merge`,
+        description: `B fights ${b.name} while A kills its own copy, takes the heart container and warps out: B's fight goes on (boss alive, no event, warp or heart container, no prompt, boss bit held); then B's own clear plays once with no second heart container and the held flags merge`,
         tags: ["boss-fight"],
         timeoutSec: 1800,
         cvars: COMMON_CVARS,
@@ -90,7 +90,11 @@ function bossScenario(b) {
                     ...barrier("fighting", "A", 300),
                     { op: "bossWatch", tag: b.id, until: "a-out", from: "A", holdSec: 20, timeoutSec: 900 },
                     { op: "expectBossHeld", min: 3 },
-                    { op: "expectMaxLife", delta: 0 },
+                    // Received mid-fight, uninterrupted: A's heart container (one, with its toast) and its bit.
+                    { op: "expectItemToast", kind: "item", from: "A", item: HEART_ITEM, timeoutSec: 30 },
+                    { op: "expectMaxLife", delta: 5, forSec: 5 },
+                    { op: "expectDungeonBit", bit: LIFE_BIT },
+                    { op: "expectDungeonBit", bit: BOSS_BIT, set: false },
                     ...ownClear(b),
                     ...barrier("b-clear", "A", 300),
                     { op: "triggerStory", via: "bossWarp" },
