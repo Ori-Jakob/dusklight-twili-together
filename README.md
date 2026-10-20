@@ -32,7 +32,8 @@ Everyone in a session should run the same Dusklight version and the same Twili-T
 Someone has to run a relay server first; see [docs/hosting.md](docs/hosting.md). It takes a
 minute on any computer with Node.js.
 
-1. Open **Twili-Together** in the menu bar. The window has three tabs: Connection, Room and Players.
+1. Open **Twili-Together** in the menu bar. The window has four tabs: Connection, Room, Players
+   and Looks.
 2. On **Connection**, set your name, pick a colour, and enter the **Server URL**:
    - `ws://localhost:3000` when the relay runs on your own computer,
    - `tcp://192.168.1.20:3001` (the host's address) on a LAN,
@@ -101,6 +102,8 @@ Personal settings, on the Connection tab:
 | Server URL | empty | see Connecting |
 | Reconnect Automatically | on | |
 | Always Sync Unverified Randomizer Games | off | (Room tab) skip the Sync Unverified Match question |
+| Share My Cosmetics | on | (Looks tab) other players' puppets of you wear your Cosmetics mod colours |
+| Show Other Players' Cosmetics | on | (Looks tab) puppets wear their player's Cosmetics mod colours |
 
 Room settings, on the Room tab. Everyone sets their own values, but only the room owner's apply;
 the others see the owner's values, greyed out.
@@ -164,10 +167,11 @@ last heart shows "A knocked out B".
 Lists everyone in the room, grouped by team, with where they are and whether they sync with you.
 Each player has small buttons beside them: teleport to them (on a team only teammates are offered,
 unless the room allows teleporting across teams; greyed out with the reason in its tooltip while
-teleporting is off or not possible now), and, for the room owner or team leader, hand over the room
-or the team. A teleport puts you right beside the other player, facing their way, in your own form:
-at once when their room is loaded around you, else after loading their area (the version of it your
-story progress loads, when they stand in a cutscene-only one). It works while they watch a
+teleporting is off or not possible now), and Player Options: their cosmetics on or off and, for
+the room owner or team leader, hand over the room or the team. A teleport puts you right beside
+the other player, facing their way, in your own form: at once when their room is loaded around
+you, else after loading their area (the version of it your story progress loads, when they stand
+in a cutscene-only one). It works while they watch a
 cutscene, which plays on for them alone. Where the ground beside them is no place to stand (a pit,
 deep water, a wall) you land on the last solid ground they stood on, or the nearest entrance of
 their room. Not during your own cutscene, in a menu, while riding, swimming or carrying something;
@@ -176,6 +180,25 @@ story event moved them (for example Link's capture into Hyrule Castle) and you w
 place with the matching form. It prefers the team's latest strong story move to a later minor one,
 and it also works offline from the moves this game learned before. Tears of light a teammate
 collects count for the whole team.
+
+## Cosmetics
+
+With the Cosmetics mod (Dusklight's built-in one, `dev.twilitrealm.cosmetics`) on, the colours you
+picked there show on your puppet in everyone else's game: tunics and caps, Zora armour, Link's
+hair, the swords, iron boots, boomerang and spinner, the wolf, Epona, and Midna's hair on the
+wolf's back. Their game draws them with Twili-Together's own recolour, an approximation of the
+Cosmetics mod's, so they need neither the Cosmetics mod nor your settings. A set of clothes you
+recoloured (hero's clothes, Zora armour, wolf, Epona) shows your colours instead of your player
+colour; Magic Armor and the Ordon clothes keep the player colour, and so do your name tag, map
+marker and players list entry. Colours left at their default show as the game draws them. Lantern
+and sword glows, the charge ring and the HUD colours are not shared.
+
+Your own cosmetics never land on other players' puppets, and neither do your texture packs on the
+textures cosmetics colour. A puppet that shows your own installed look mod instead of the game's
+textures is not recoloured. Turn sharing off with **Share My Cosmetics**, every player's off with
+**Show Other Players' Cosmetics**, or one player's from their row in the Players tab (**Their
+Cosmetics: Off**, until you restart). Sharing needs a Dusklight with ModsService (any Dusklight
+shows them) and a relay that knows cosmetics; the Looks tab says when one of them is too old.
 
 ## The players widget
 

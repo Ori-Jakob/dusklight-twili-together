@@ -5,6 +5,7 @@
 #include "core/Log.hpp"
 #include "core/Session.hpp"
 #include "game/TeamGame.hpp"
+#include "looks/Cosmetics.hpp"
 #include "story/StoryUi.hpp"
 #include "sync/WorldSync.hpp"
 #include "teleport/Teleport.hpp"
@@ -84,6 +85,8 @@ struct Live {
     std::string lastTeleportStatus;
     std::string lastStoryStatus;
     std::string lastCatchUp;
+    UiElementHandle looksStatus = 0;
+    std::string lastLooksStatus;
 };
 Live s_live;
 
@@ -725,6 +728,9 @@ std::string playerRml(uint32_t id, const Client& c, bool ownTeam) {
     if (!c.modVersion.empty()) {
         details += " · " + c.modVersion;
     }
+    if (const std::string tag = looks::cosmeticsPlayerTag(id); !c.self && !tag.empty()) {
+        details += " · " + tag;
+    }
     rml += "<p class=\"twili-player-detail\">" + escapeRml(details) + "</p>";
     if (const std::string story = story::clientLine(id); !story.empty()) {
         rml += "<p class=\"twili-player-detail\">Story: " + escapeRml(story) + "</p>";
@@ -826,6 +832,15 @@ void onPromote(ModContext*, void* data) {
     }
 }
 
+void* cosmeticsData(uint32_t clientId, bool off) {
+    return reinterpret_cast<void*>((static_cast<uintptr_t>(clientId) << 1) | (off ? 1 : 0));
+}
+
+void onCosmeticsChoice(ModContext*, void* data) {
+    const auto value = reinterpret_cast<uintptr_t>(data);
+    looks::setCosmeticsHiddenFor(static_cast<uint32_t>(value >> 1), (value & 1) != 0);
+}
+
 void onPlayerActions(ModContext*, void* data) {
     const auto slot = reinterpret_cast<uintptr_t>(data);
     const uint32_t id = slotClient(data);
@@ -843,6 +858,20 @@ void onPlayerActions(ModContext*, void* data) {
             item.label = labels[role].c_str();
             item.on_pressed = onPromote;
             item.user_data = promoteData(role, id);
+            items.push_back(item);
+        }
+    }
+    static constexpr const char* kCosmeticsLabels[2] = {"Their Cosmetics: Follow Global",
+                                                       "Their Cosmetics: Off"};
+    if (!it->second.self) {
+        const bool hidden = looks::cosmeticsHiddenFor(id);
+        for (const bool off : {false, true}) {
+            UiContextMenuItem item = UI_CONTEXT_MENU_ITEM_INIT;
+            item.label = kCosmeticsLabels[off ? 1 : 0];
+            item.on_pressed = onCosmeticsChoice;
+            item.user_data = cosmeticsData(id, off);
+            item.selected = hidden == off;
+            item.separator_before = !off && !items.empty();
             items.push_back(item);
         }
     }
@@ -919,11 +948,12 @@ void addPlayerSlot(UiElementHandle pane, size_t index) {
     UiControlDesc actions = UI_CONTROL_DESC_INIT;
     actions.kind = UI_CONTROL_ICON_BUTTON;
     actions.icon = "expand_more";
-    actions.label = "Hand Over";
-    actions.tooltip = "Make room owner or team leader";
-    actions.help_rml = "<p>The room owner can hand the room to anyone here, a team leader the "
-                       "team to a teammate. When one of them leaves, the longest-connected player "
-                       "takes over.</p>";
+    actions.label = "Player Options";
+    actions.tooltip = "Their cosmetics; make room owner or team leader";
+    actions.help_rml = "<p>Show or hide this player's cosmetics on their puppets (Follow Global "
+                       "uses the Looks tab's setting). The room owner can hand the room to anyone "
+                       "here, a team leader the team to a teammate. When one of them leaves, the "
+                       "longest-connected player takes over.</p>";
     actions.on_pressed = onPlayerActions;
     actions.user_data = data;
     addControl(slot.row.elem, actions, &slot.actions.elem);
@@ -967,8 +997,8 @@ void updatePlayerSlot(Live::PlayerSlot& slot, const PlayerEntry* entry) {
             svc_ui->elem_set_class(mod_ctx, slot.teleport.elem, "twili-unavailable", blocked);
         }
     }
-    setShown(slot.actions,
-        canPromote(kRoomOwner, it->second) || canPromote(kTeamLeader, it->second));
+    setShown(slot.actions, !it->second.self || canPromote(kRoomOwner, it->second) ||
+                               canPromote(kTeamLeader, it->second));
 }
 
 void updatePlayers() {
@@ -1036,6 +1066,45 @@ ModResult updatePlayersTab(ModContext*, void*, ModError*) {
     return MOD_OK;
 }
 
+// --- Looks tab
+
+std::string looksStatusRml() {
+    std::string rml;
+    const std::string text = looks::cosmeticsStatusText();
+    size_t start = 0;
+    while (start <= text.size()) {
+        const size_t end = std::min(text.find('\n', start), text.size());
+        rml += "<p>" + escapeRml(text.substr(start, end - start)) + "</p>";
+        start = end + 1;
+    }
+    return rml;
+}
+
+ModResult buildLooksTab(ModContext*, UiWindowHandle, UiElementHandle left, UiElementHandle,
+    void*, ModError*) {
+    s_live = {};
+    svc_ui->pane_add_section(mod_ctx, left, "Cosmetics");
+    addToggle(left, Var::ShareCosmetics, "Share My Cosmetics",
+        "<p>Other players' puppets of you wear your Cosmetics mod colours: tunics, hair, "
+        "swords, boots, boomerang, spinner, wolf, Epona and Midna's hair. Everyone in the room "
+        "gets them, including other teams, players who join later and the relay's operator.</p>");
+    addToggle(left, Var::ShowCosmetics, "Show Other Players' Cosmetics",
+        "<p>Other players' puppets wear the colours they set in the Cosmetics mod, in "
+        "Twili-Together's own recolour; clothes they recoloured lose their player colour tint. "
+        "Name tags, map markers and the players list keep the player colour. Turn one player off "
+        "from their row in the Players tab.</p>");
+    s_live.lastLooksStatus = looksStatusRml();
+    s_live.looksStatus = addRml(left, s_live.lastLooksStatus);
+    addRml(left, "<p class=\"twili-player-detail\">Your texture packs are never shared, and they "
+                 "stay off the clothes and gear other players' cosmetics colour.</p>");
+    return MOD_OK;
+}
+
+ModResult updateLooksTab(ModContext*, void*, ModError*) {
+    setRml(s_live.looksStatus, s_live.lastLooksStatus, looksStatusRml());
+    return MOD_OK;
+}
+
 // --- window, menu tab, Mods panel
 
 void onWindowClosed(ModContext*, UiWindowHandle, void*) {
@@ -1076,7 +1145,7 @@ bool openWindow() {
     if (s_window != 0) {
         return true;
     }
-    UiTabDesc tabs[3] = {UI_TAB_DESC_INIT, UI_TAB_DESC_INIT, UI_TAB_DESC_INIT};
+    UiTabDesc tabs[4] = {UI_TAB_DESC_INIT, UI_TAB_DESC_INIT, UI_TAB_DESC_INIT, UI_TAB_DESC_INIT};
     tabs[0].title = "Connection";
     tabs[0].build = buildConnectionTab;
     tabs[0].update = updateConnectionTab;
@@ -1086,6 +1155,9 @@ bool openWindow() {
     tabs[2].title = "Players";
     tabs[2].build = buildPlayersTab;
     tabs[2].update = updatePlayersTab;
+    tabs[3].title = "Looks";
+    tabs[3].build = buildLooksTab;
+    tabs[3].update = updateLooksTab;
     UiWindowDesc desc = UI_WINDOW_DESC_INIT;
     desc.tabs = tabs;
     desc.tab_count = std::size(tabs);
