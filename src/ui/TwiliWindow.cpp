@@ -832,13 +832,15 @@ void onPromote(ModContext*, void* data) {
     }
 }
 
-void* cosmeticsData(uint32_t clientId, bool off) {
-    return reinterpret_cast<void*>((static_cast<uintptr_t>(clientId) << 1) | (off ? 1 : 0));
+void* lookChoiceData(uint32_t clientId, looks::LookChoice choice) {
+    return reinterpret_cast<void*>((static_cast<uintptr_t>(clientId) << 2) |
+                                   static_cast<uintptr_t>(choice));
 }
 
-void onCosmeticsChoice(ModContext*, void* data) {
+void onLookChoice(ModContext*, void* data) {
     const auto value = reinterpret_cast<uintptr_t>(data);
-    looks::setCosmeticsHiddenFor(static_cast<uint32_t>(value >> 1), (value & 1) != 0);
+    looks::setLookChoice(
+        static_cast<uint32_t>(value >> 2), static_cast<looks::LookChoice>(value & 3));
 }
 
 void onPlayerActions(ModContext*, void* data) {
@@ -861,17 +863,20 @@ void onPlayerActions(ModContext*, void* data) {
             items.push_back(item);
         }
     }
-    static constexpr const char* kCosmeticsLabels[2] = {"Their Cosmetics: Follow Global",
-                                                       "Their Cosmetics: Off"};
+    using looks::LookChoice;
+    static constexpr const char* kLookLabels[3] = {"Their Look: Theirs", "Their Look: Game Default",
+                                                   "Their Look: My Own"};
     if (!it->second.self) {
-        const bool hidden = looks::cosmeticsHiddenFor(id);
-        for (const bool off : {false, true}) {
+        const LookChoice current = looks::lookChoice(id);
+        for (const LookChoice choice :
+            {LookChoice::Theirs, LookChoice::GameDefault, LookChoice::MyOwn})
+        {
             UiContextMenuItem item = UI_CONTEXT_MENU_ITEM_INIT;
-            item.label = kCosmeticsLabels[off ? 1 : 0];
-            item.on_pressed = onCosmeticsChoice;
-            item.user_data = cosmeticsData(id, off);
-            item.selected = hidden == off;
-            item.separator_before = !off && !items.empty();
+            item.label = kLookLabels[static_cast<size_t>(choice)];
+            item.on_pressed = onLookChoice;
+            item.user_data = lookChoiceData(id, choice);
+            item.selected = current == choice;
+            item.separator_before = choice == LookChoice::Theirs && !items.empty();
             items.push_back(item);
         }
     }
@@ -949,11 +954,12 @@ void addPlayerSlot(UiElementHandle pane, size_t index) {
     actions.kind = UI_CONTROL_ICON_BUTTON;
     actions.icon = "expand_more";
     actions.label = "Player Options";
-    actions.tooltip = "Their cosmetics; make room owner or team leader";
-    actions.help_rml = "<p>Show or hide this player's cosmetics on their puppets (Follow Global "
-                       "uses the Looks tab's setting). The room owner can hand the room to anyone "
-                       "here, a team leader the team to a teammate. When one of them leaves, the "
-                       "longest-connected player takes over.</p>";
+    actions.tooltip = "Their look; make room owner or team leader";
+    actions.help_rml = "<p>How this player's puppets look to you: Theirs (the cosmetics they "
+                       "share, while the Looks tab shows other players' cosmetics), Game Default, "
+                       "or My Own (your own cosmetics and texture packs). The room owner can hand "
+                       "the room to anyone here, a team leader the team to a teammate. When one "
+                       "of them leaves, the longest-connected player takes over.</p>";
     actions.on_pressed = onPlayerActions;
     actions.user_data = data;
     addControl(slot.row.elem, actions, &slot.actions.elem);
@@ -1084,19 +1090,31 @@ ModResult buildLooksTab(ModContext*, UiWindowHandle, UiElementHandle left, UiEle
     void*, ModError*) {
     s_live = {};
     svc_ui->pane_add_section(mod_ctx, left, "Cosmetics");
-    addToggle(left, Var::ShareCosmetics, "Share My Cosmetics",
-        "<p>Other players' puppets of you wear your Cosmetics mod colours: tunics, hair, "
-        "swords, boots, boomerang, spinner, wolf, Epona and Midna's hair. Everyone in the room "
-        "gets them, including other teams, players who join later and the relay's operator.</p>");
+    static constexpr const char* kShareOptions[] = {"Off", "My Team", "Everyone in Room"};
+    UiControlDesc share = UI_CONTROL_DESC_INIT;
+    share.kind = UI_CONTROL_SELECT;
+    share.label = "Share My Looks";
+    share.help_rml =
+        "<p>Who sees your looks on your puppets in their game: for now your Cosmetics mod "
+        "colours (tunics, hair, swords, boots, boomerang, spinner, wolf, Epona and Midna's hair). "
+        "My Team: your teammates, or everyone without a team while you have none. Everyone in "
+        "Room: also other teams and players who join later. The relay's operator can see what "
+        "you share. Off shares nothing.</p>";
+    share.binding = UI_BINDING_CONFIG_VAR;
+    share.config_var = config::handle(Var::ShareLooks);
+    share.options = kShareOptions;
+    share.option_count = std::size(kShareOptions);
+    addControl(left, share);
     addToggle(left, Var::ShowCosmetics, "Show Other Players' Cosmetics",
         "<p>Other players' puppets wear the colours they set in the Cosmetics mod, in "
         "Twili-Together's own recolour; clothes they recoloured lose their player colour tint. "
-        "Name tags, map markers and the players list keep the player colour. Turn one player off "
-        "from their row in the Players tab.</p>");
+        "Name tags, map markers and the players list keep the player colour. Choose one player's "
+        "look from their row in the Players tab.</p>");
     s_live.lastLooksStatus = looksStatusRml();
     s_live.looksStatus = addRml(left, s_live.lastLooksStatus);
     addRml(left, "<p class=\"twili-player-detail\">Your texture packs are never shared, and they "
-                 "stay off the clothes and gear other players' cosmetics colour.</p>");
+                 "stay off the clothes and gear other players' cosmetics colour unless you pick "
+                 "My Own for that player.</p>");
     return MOD_OK;
 }
 

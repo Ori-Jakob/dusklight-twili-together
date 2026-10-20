@@ -53,6 +53,14 @@ struct CosmeticsValues {
     bool operator==(const CosmeticsValues&) const = default;
 };
 
+// Share My Looks (config share_looks): the only consent, Off by default.
+enum class ShareScope : uint8_t { Off, Team, Room };
+ShareScope shareScope();
+
+// Per player, how their puppets look to us: their shared looks, the game's, or our own installed
+// cosmetics and texture packs.
+enum class LookChoice : uint8_t { Theirs, GameDefault, MyOwn };
+
 // Session: the handshake's features and disc id, the relay's features, our manifest.
 nlohmann::json handshakeFeatures();
 std::string gameId();
@@ -67,9 +75,14 @@ void shutdown();
 const CosmeticsValues* sharedCosmetics(uint32_t clientId);
 // What their puppets wear: null when our settings hide it or we cannot show it.
 const CosmeticsValues* shownCosmetics(uint32_t clientId);
-// Their Cosmetics: Off for one player (this session, by name).
-bool cosmeticsHiddenFor(uint32_t clientId);
-void setCosmeticsHiddenFor(uint32_t clientId, bool hidden);
+// Midna's hair on their puppets: theirs, ours for My Own, else null.
+const CosmeticsValues* hairCosmetics(uint32_t clientId);
+// Whether their puppets keep our cosmetics and texture packs off with pristine blockers: not for
+// My Own, and only while something of ours could land there.
+bool blockOwnLooks(uint32_t clientId);
+// Their Look for one player (this session, by name until players have a persistent id).
+LookChoice lookChoice(uint32_t clientId);
+void setLookChoice(uint32_t clientId, LookChoice choice);
 // What we read from the cosmetics mod (nullopt: not active or unreadable) and what we last sent.
 const std::optional<CosmeticsValues>& localCosmetics();
 bool cosmeticsSent();

@@ -261,18 +261,33 @@ std::optional<bool> cosmeticsSteps(const std::string& op, StepContext& ctx) {
 
     if (op == "cosmeticsOption") {
         if (step.contains("share")) {
-            config::setBool(config::Var::ShareCosmetics, step.value("share", true));
+            const std::string share = step.value("share", std::string{});
+            const int64_t scope = share == "off"  ? 0 :
+                                  share == "team" ? 1 :
+                                  share == "room" ? 2 : -1;
+            if (scope < 0) {
+                ctx.fail("cosmeticsOption: share is off, team or room");
+                return false;
+            }
+            config::setInt(config::Var::ShareLooks, scope);
         }
         if (step.contains("show")) {
             config::setBool(config::Var::ShowCosmetics, step.value("show", true));
         }
         if (step.contains("player")) {
             const uint32_t id = clientIdByName(step.value("player", std::string{}));
+            const std::string choice = step.value("choice", std::string{});
             if (id == 0) {
                 ctx.fail("cosmeticsOption: no such peer");
                 return false;
             }
-            looks::setCosmeticsHiddenFor(id, step.value("hidden", true));
+            if (choice != "theirs" && choice != "default" && choice != "mine") {
+                ctx.fail("cosmeticsOption: choice is theirs, default or mine");
+                return false;
+            }
+            looks::setLookChoice(id, choice == "theirs"  ? looks::LookChoice::Theirs :
+                                     choice == "default" ? looks::LookChoice::GameDefault :
+                                                           looks::LookChoice::MyOwn);
         }
         return true;
     }

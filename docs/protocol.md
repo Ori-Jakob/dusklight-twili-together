@@ -52,7 +52,8 @@ The client's first packet is the handshake:
 - `game` says what the player runs; see [Team games](#team-games).
 - `features` (optional) says what the client can do with [looks](#looks): `cos.send` (it reads
   its cosmetics settings, which needs the host's ModsService), `cos.recv` (it shows other
-  players' cosmetics, which needs TextureService), and later `looks.send` and `looks.recv`.
+  players' cosmetics, which needs TextureService and ModsService), and later `looks.send` and
+  `looks.recv`.
   Unknown names are dropped. `gameId` is the disc's game id (4 to 8 of `A-Z0-9`), empty when the
   client cannot tell.
 
@@ -194,20 +195,23 @@ own recolour.
 ```
 
 - `cosmetics` is null when the player shares none: the mod is off or missing, every value is at
-  its default, or the player turned Share My Cosmetics off. `ver` is the cosmetics mod's version.
-  `vars` holds only values that differ from the default: the 22 colours as `rrggbb` and
+  its default, or the player's Share My Looks is Off (the default). `ver` is the cosmetics mod's
+  version. `vars` holds only values that differ from the default: the 22 colours as `rrggbb` and
   `midnaHairBaseColor` / `midnaHairTipsColor` as a palette index 1 to 9. The names are the cosmetics
   mod's settings, the same list Dusklight's ModsService hands out.
-- `scope` is `room` (everyone in the room) or `team` (teammates only).
+- `scope` is `room` (everyone in the room) or `team` (teammates only), from Share My Looks. A
+  player who turns sharing off sends a null `cosmetics` with scope `room`.
 - `looks` stays empty until look mods are shared.
 
 The relay rebuilds the packet from these fields (unknown vars and values are dropped, colours
 lowercased), stamps `clientId` and `gameId` (from the sender's handshake), and drops one over 16
 KiB. It sends it to the others in scope that listed `cos.recv` (`cosmetics` stays null for a
 sender without `cos.send`). It keeps each player's newest manifest while they are connected and
-gives it to everyone who joins later. A player's manifests go out at most once every 2 s: one sent
-sooner waits, a newer one replaces it, and the newest always goes out. Clients send one when they
-join and whenever what they share changes, also at most once every 2 s.
+gives it to everyone who joins later. When a newer manifest no longer reaches someone who got an
+earlier one (its scope narrowed to the team), they get one copy with `cosmetics` null and `looks`
+empty. A player's manifests go out at most once every 2 s: one sent sooner waits, a newer one
+replaces it, and the newest always goes out. Clients send one when they join and whenever what they
+share or its scope changes, also at most once every 2 s.
 
 ### World sync (same room, team, team game and save layout)
 

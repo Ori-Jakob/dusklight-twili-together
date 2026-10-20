@@ -44,8 +44,8 @@ enum class Var : uint8_t {
     SharePickups,
     ShowPlayerHealth,
     SyncPushPull,
-    // Personal: our cosmetics colours go to the room; theirs show on their puppets.
-    ShareCosmetics,
+    // Personal: who gets our looks (looks::ShareScope); whether theirs show on their puppets.
+    ShareLooks,
     ShowCosmetics,
 #if TWILI_ENABLE_AUTOTEST
     AutotestScript,

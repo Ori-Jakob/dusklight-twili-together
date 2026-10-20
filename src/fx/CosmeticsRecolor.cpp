@@ -637,7 +637,8 @@ bool PuppetCosmetics::registerEntry(Entry& e, CosmeticsTexState state, uint32_t 
     return true;
 }
 
-void PuppetCosmetics::update(const looks::CosmeticsValues* shown, const TintedFn& tinted) {
+void PuppetCosmetics::update(
+    const looks::CosmeticsValues* shown, bool block, const TintedFn& tinted) {
     if (mEntries.empty() || svc_texture == nullptr) {
         return;
     }
@@ -647,9 +648,9 @@ void PuppetCosmetics::update(const looks::CosmeticsValues* shown, const TintedFn
         if (e.vanilla < 0) {
             e.vanilla = vanillaMatch(e.target, e.texNo, e.format, e.width, e.height, e.mips, e.hash);
         }
-        CosmeticsTexState want = CosmeticsTexState::Block;
+        CosmeticsTexState want = block ? CosmeticsTexState::Block : CosmeticsTexState::None;
         uint32_t color = 0;
-        if (shown != nullptr && shown->has(e.var) && e.vanilla >= 1 && recolorable(e.format)) {
+        if (shown != nullptr && shown->has(e.var) && e.vanilla == 1 && recolorable(e.format)) {
             want = CosmeticsTexState::Recolor;
             color = shown->value[e.var];
         }

@@ -3419,16 +3419,18 @@ void daDummyPlayer_c::bindRemoteCosmetics(J3DModelData* spinner) {
 
 void daDummyPlayer_c::updateRemoteCosmetics() {
     const twili::looks::CosmeticsValues* shown = twili::looks::shownCosmetics(mDummyClientId);
-    mDummyCosmetics.update(shown, [this](const uint8_t* image) {
-        for (const twili::RecolorSet& set : mDummyRecolor) {
-            if (set.rewrites(image)) {
-                return true;
+    mDummyCosmetics.update(shown, twili::looks::blockOwnLooks(mDummyClientId),
+        [this](const uint8_t* image) {
+            for (const twili::RecolorSet& set : mDummyRecolor) {
+                if (set.rewrites(image)) {
+                    return true;
+                }
             }
-        }
-        return false;
-    });
-    mDummyMidna.setHairPalette(shown != nullptr ? shown->get(twili::looks::kMidnaHairBase) : 0,
-        shown != nullptr ? shown->get(twili::looks::kMidnaHairTips) : 0);
+            return false;
+        });
+    const twili::looks::CosmeticsValues* hair = twili::looks::hairCosmetics(mDummyClientId);
+    mDummyMidna.setHairPalette(hair != nullptr ? hair->get(twili::looks::kMidnaHairBase) : 0,
+        hair != nullptr ? hair->get(twili::looks::kMidnaHairTips) : 0);
 }
 
 void daDummyPlayer_c::getCosmeticsProbe(twili::CosmeticsProbe& out) const {

@@ -6,16 +6,19 @@
 #include "fx/CosmeticsRecolor.hpp"
 #include "looks/Inventory.hpp"
 
+#include <mods/svc/host.h>
+
 #include <fmt/format.h>
 
 #include <bit>
 #include <chrono>
+#include <filesystem>
 #include <map>
-#include <set>
 
 namespace twili::looks {
 namespace {
 
+namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
 constexpr auto kReadInterval = std::chrono::seconds(1);
@@ -30,15 +33,21 @@ Clock::time_point sReadAt{};
 uint64_t sGeneration = ~0ull;
 std::string sVersion;
 
+// A mod's content-keyed texture (per generation), and texture packs (checked when turned on).
+bool sModTextures = false;
+bool sPacksChecked = false;
+bool sPackFiles = false;
+
 bool sRelayCosmetics = false;
 bool sSent = false;
 std::optional<CosmeticsValues> sSentValues;
+ShareScope sSentScope = ShareScope::Off;
 Clock::time_point sSentAt{};
 uint32_t sRev = 0;
 
 std::map<uint32_t, CosmeticsValues> sShared;
-// Their Cosmetics: Off, by name so a reconnect keeps it.
-std::set<std::string> sHidden;
+// Their Look, by name so a reconnect keeps it.
+std::map<std::string, LookChoice> sChoices;
 bool sShow = true;
 
 std::optional<uint32_t> parseColor(const std::string& text) {
@@ -70,8 +79,68 @@ bool canRead() {
 #endif
 }
 
+// Our recolour goes only on textures checked against the disc, which needs ModsService.
 bool canShow() {
-    return svc_texture != nullptr;
+    return svc_texture != nullptr && available();
+}
+
+#if TWILI_HAS_MODS_SERVICE
+bool hasContentTexture(const std::string& modId) {
+    bool found = false;
+    svc_mods->list_overrides(
+        mod_ctx, modId.c_str(),
+        [](void* user, const ModOverride* o) {
+            if (o->kind == MOD_OVR_TEXTURE && o->texture_key.kind == TEXTURE_KEY_SOURCE) {
+                *static_cast<bool*>(user) = true;
+                return false;
+            }
+            return true;
+        },
+        &found);
+    return found;
+}
+#endif
+
+// The host loads packs from <config>/texture_replacements; data_dir is <config>/mod_data/<id>.
+bool texturePackFiles() {
+    const char* dir = nullptr;
+    if (!SERVICE_HAS(svc_host, HostService, data_dir) ||
+        svc_host->data_dir(mod_ctx, &dir) != MOD_OK || dir == nullptr)
+    {
+        return true;
+    }
+    fs::path ours(reinterpret_cast<const char8_t*>(dir));
+    if (!ours.has_filename()) {
+        ours = ours.parent_path();
+    }
+    std::error_code ec;
+    const fs::path packs = ours.parent_path().parent_path() / "texture_replacements";
+    fs::directory_iterator it(packs, ec);
+    if (ec) {
+        return fs::exists(packs, ec);
+    }
+    return it != fs::directory_iterator();
+}
+
+bool texturePacksActive() {
+    if (!config::hostBool("game.enableTextureReplacements", true)) {
+        sPacksChecked = false;
+        return false;
+    }
+    if (!sPacksChecked) {
+        sPacksChecked = true;
+        sPackFiles = texturePackFiles();
+    }
+    return sPackFiles;
+}
+
+// Whether a content-keyed texture of ours (cosmetics, a mod's texture, a pack) could land on a
+// puppet's textures. Without ModsService we cannot tell, so we assume so.
+bool ownTexturesActive() {
+    if (!canRead() || (sLocal && sLocal->mask != 0) || sModTextures) {
+        return true;
+    }
+    return texturePacksActive();
 }
 
 // nullopt when the cosmetics mod is not active (ModsService gives none of its vars).
@@ -83,10 +152,12 @@ std::optional<CosmeticsValues> readLocal() {
     if (const uint64_t generation = svc_mods->generation(mod_ctx); generation != sGeneration) {
         sGeneration = generation;
         sVersion.clear();
+        sModTextures = false;
         for (const ModEntry& mod : listMods()) {
             if (mod.id == kCosmeticsModId) {
                 sVersion = mod.version.substr(0, kMaxVersionBytes);
             }
+            sModTextures = sModTextures || hasContentTexture(mod.id);
         }
     }
     CosmeticsValues values;
@@ -195,29 +266,35 @@ const Client* clientOf(uint32_t clientId) {
     return it == clients.end() ? nullptr : &it->second;
 }
 
-std::optional<CosmeticsValues> wanted() {
-    if (!config::getBool(config::Var::ShareCosmetics) || !sLocal || sLocal->mask == 0) {
+std::optional<CosmeticsValues> wanted(ShareScope scope) {
+    if (scope == ShareScope::Off || !sLocal || sLocal->mask == 0) {
         return std::nullopt;
     }
     return sLocal;
 }
 
-void sendManifest(const std::optional<CosmeticsValues>& values) {
+void sendManifest(const std::optional<CosmeticsValues>& values, ShareScope scope) {
+    const char* scopeName = scope == ShareScope::Team ? "team" : "room";
     Session::instance().send({
         {"type", "LOOK_MANIFEST"},
         {"quiet", true},
         {"rev", ++sRev},
         {"gameId", gameId()},
-        {"scope", "room"},
+        {"scope", scopeName},
         {"looks", nlohmann::json::array()},
         {"cosmetics", cosmeticsJson(values)},
     });
-    TwiliLog.info("[cosmetics] sent manifest rev {}: {}", sRev,
+    TwiliLog.info("[cosmetics] sent manifest rev {} ({}): {}", sRev, scopeName,
         values ? fmt::format("{} values (cosmetics {})", std::popcount(values->mask), values->version) :
                  std::string("none"));
 }
 
 }  // namespace
+
+ShareScope shareScope() {
+    const int64_t value = config::getInt(config::Var::ShareLooks);
+    return value == 1 ? ShareScope::Team : value == 2 ? ShareScope::Room : ShareScope::Off;
+}
 
 nlohmann::json handshakeFeatures() {
     nlohmann::json features = nlohmann::json::array();
@@ -294,13 +371,18 @@ void tick() {
     if (!sRelayCosmetics || !canRead()) {
         return;
     }
-    const std::optional<CosmeticsValues> values = wanted();
-    if (sSent && (values == sSentValues || now - sSentAt < kSendInterval)) {
+    const ShareScope scope = shareScope();
+    const std::optional<CosmeticsValues> values = wanted(scope);
+    // Off goes out as a room-wide null, so everyone who had ours clears it.
+    const ShareScope sendScope = values ? scope : ShareScope::Room;
+    const bool same = values == sSentValues && sendScope == sSentScope;
+    if (sSent && (same || now - sSentAt < kSendInterval)) {
         return;
     }
-    sendManifest(values);
+    sendManifest(values, sendScope);
     sSent = true;
     sSentValues = values;
+    sSentScope = sendScope;
     sSentAt = now;
 }
 
@@ -309,6 +391,7 @@ void resetSession() {
     sRelayCosmetics = false;
     sSent = false;
     sSentValues.reset();
+    sSentScope = ShareScope::Off;
 }
 
 void shutdown() {
@@ -322,28 +405,44 @@ const CosmeticsValues* sharedCosmetics(uint32_t clientId) {
 }
 
 const CosmeticsValues* shownCosmetics(uint32_t clientId) {
-    if (!sShow || !canShow() || cosmeticsHiddenFor(clientId)) {
+    if (!sShow || !canShow() || lookChoice(clientId) != LookChoice::Theirs) {
         return nullptr;
     }
     return sharedCosmetics(clientId);
 }
 
-bool cosmeticsHiddenFor(uint32_t clientId) {
-    const Client* c = clientOf(clientId);
-    return c != nullptr && sHidden.contains(c->name);
+const CosmeticsValues* hairCosmetics(uint32_t clientId) {
+    if (lookChoice(clientId) == LookChoice::MyOwn) {
+        return sLocal ? &*sLocal : nullptr;
+    }
+    return shownCosmetics(clientId);
 }
 
-void setCosmeticsHiddenFor(uint32_t clientId, bool hidden) {
+bool blockOwnLooks(uint32_t clientId) {
+    return lookChoice(clientId) != LookChoice::MyOwn && ownTexturesActive();
+}
+
+LookChoice lookChoice(uint32_t clientId) {
+    const Client* c = clientOf(clientId);
+    if (c == nullptr) {
+        return LookChoice::Theirs;
+    }
+    const auto it = sChoices.find(c->name);
+    return it == sChoices.end() ? LookChoice::Theirs : it->second;
+}
+
+void setLookChoice(uint32_t clientId, LookChoice choice) {
     const Client* c = clientOf(clientId);
     if (c == nullptr || c->self) {
         return;
     }
-    if (hidden) {
-        sHidden.insert(c->name);
+    if (choice == LookChoice::Theirs) {
+        sChoices.erase(c->name);
     } else {
-        sHidden.erase(c->name);
+        sChoices[c->name] = choice;
     }
-    TwiliLog.info("[cosmetics] {}'s cosmetics: {}", c->name, hidden ? "off" : "follow global");
+    static constexpr const char* kNames[] = {"theirs", "game default", "my own"};
+    TwiliLog.info("[cosmetics] {}'s look: {}", c->name, kNames[static_cast<size_t>(choice)]);
 }
 
 const std::optional<CosmeticsValues>& localCosmetics() {
@@ -366,16 +465,18 @@ bool cosmeticsApproximate(const CosmeticsValues& values) {
 std::string cosmeticsStatusText() {
     refreshLocal();
     std::string mine;
+    const ShareScope scope = shareScope();
     if (!canRead()) {
         mine = "This Dusklight cannot read your cosmetics (host too old), so nobody sees them.";
     } else if (!sLocal) {
         mine = "The Cosmetics mod is off or missing: you share no cosmetics.";
     } else if (sLocal->mask == 0) {
         mine = "Your cosmetics are all at their defaults: nothing to share.";
-    } else if (!config::getBool(config::Var::ShareCosmetics)) {
+    } else if (scope == ShareScope::Off) {
         mine = fmt::format("You keep your {} cosmetics colour(s) to yourself.", std::popcount(sLocal->mask));
     } else {
-        mine = fmt::format("You share {} cosmetics colour(s).", std::popcount(sLocal->mask));
+        mine = fmt::format("You share {} cosmetics colour(s) with {}.", std::popcount(sLocal->mask),
+            scope == ShareScope::Team ? "your team" : "everyone in the room");
     }
     const Session& session = Session::instance();
     if (session.joined() && !sRelayCosmetics) {
@@ -383,7 +484,7 @@ std::string cosmeticsStatusText() {
     }
     std::string theirs;
     if (!canShow()) {
-        theirs = "This Dusklight cannot show other players' cosmetics (no TextureService).";
+        theirs = "This Dusklight cannot show other players' cosmetics (host too old).";
     } else {
         size_t shown = 0;
         for (const auto& [id, values] : sShared) {
@@ -395,6 +496,9 @@ std::string cosmeticsStatusText() {
 }
 
 std::string cosmeticsPlayerTag(uint32_t clientId) {
+    if (const LookChoice choice = lookChoice(clientId); choice != LookChoice::Theirs) {
+        return choice == LookChoice::GameDefault ? "game default look" : "my own look";
+    }
     const CosmeticsValues* values = sharedCosmetics(clientId);
     if (values == nullptr) {
         return {};

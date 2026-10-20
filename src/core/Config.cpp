@@ -52,7 +52,7 @@ constexpr VarDef kVars[] = {
     {Var::SharePickups, "share_pickups", CONFIG_VAR_BOOL, true},
     {Var::ShowPlayerHealth, "show_player_health", CONFIG_VAR_BOOL, true},
     {Var::SyncPushPull, "sync_push_pull", CONFIG_VAR_BOOL, true},
-    {Var::ShareCosmetics, "share_cosmetics", CONFIG_VAR_BOOL, true},
+    {Var::ShareLooks, "share_looks", CONFIG_VAR_INT, false, 0},
     {Var::ShowCosmetics, "show_cosmetics", CONFIG_VAR_BOOL, true},
 #if TWILI_ENABLE_AUTOTEST
     {Var::AutotestScript, "autotest_script", CONFIG_VAR_STRING},

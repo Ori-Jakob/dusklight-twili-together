@@ -102,7 +102,7 @@ Personal settings, on the Connection tab:
 | Server URL | empty | see Connecting |
 | Reconnect Automatically | on | |
 | Always Sync Unverified Randomizer Games | off | (Room tab) skip the Sync Unverified Match question |
-| Share My Cosmetics | on | (Looks tab) other players' puppets of you wear your Cosmetics mod colours |
+| Share My Looks | Off | (Looks tab) Off, My Team or Everyone in Room: who sees your Cosmetics mod colours on your puppets |
 | Show Other Players' Cosmetics | on | (Looks tab) puppets wear their player's Cosmetics mod colours |
 
 Room settings, on the Room tab. Everyone sets their own values, but only the room owner's apply;
@@ -167,8 +167,8 @@ last heart shows "A knocked out B".
 Lists everyone in the room, grouped by team, with where they are and whether they sync with you.
 Each player has small buttons beside them: teleport to them (on a team only teammates are offered,
 unless the room allows teleporting across teams; greyed out with the reason in its tooltip while
-teleporting is off or not possible now), and Player Options: their cosmetics on or off and, for
-the room owner or team leader, hand over the room or the team. A teleport puts you right beside
+teleporting is off or not possible now), and Player Options: their look (Theirs, Game Default or
+My Own) and, for the room owner or team leader, hand over the room or the team. A teleport puts you right beside
 the other player, facing their way, in your own form: at once when their room is loaded around
 you, else after loading their area (the version of it your story progress loads, when they stand
 in a cutscene-only one). It works while they watch a
@@ -193,12 +193,15 @@ colour; Magic Armor and the Ordon clothes keep the player colour, and so do your
 marker and players list entry. Colours left at their default show as the game draws them. Lantern
 and sword glows, the charge ring and the HUD colours are not shared.
 
-Your own cosmetics never land on other players' puppets, and neither do your texture packs on the
-textures cosmetics colour. A puppet that shows your own installed look mod instead of the game's
-textures is not recoloured. Turn sharing off with **Share My Cosmetics**, every player's off with
-**Show Other Players' Cosmetics**, or one player's from their row in the Players tab (**Their
-Cosmetics: Off**, until you restart). Sharing needs a Dusklight with ModsService (any Dusklight
-shows them) and a relay that knows cosmetics; the Looks tab says when one of them is too old.
+Nothing is shared until you choose who gets it with **Share My Looks**: My Team (your teammates,
+or everyone without a team while you have none) or Everyone in Room (other teams and players who
+join later too). The relay's operator can see what you share. Your own cosmetics never land on
+other players' puppets, and neither do your texture packs on the textures cosmetics colour. A
+puppet that shows your own installed look mod instead of the game's textures is not recoloured.
+Hide every player's with **Show Other Players' Cosmetics**, or pick one player's look from their
+row in the Players tab (until you restart): **Theirs**, **Game Default**, or **My Own** (your own
+cosmetics and texture packs on their puppets). Sharing and showing both need a Dusklight with
+ModsService, and a relay that knows cosmetics; the Looks tab says when one of them is too old.
 
 ## The players widget
 

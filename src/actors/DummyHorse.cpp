@@ -338,7 +338,7 @@ int daDummyHorse_c::execute() {
     } else {
         updateHorseRecolor(mRecolor, c->colorR, c->colorG, c->colorB);
     }
-    mCosmetics.update(shown, nullptr);
+    mCosmetics.update(shown, looks::blockOwnLooks(mClientId), nullptr);
     updateSound(isShown());
     return TRUE;
 }

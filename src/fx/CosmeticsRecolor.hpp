@@ -79,8 +79,9 @@ public:
     void bind(const Models& models, uint32_t clientId);
     // Before the archives holding the textures go away.
     void release();
-    // Once per tick with what the owner's puppets wear (null: nothing of theirs).
-    void update(const looks::CosmeticsValues* shown, const TintedFn& tinted);
+    // Once per tick with what the owner's puppets wear (null: nothing of theirs), and whether the
+    // rest gets pristine blockers.
+    void update(const looks::CosmeticsValues* shown, bool block, const TintedFn& tinted);
     void probe(CosmeticsProbe& out) const;
     bool bound() const { return !mEntries.empty(); }
 
