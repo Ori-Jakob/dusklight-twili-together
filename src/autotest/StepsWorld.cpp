@@ -34,6 +34,7 @@ constexpr RoomOption kRoomOptions[] = {
     {"pvpLethal", Var::PvpLethal, &RoomState::pvpLethal},
     {"showLocationsMode", Var::ShowLocations, &RoomState::showLocationsMode},
     {"cutsceneSync", Var::CutsceneSync, &RoomState::cutsceneSync},
+    {"syncPushPull", Var::SyncPushPull, &RoomState::syncPushPull},
 };
 
 const RoomOption* findRoomOption(const std::string& name) {
