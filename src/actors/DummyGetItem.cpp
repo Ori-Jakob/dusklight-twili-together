@@ -13,9 +13,12 @@
 #include "JSystem/J3DGraphAnimator/J3DModel.h"
 #include "JSystem/JKernel/JKRArchive.h"
 #include "JSystem/JKernel/JKRSolidHeap.h"
+#include "JSystem/JParticle/JPAEmitter.h"
 #include "m_Do/m_Do_ext.h"
 #include "m_Do/m_Do_mtx.h"
+#include "SSystem/SComponent/c_lib.h"
 #include "SSystem/SComponent/c_math.h"
+#include "Z2AudioLib/Z2SeMgr.h"
 
 #include <bitset>
 #include <cmath>
@@ -25,6 +28,16 @@ namespace {
 
 // daDitem_c's PC estimate is 0x6720; a model that needs more gets the largest free block.
 constexpr u32 kHeapSize = 0x20000;
+// daDitem_c's l_light_color and settingEffectLight's strength
+constexpr GXColor kLightColor = {0x8C, 0x7C, 0x6A, 0xFF};
+constexpr f32 kLightStrength = 8.0f;
+// actionWaitLightEnd's fade of the heart sparkles, per tick
+constexpr u8 kSparkleFadeStep = 26;
+constexpr u16 kHeartSparkles[2] = {0x8DE, 0x8DF};
+
+bool isHeart(u8 item) {
+    return item == dItemNo_UTAWA_HEART_e || item == dItemNo_KAKERA_HEART_e;
+}
 
 enum class ResKind : uint8_t { Model, Btk, Bck, Brk, Btp };
 
@@ -250,6 +263,32 @@ void DummyGetItem::release() {
 }
 
 void DummyGetItem::update(const RemoteGetItem& gi, const cXyz& pos, s16 yaw, bool shown) {
+    const bool wasPlaced = mPlaced;
+    // release() forgets the item's emitters
+    const uint32_t emitters[2] = {mEmitters[0], mEmitters[1]};
+    updateModel(gi, pos, yaw, shown);
+    if (mPlaced) {
+        for (int i = 0; i < 3; i++) {
+            mLastOffset[i] = gi.offset[i];
+        }
+        mLastLift = mEyePos.y - mPos.y;
+        mLastReal = gi.realItem;
+        mLastNoLight = (gi.flags & kGetItemNoLight) != 0;
+    } else if (wasPlaced && shown && isHeart(mLastReal) && !mLastNoLight) {
+        // actionWaitLightEnd: the sparkles stay where the item was and fade out
+        for (int i = 0; i < 2; i++) {
+            mFadeEmitters[i] = emitters[i];
+            mEmitters[i] = 0;
+        }
+        mSparkleAlpha = 0xFF;
+        mSparkleFadeTicks = 0;
+    }
+    updateLight(gi, pos, yaw, shown);
+    updateSparkles(pos, yaw, shown);
+    updateSound(gi);
+}
+
+void DummyGetItem::updateModel(const RemoteGetItem& gi, const cXyz& pos, s16 yaw, bool shown) {
     mPlaced = false;
     mDebug.placed = false;
     mDebug.emitters = 0;
@@ -356,12 +395,141 @@ void DummyGetItem::setEffects(const RemoteGetItem& gi) {
     }
 }
 
+// The item's centre, turned and moved with the dummy, where the item was last drawn.
+cXyz DummyGetItem::afterglowPos(const cXyz& pos, s16 yaw) const {
+    const f32 s = cM_ssin(yaw);
+    const f32 c = cM_scos(yaw);
+    return cXyz(pos.x + c * mLastOffset[0] + s * mLastOffset[2],
+                pos.y + mLastOffset[1] + mLastLift,
+                pos.z - s * mLastOffset[0] + c * mLastOffset[2]);
+}
+
+// actionStart's light on the item, actionEvent's rise to full strength and actionWaitLightEnd's
+// fall after the item went.
+void DummyGetItem::updateLight(const RemoteGetItem& gi, const cXyz& pos, s16 yaw, bool shown) {
+    mDebug.light = false;
+    if (!shown) {
+        cutLight();
+        return;
+    }
+    if (mPlaced && !(gi.flags & kGetItemNoLight)) {
+        if (!mLightOn) {
+            mLight.mColor.r = kLightColor.r;
+            mLight.mColor.g = kLightColor.g;
+            mLight.mColor.b = kLightColor.b;
+            mLight.mPow = 0.0f;
+            mLight.mFluctuation = 0.0f;
+            mLight.mIndex = 0;
+            dKy_efplight_set(&mLight);
+            // All five effect lights taken: no light, as in the game
+            mLightOn = mLight.mIndex > 0 && g_env_light.efplight[mLight.mIndex - 1] == &mLight;
+            if (!mLightOn) {
+                return;
+            }
+        }
+        mLight.mPosition = mEyePos;
+        cLib_addCalc2(&mLight.mPow, kLightStrength, 0.1f, 1.0f);
+        mLightFadeTicks = 0;
+        mDebug.light = true;
+        mDebug.lightPow = mLight.mPow;
+        mDebug.lightTicks++;
+        return;
+    }
+    if (!mLightOn) {
+        return;
+    }
+    if (mPlaced || mLastNoLight) {
+        cutLight();
+        return;
+    }
+    mLight.mPosition = afterglowPos(pos, yaw);
+    cLib_addCalc(&mLight.mPow, 0.0f, 0.2f, 3.0f, 1.0f);
+    mLightFadeTicks++;
+    mDebug.light = true;
+    mDebug.lightPow = mLight.mPow;
+    if (mLight.mPow == 0.0f) {
+        mDebug.lightFades++;
+        mDebug.lightFadeTicks = mLightFadeTicks;
+        cutLight();
+    }
+}
+
+// dKy_efplight_cut clears whatever holds the slot: only ours.
+void DummyGetItem::cutLight() {
+    if (mLightOn && mLight.mIndex > 0 && mLight.mIndex <= 5 &&
+        g_env_light.efplight[mLight.mIndex - 1] == &mLight)
+    {
+        dKy_efplight_cut(&mLight);
+    }
+    mLightOn = false;
+    mLight.mIndex = 0;
+    mDebug.light = false;
+}
+
+void DummyGetItem::updateSparkles(const cXyz& pos, s16 yaw, bool shown) {
+    mDebug.sparkleAlpha = 0;
+    if (mSparkleAlpha == 0) {
+        return;
+    }
+    if (!shown) {
+        stopSparkles();
+        return;
+    }
+    cLib_chaseUC(&mSparkleAlpha, 0, kSparkleFadeStep);
+    mSparkleFadeTicks++;
+    if (mSparkleAlpha == 0) {
+        mDebug.sparkleFades++;
+        mDebug.sparkleFadeTicks = mSparkleFadeTicks;
+        stopSparkles();
+        return;
+    }
+    const cXyz at = afterglowPos(pos, yaw);
+    const cXyz scale(1.0f, 1.0f, 1.0f);
+    for (int i = 0; i < 2; i++) {
+        mFadeEmitters[i] = dComIfGp_particle_set(mFadeEmitters[i], kHeartSparkles[i], &at, nullptr,
+                                                 &scale);
+        dComIfGp_particle_levelEmitterOnEventMove(mFadeEmitters[i]);
+        if (JPABaseEmitter* e = dComIfGp_particle_getEmitter(mFadeEmitters[i])) {
+            e->setGlobalAlpha(mSparkleAlpha);
+        }
+    }
+    mDebug.sparkleAlpha = mSparkleAlpha;
+}
+
+// Level emitters go out once they are no longer set.
+void DummyGetItem::stopSparkles() {
+    mSparkleAlpha = 0;
+    mFadeEmitters[0] = mFadeEmitters[1] = 0;
+    mDebug.sparkleAlpha = 0;
+}
+
+// actionEvent's Z2SE_EN_PO_SOUL, from the item while the Poe soul is held up.
+void DummyGetItem::updateSound(const RemoteGetItem& gi) {
+    mDebug.sound = false;
+    if (mPlaced && gi.realItem == dItemNo_POU_SPIRIT_e) {
+        if (!mSoundReady) {
+            mSound.init(&mSoundPos, 1);
+            mSoundReady = true;
+        }
+        mSoundPos = mPos;
+        mSound.startLevelSound(Z2SE_EN_PO_SOUL, 0, -1);
+        mDebug.sound = true;
+        mDebug.soundTicks++;
+    }
+    if (mSoundReady) {
+        mSound.framework(0, dComIfGp_getReverb(dComIfGp_roomControl_getStayNo()));
+    }
+}
+
 void DummyGetItem::stop() {
     mPlaced = false;
     mDebug.placed = false;
     mDebug.emitters = 0;
     mDebug.wanted = 0xFF;
     mDebug.held = false;
+    cutLight();
+    stopSparkles();
+    mDebug.sound = false;
     if (settled()) {
         release();
     }
@@ -418,6 +586,12 @@ void DummyGetItem::destroy() {
     settled();
     // A load still under way keeps its count (dComIfG_resDelete needs a finished request).
     release();
+    cutLight();
+    stopSparkles();
+    if (mSoundReady) {
+        mSound.deleteObject();
+        mSoundReady = false;
+    }
     mDebug = DummyGetItemDebug{};
 }
 

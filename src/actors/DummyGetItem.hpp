@@ -2,9 +2,11 @@
 
 #include "presence/RemotePose.hpp"
 
+#include "d/d_kankyo.h"
 #include "d/d_kankyo_tev_str.h"
 #include "SSystem/SComponent/c_phase.h"
 #include "SSystem/SComponent/c_xyz.h"
+#include "Z2AudioLib/Z2SoundObject.h"
 
 #include <cstdint>
 
@@ -32,6 +34,17 @@ struct DummyGetItemDebug {
     float scale = 0.0f;        // this tick's
     float offset[3] = {};      // where it is drawn: from the dummy, turned by -shape_angle.y
     uint8_t emitters = 0;      // effect emitters alive this tick
+    // daDitem_c's light, the heart sparkles' fade-out and the Poe soul's sound
+    bool light = false;            // the item's light is set this tick
+    float lightPow = 0.0f;
+    uint32_t lightTicks = 0;       // ticks lit while the item was drawn
+    uint32_t lightFades = 0;       // lights that faded to 0 after their item went
+    uint32_t lightFadeTicks = 0;   // ticks the latest of those took
+    uint8_t sparkleAlpha = 0;      // the heart sparkles' alpha while they fade out
+    uint32_t sparkleFades = 0;     // sparkle fade-outs finished
+    uint32_t sparkleFadeTicks = 0; // ticks the latest took
+    bool sound = false;            // the Poe soul's sound started this tick
+    uint32_t soundTicks = 0;
 };
 
 // daDitem_c's model held up by a remote player, built from the game's item archive.
@@ -56,8 +69,15 @@ private:
     bool build();
     void release();
     void fail(const char* why);
+    void updateModel(const RemoteGetItem& gi, const cXyz& pos, s16 yaw, bool shown);
     void place(const RemoteGetItem& gi, const cXyz& pos, s16 yaw);
     void setEffects(const RemoteGetItem& gi);
+    cXyz afterglowPos(const cXyz& pos, s16 yaw) const;
+    void updateLight(const RemoteGetItem& gi, const cXyz& pos, s16 yaw, bool shown);
+    void cutLight();
+    void updateSparkles(const cXyz& pos, s16 yaw, bool shown);
+    void stopSparkles();
+    void updateSound(const RemoteGetItem& gi);
 
     request_of_phase_process_class mPhase{};
     Load mLoad = Load::Idle;
@@ -79,6 +99,20 @@ private:
     dKy_tevstr_c mTevStr;
     bool mTevReady = false;
     uint32_t mEmitters[2] = {};
+    // Where the item was last drawn, from the dummy: the light and sparkles stay there as they fade
+    float mLastOffset[3] = {};
+    float mLastLift = 0.0f;
+    uint8_t mLastReal = 0xFF;
+    bool mLastNoLight = false;
+    LIGHT_INFLUENCE mLight{};
+    bool mLightOn = false;
+    uint32_t mLightFadeTicks = 0;
+    uint32_t mFadeEmitters[2] = {};
+    uint8_t mSparkleAlpha = 0;
+    uint32_t mSparkleFadeTicks = 0;
+    Z2SoundObjSimple mSound;
+    cXyz mSoundPos = cXyz(0.0f, 0.0f, 0.0f);
+    bool mSoundReady = false;
     DummyGetItemDebug mDebug;
 };
 
