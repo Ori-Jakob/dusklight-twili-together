@@ -133,6 +133,7 @@ if (TWILI_ENABLE_AUTOTEST)
         src/autotest/PadOverride.cpp
         src/autotest/Platform.cpp
         src/autotest/StepsColor.cpp
+        src/autotest/StepsCutscene.cpp
         src/autotest/StepsEnemy.cpp
         src/autotest/StepsFidelity.cpp
         src/autotest/StepsGetItem.cpp

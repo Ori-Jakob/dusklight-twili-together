@@ -17,7 +17,8 @@ node tools/autotest/run.js --exe <dusklight.exe> smoke --repeat 5 # soak
 Options: `--exe <dusklight.exe>` (a Dusklight build from the fork with Twili-Together in its
 `mods/` folder; inside a Dusklight tree the default is `build/windows-clang-relwithdebinfo/`),
 `--work <dir>` (slot directories, default `work/`), `--out <dir>` (reports, default `out/`),
-`--timeout <sec>`, `--repeat <n>`, `--no-kill`.
+`--timeout <sec>`, `--repeat <n>`, `--no-kill`, `--tag <tag>` (adds every scenario with that tag,
+manual ones too, in definition order; with `--list` it lists them).
 
 Test from a copy of the build output (the exe, its DLLs and PDB, `res/` and `mods/`) so the build
 directory can relink while tests run, and give concurrent runs their own `--work`:
@@ -480,6 +481,31 @@ Story (`StepsStory.cpp`):
 | `setTransformLevel` / `setDarkClear` / `expectTransformLevel` / `expectDarkClear` | `level`, `set` | level bits of our save |
 | `dismissSaveRequest` | `optional`, `timeoutSec` | answers the capture's save prompt with no |
 | `storyPrompts` | `value` | the per-player pop-up setting |
+
+Cutscenes (`StepsCutscene.cpp`). With `soft` a failed check logs `[autotest] CUTSCENE FAIL <tag>
+<why>` and the script goes on; a pass logs `CUTSCENE PASS`:
+
+| op | fields | does |
+| --- | --- | --- |
+| `expectEventName` | `name`, `soft`, `tag`, `timeoutSec` (30) | our game runs the event of that name (the story tracker's map event name, else the event data's) |
+| `expectCutsceneJoin` | `name`, `soft`, `tag`, `timeoutSec` (60) | our pull-in copy of a teammate's event of that name runs, ran or was shared; fails at once when that join was missed (with its reason) |
+
+The cutscene scenarios (`scenarios/cutscenes.js`) are generated from `data/cutscenes.json`, the
+catalog `tools/cutscenes/extract.js` builds from the disc image and the decomp (read
+`docs/cutscenes.md`). Each class a to c cutscene with a recipe gets `cut-<id>`: both players start on
+its synthetic checkpoint (stage, room, a start point near the trigger, the layer when no flags pick
+it, the milestone's event bits and levels), A triggers it (`triggerStory` `walk` into its tag,
+`arrival` at its point, or `npc` with the NPC's table entry, allowlisted for the test), A checks the
+event name, B must join it (`expectCutsceneJoin`), both settle and meet in one stage again. They are
+all manual and tagged `cutscene`, `cutscene-a` / `-b` / `-c` and, where StoryEvent's rules say B
+should be pulled in, `cutscene-likely`; the description says what today's code is expected to do.
+
+For a batch, `cut-batch-story-<stage>-<n>` (classes a and b) and `cut-batch-npc-<stage>-<n>` (class c)
+run a stage's cutscenes in story order on one boot, setting the flags that grow between them before
+each warp, with soft checks; rerun a `CUTSCENE FAIL` by its `cut-<id>` name. Rough lengths: all
+batches about 9 hours (`--tag cutscene-batch-story` about 6, `--tag cutscene-batch-npc` about 3),
+every isolated scenario about 12 hours (`--tag cutscene-likely` about 7). Regenerate the catalog after
+a decomp or mod rule change: `node tools/cutscenes/extract.js`.
 
 Colouring (`StepsRecolor.cpp`):
 

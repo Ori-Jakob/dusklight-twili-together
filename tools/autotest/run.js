@@ -52,10 +52,12 @@ function parseArgs(argv) {
         kill: true,
         list: false,
         names: [],
+        tags: [],
     };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === "--exe") opts.exe = path.resolve(argv[++i]);
+        else if (a === "--tag") opts.tags.push(argv[++i]);
         else if (a === "--timeout") opts.timeout = parseInt(argv[++i], 10);
         else if (a === "--repeat") opts.repeat = parseInt(argv[++i], 10);
         else if (a === "--no-kill") opts.kill = false;
@@ -488,20 +490,22 @@ async function runScenario(scenario, opts, outRoot) {
 
 async function main() {
     const opts = parseArgs(process.argv.slice(2));
+    // --tag adds every scenario carrying that tag (manual ones too), in definition order.
+    const tagged = scenarios.all.filter((s) => opts.tags.some((t) => s.tags?.includes(t)));
     if (opts.list) {
-        for (const s of scenarios.all) console.log(`${s.name.padEnd(24)} ${s.description}`);
+        for (const s of opts.tags.length ? tagged : scenarios.all) console.log(`${s.name.padEnd(24)} ${s.description}`);
         return 0;
     }
     if (!fs.existsSync(opts.exe)) {
         console.error(`game executable not found: ${opts.exe}`);
         return 2;
     }
-    const selected = opts.names.length
+    const selected = opts.names.length || opts.tags.length
         ? opts.names.map((n) => {
             const s = scenarios.all.find((x) => x.name === n);
             if (!s) throw new Error(`unknown scenario ${n} (try --list)`);
             return s;
-        })
+        }).concat(tagged)
         : scenarios.all.filter((s) => !s.manualOnly);
 
     let outRoot = path.join(OUT_DIR, timestamp());
