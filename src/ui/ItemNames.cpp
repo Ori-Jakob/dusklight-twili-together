@@ -7,9 +7,13 @@
 #include "d/d_item_data.h"
 #include "d/d_stage.h"
 
+#include <dolphin/dvd.h>
+
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstring>
+#include <iterator>
 #include <utility>
 
 namespace twili::ui {
@@ -19,6 +23,14 @@ namespace {
 constexpr uint32_t kItemNameMessageBase = 0x165;
 constexpr uint32_t kSnowpeakMapMessage = 0x5BF;
 constexpr size_t kMaxNameBytes = 128;
+// The bug names' sex: a picture-font tag (group 6) for the male or female sign.
+constexpr uint8_t kPictureTagGroup = 6;
+constexpr uint16_t kMaleSign = 2;
+constexpr uint16_t kFemaleSign = 3;
+// The message archives d_s_logo mounts (dusk::language::msg_folder picks the folder).
+constexpr const char* kEnglishArchives[] = {"/res/Msgus/bmgres.arc", "/res/Msguk/bmgres.arc"};
+constexpr const char* kOtherArchives[] = {"/res/Msgde/bmgres.arc", "/res/Msgfr/bmgres.arc",
+    "/res/Msgsp/bmgres.arc", "/res/Msgit/bmgres.arc", "/res/Msgjp/bmgres.arc"};
 
 constexpr std::pair<uint8_t, const char*> kEnglishNames[] = {
     {dItemNo_HEART_e, "Heart"},
@@ -211,8 +223,8 @@ constexpr std::pair<uint8_t, const char*> kEnglishNames[] = {
     {dItemNo_NONE_e, "None"},
 };
 
-// Where the game's name reads wrong in a toast: plurals, lower-case bugs without their sex, the
-// light arrow's placeholder, the Light Sword's "Master Sword", bottles found filled.
+// Where the game's English name reads wrong in a toast: plurals, lower-case bugs without their sex,
+// the light arrow's placeholder, the Light Sword's "Master Sword", bottles found filled.
 constexpr std::pair<uint8_t, const char*> kToastNames[] = {
     {dItemNo_KAKERA_HEART_e, "Piece of Heart"},
     {dItemNo_LIGHT_SWORD_e, "Light Sword"},
@@ -327,6 +339,9 @@ constexpr std::pair<uint8_t, const char*> kRandoNames[] = {
     {0xFE, "Faron Woods Coro Key"},
 };
 
+// Their message names another item in every language (the light arrow's is the unused fire arrow).
+constexpr uint8_t kNoGameName[] = {dItemNo_LIGHT_ARROW_e};
+
 const std::string* randoName(uint8_t itemNo) {
     static const std::array<std::string, 256> sTable = [] {
         std::array<std::string, 256> table;
@@ -358,6 +373,10 @@ struct NameEntry {
 
 std::array<NameEntry, 256> sNames;
 NameEntry sSnowpeakMap;
+// The archive the names were read from, and whether its messages are English.
+JKRArchive* sNamesArchive = nullptr;
+bool sEnglish = true;
+int sEnglishOverride = -1;
 
 uint16_t be16(const uint8_t* p) {
     return static_cast<uint16_t>(p[0] << 8 | p[1]);
@@ -411,8 +430,14 @@ void appendCodePoint(std::string& out, uint32_t cp) {
 }
 
 // One message as UTF-8 with JMessage tags skipped; "" for Shift-JIS and anything malformed.
-std::string decodeMessage(const uint8_t* p, const uint8_t* end, uint8_t encoding) {
+// `sign`: the male or female sign tag it holds, else 0.
+std::string decodeMessage(const uint8_t* p, const uint8_t* end, uint8_t encoding, uint16_t& sign) {
     std::string out;
+    const auto noteSign = [&sign](uint8_t group, uint16_t id) {
+        if (group == kPictureTagGroup && (id == kMaleSign || id == kFemaleSign)) {
+            sign = id;
+        }
+    };
     if (encoding == 3) {
         return out;
     }
@@ -425,6 +450,9 @@ std::string decodeMessage(const uint8_t* p, const uint8_t* end, uint8_t encoding
             if (unit == 0x1A) {
                 if (end - p < 3 || p[2] < 3 || p[2] > end - p) {
                     return {};
+                }
+                if (p[2] >= 6) {
+                    noteSign(p[3], be16(p + 4));
                 }
                 p += p[2];
                 continue;
@@ -443,6 +471,9 @@ std::string decodeMessage(const uint8_t* p, const uint8_t* end, uint8_t encoding
             if (*p == 0x1A) {
                 if (end - p < 2 || p[1] < 2 || p[1] > end - p) {
                     return {};
+                }
+                if (p[1] >= 5) {
+                    noteSign(p[2], be16(p + 3));
                 }
                 p += p[1];
                 continue;
@@ -475,14 +506,16 @@ std::string decodeMessage(const uint8_t* p, const uint8_t* end, uint8_t encoding
     return out;
 }
 
-// Message `messageId` of zel_00.bmg (message archive 0), every offset checked.
-std::string gameMessage(uint32_t messageId) {
-    JKRArchive* arc = dComIfGp_getMsgDtArchive(0);
-    if (arc == nullptr) {
-        return {};
-    }
+const uint8_t* zelBmg(JKRArchive* arc) {
     const auto* bmg = static_cast<const uint8_t*>(JKRGetTypeResource('ROOT', "zel_00.bmg", arc));
-    if (bmg == nullptr || std::memcmp(bmg, "MESGbmg1", 8) != 0) {
+    return bmg != nullptr && std::memcmp(bmg, "MESGbmg1", 8) == 0 ? bmg : nullptr;
+}
+
+// Message `messageId` of zel_00.bmg (message archive 0), every offset checked.
+std::string gameMessage(uint32_t messageId, uint16_t& sign) {
+    JKRArchive* arc = dComIfGp_getMsgDtArchive(0);
+    const uint8_t* bmg = arc != nullptr ? zelBmg(arc) : nullptr;
+    if (bmg == nullptr) {
         return {};
     }
     const uint32_t fileSize = be32(bmg + 0x08);
@@ -525,7 +558,7 @@ std::string gameMessage(uint32_t messageId) {
         if (stringOffset >= datSize - 8) {
             return {};
         }
-        return decodeMessage(dat + 8 + stringOffset, dat + datSize, encoding);
+        return decodeMessage(dat + 8 + stringOffset, dat + datSize, encoding, sign);
     }
     return {};
 }
@@ -549,30 +582,91 @@ NameEntry fallbackEntry(uint8_t itemNo) {
     return {true, ItemNameSource::Unknown, "Unknown Item"};
 }
 
+// Which archive the game mounted, as d_s_logo picks it; one mounted some other way goes by the
+// game's own PAL pick (Japanese discs are Shift-JIS).
+bool englishArchive(JKRArchive* arc) {
+    for (const char* path : kEnglishArchives) {
+        if (const s32 entry = DVDConvertPathToEntrynum(path); entry >= 0 && entry == arc->mEntryNum) {
+            return true;
+        }
+    }
+    for (const char* path : kOtherArchives) {
+        if (const s32 entry = DVDConvertPathToEntrynum(path); entry >= 0 && entry == arc->mEntryNum) {
+            return false;
+        }
+    }
+    const uint8_t* bmg = zelBmg(arc);
+    return (bmg == nullptr || bmg[0x10] != 3) &&
+           dComIfGs_getPalLanguage() == dSv_player_config_c::LANGUAGE_ENGLISH;
+}
+
+// Names are read again when another archive is mounted (or a test forces the language).
+void syncArchive(JKRArchive* arc) {
+    if (arc == sNamesArchive) {
+        return;
+    }
+    sNamesArchive = arc;
+    sEnglish = sEnglishOverride >= 0 ? sEnglishOverride != 0 : englishArchive(arc);
+    sNames = {};
+    sSnowpeakMap = {};
+}
+
+void capitalizeFirst(std::string& s) {
+    if (!s.empty() && s[0] >= 'a' && s[0] <= 'z') {
+        s[0] = static_cast<char>(s[0] - 'a' + 'A');
+    } else if (s.size() >= 2 && static_cast<uint8_t>(s[0]) == 0xC3) {
+        // Latin-1 lower case (U+00E0-U+00FE but the division sign).
+        const auto second = static_cast<uint8_t>(s[1]);
+        if (second >= 0xA0 && second <= 0xBE && second != 0xB7) {
+            s[1] = static_cast<char>(second - 0x20);
+        }
+    }
+}
+
+bool hasNoGameName(uint8_t itemNo) {
+    return std::find(std::begin(kNoGameName), std::end(kNoGameName), itemNo) != std::end(kNoGameName);
+}
+
 const NameEntry& lookup(uint8_t itemNo, int saveTbl) {
     const bool snowpeakMap = itemNo == dItemNo_MAP_e && saveTbl == dStage_SaveTbl_LV5;
+    JKRArchive* arc = dComIfGp_getMsgDtArchive(0);
+    // Nothing is cached before the message archive is mounted (title screen).
+    if (arc == nullptr) {
+        static NameEntry sTransient;
+        const char* name = snowpeakMap ? nullptr : toastName(itemNo);
+        sTransient = name != nullptr ? NameEntry{true, ItemNameSource::Mod, name} : fallbackEntry(itemNo);
+        sTransient.known = false;
+        return sTransient;
+    }
+    syncArchive(arc);
     NameEntry& e = snowpeakMap ? sSnowpeakMap : sNames[itemNo];
     if (e.known) {
         return e;
     }
-    if (const char* name = snowpeakMap ? nullptr : toastName(itemNo)) {
+    // Our corrections are English: other discs keep the game's name in their language.
+    if (const char* name = snowpeakMap || !sEnglish ? nullptr : toastName(itemNo)) {
         e = {true, ItemNameSource::Mod, name};
         return e;
     }
-    // Nothing is cached before the message archive is mounted (title screen).
-    if (dComIfGp_getMsgDtArchive(0) == nullptr) {
-        static NameEntry sTransient;
-        sTransient = fallbackEntry(itemNo);
-        sTransient.known = false;
-        return sTransient;
-    }
-    std::string text =
-        gameMessage(snowpeakMap ? kSnowpeakMapMessage : itemNo + kItemNameMessageBase);
-    if (isUsableName(text)) {
-        e = {true, ItemNameSource::Game, std::move(text)};
-    } else {
+    if (!sEnglish && hasNoGameName(itemNo)) {
         e = fallbackEntry(itemNo);
+        return e;
     }
+    uint16_t sign = 0;
+    std::string text =
+        gameMessage(snowpeakMap ? kSnowpeakMapMessage : itemNo + kItemNameMessageBase, sign);
+    if (!isUsableName(text)) {
+        e = fallbackEntry(itemNo);
+        return e;
+    }
+    if (!sEnglish) {
+        // The toast font has no male and female signs.
+        capitalizeFirst(text);
+        if (sign != 0) {
+            text += sign == kMaleSign ? " (M)" : " (F)";
+        }
+    }
+    e = {true, ItemNameSource::Game, std::move(text)};
     return e;
 }
 
@@ -590,6 +684,18 @@ ItemNameSource itemNameSource(uint8_t itemNo, int saveTbl) {
         return ItemNameSource::Mod;
     }
     return lookup(itemNo, saveTbl).source;
+}
+
+bool itemNamesEnglish() {
+    if (JKRArchive* arc = dComIfGp_getMsgDtArchive(0)) {
+        syncArchive(arc);
+    }
+    return sEnglish;
+}
+
+void forceItemNamesEnglishForTest(int english) {
+    sEnglishOverride = english;
+    sNamesArchive = nullptr;
 }
 
 const char* dungeonNameForSaveTbl(int saveTbl) {
