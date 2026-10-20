@@ -432,6 +432,7 @@ void handleUpdateWorldState(const nlohmann::json& packet) {
     RemoteApplyGuard guard;
 
     dSv_save_c& local = info->getSavedata();
+    holdMergeForBossFight(remote, local);
     const MergeBaseline before = mergeBaseline(local);
     const TakeSnapshot takesBefore = takeSnapshot();
     uint32_t itemBitsBefore[dSv_save_c::STAGE_MAX];
@@ -520,6 +521,7 @@ void handleUpdateWorldState(const nlohmann::json& packet) {
     if (decodeBytes(packet, "dan", &remoteDan, sizeof(remoteDan)) && remoteDan.mStageNo >= 0 &&
         remoteDan.mStageNo == info->getDan().mStageNo)
     {
+        holdDanForBossFight(remoteDan);
         dSv_danBit_c& dan = info->getDan();
         for (int i = 0; i < 2; i++) {
             const u32 gained = remoteDan.mSwitch[i] & ~dan.mSwitch[i];

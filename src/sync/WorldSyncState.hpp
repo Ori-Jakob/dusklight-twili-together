@@ -77,6 +77,11 @@ void handleSetFlag(const nlohmann::json& packet);
 void handleUnsetFlag(const nlohmann::json& packet);
 void handleSetEventBit(const nlohmann::json& packet);
 void handleUnsetEventBit(const nlohmann::json& packet);
+// The handlers past their accept and boss-fight checks (a held packet replays through these).
+void applySetFlag(const nlohmann::json& packet);
+void applyUnsetFlag(const nlohmann::json& packet);
+void applySetEventBit(const nlohmann::json& packet);
+void applyUnsetEventBit(const nlohmann::json& packet);
 void noteMemorySwitch(int saveTblNo, int switchNo, bool set);
 void noteEventBit(uint16_t no, bool set);
 
@@ -147,11 +152,20 @@ bool isTrapGrant(const char* checkName);
 // `check`: the give's check name, sent along for placed checks (parsePlacedCheck).
 void sendGiveItem(uint8_t itemNo, const char* check);
 void handleGiveItem(const nlohmann::json& packet);
+void applyGiveItem(const nlohmann::json& packet);
 
 // DungeonItems.cpp
 void tickDungeonItemTracking();
 void shiftDungeonItemBaseline(int keyNumBefore, uint8_t dungeonItemsBefore);
 void handleUpdateDungeonItems(const nlohmann::json& packet);
+void applyUpdateDungeonItems(const nlohmann::json& packet);
+
+// BossHold.cpp: while our boss fight runs, a teammate's flags from its arena wait (true: held).
+bool holdForBossFight(const std::string& type, const nlohmann::json& packet);
+// Takes out of a merge what we hold: the arena's boss bits and held bits, and a higher max life.
+void holdMergeForBossFight(dSv_save_c& remote, dSv_save_c& local);
+void holdDanForBossFight(dSv_danBit_c& remote);
+void dropBossFightHolds();
 
 // Takes.cpp: items the game takes away (the monkey's lantern, trade items handed over), taken from
 // teammates too as TAKE_ITEM. Not in randomizer games, never shields.

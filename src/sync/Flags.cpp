@@ -123,9 +123,12 @@ void noteEventBit(uint16_t no, bool set) {
 }
 
 void handleSetFlag(const nlohmann::json& packet) {
-    if (!acceptsWorldPacket(packet, "SET_FLAG")) {
-        return;
+    if (acceptsWorldPacket(packet, "SET_FLAG") && !holdForBossFight("SET_FLAG", packet)) {
+        applySetFlag(packet);
     }
+}
+
+void applySetFlag(const nlohmann::json& packet) {
     const std::string category = packet.value("category", std::string{});
     const int flagNo = packet.value("flagNo", -1);
     const int roomNo = packet.value("roomNo", -1);
@@ -209,9 +212,12 @@ void handleSetFlag(const nlohmann::json& packet) {
 }
 
 void handleUnsetFlag(const nlohmann::json& packet) {
-    if (!acceptsWorldPacket(packet, "UNSET_FLAG")) {
-        return;
+    if (acceptsWorldPacket(packet, "UNSET_FLAG") && !holdForBossFight("UNSET_FLAG", packet)) {
+        applyUnsetFlag(packet);
     }
+}
+
+void applyUnsetFlag(const nlohmann::json& packet) {
     const int flagNo = packet.value("flagNo", -1);
     const int roomNo = packet.value("roomNo", -1);
     const int saveTblNo = packet.value("saveTblNo", -1);
@@ -242,9 +248,12 @@ void handleUnsetFlag(const nlohmann::json& packet) {
 }
 
 void handleSetEventBit(const nlohmann::json& packet) {
-    if (!acceptsWorldPacket(packet, "SET_EVENT_BIT")) {
-        return;
+    if (acceptsWorldPacket(packet, "SET_EVENT_BIT") && !holdForBossFight("SET_EVENT_BIT", packet)) {
+        applySetEventBit(packet);
     }
+}
+
+void applySetEventBit(const nlohmann::json& packet) {
     const unsigned no = packet.value("no", 0u);
     if (no > 0xFFFF || isLocalOnlyEventBit(static_cast<uint16_t>(no))) {
         return;
@@ -260,9 +269,14 @@ void handleSetEventBit(const nlohmann::json& packet) {
 }
 
 void handleUnsetEventBit(const nlohmann::json& packet) {
-    if (!acceptsWorldPacket(packet, "UNSET_EVENT_BIT")) {
-        return;
+    if (acceptsWorldPacket(packet, "UNSET_EVENT_BIT") &&
+        !holdForBossFight("UNSET_EVENT_BIT", packet))
+    {
+        applyUnsetEventBit(packet);
     }
+}
+
+void applyUnsetEventBit(const nlohmann::json& packet) {
     const unsigned no = packet.value("no", 0u);
     if (no > 0xFFFF || isLocalOnlyEventBit(static_cast<uint16_t>(no))) {
         return;
@@ -341,9 +355,13 @@ void onEventBit(uint16_t no, bool set) {
     if (!enabled()) {
         return;
     }
+    // Where we stand: a teammate fighting a boss there holds it until the fight ends.
+    const char* stage = dComIfGp_getStartStageName();
     nlohmann::json packet = {
         {"type", set ? "SET_EVENT_BIT" : "UNSET_EVENT_BIT"},
         {"no", no},
+        {"stageName", std::string(stage ? stage : "")},
+        {"roomNo", static_cast<int>(dComIfGp_roomControl_getStayNo())},
     };
     stampWorldPacket(packet, true);
     send(std::move(packet));

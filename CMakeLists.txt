@@ -42,6 +42,7 @@ set(TWILI_SOURCES
     src/actors/DummyWolfFx.cpp
     src/actors/PrivateArchives.cpp
     src/actors/Profiles.cpp
+    src/boss/BossFight.cpp
     src/core/Base64.cpp
     src/core/ClientState.cpp
     src/core/Config.cpp
@@ -104,6 +105,7 @@ set(TWILI_SOURCES
     src/story/StorySegments.cpp
     src/story/StoryTracker.cpp
     src/story/StoryUi.cpp
+    src/sync/BossHold.cpp
     src/sync/Chests.cpp
     src/sync/DungeonItems.cpp
     src/sync/Flags.cpp

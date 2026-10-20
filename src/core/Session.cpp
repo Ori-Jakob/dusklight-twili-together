@@ -1,5 +1,6 @@
 #include "core/Session.hpp"
 
+#include "boss/BossFight.hpp"
 #include "core/Config.hpp"
 #include "core/Log.hpp"
 #include "core/SaveGate.hpp"
@@ -242,6 +243,7 @@ void Session::update() {
     enemy_sync::tick();
     enemy_damage::tick();
     teleport::tick();
+    boss::tick();
     story::tick();
     enemy_scaling::tick();
     enemy_count::tick();

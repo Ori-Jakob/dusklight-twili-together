@@ -4,6 +4,7 @@
 
 #include <nlohmann/json_fwd.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -88,6 +89,11 @@ bool ownStateSettled();
 // World-state merges applied from this client.
 uint32_t mergeCount(uint32_t clientId);
 
+// Our boss fight is over: what a teammate's flags from its arena held back applies now.
+void releaseBossFightHolds();
+// Packets waiting for our boss fight to end.
+size_t bossFightHeld();
+
 // Autotest readback.
 struct Stats {
     uint32_t merges = 0;
@@ -123,6 +129,9 @@ struct Stats {
     uint32_t takesDeferred = 0;
     uint32_t takeRegrants = 0;
     uint32_t returnsSent = 0;
+    // Teammates' packets held while we fought a boss in their arena, and applied after.
+    uint32_t bossHeld = 0;
+    uint32_t bossReleased = 0;
 };
 const Stats& stats();
 // True once the incompatible-layout toast was shown for this teammate name.

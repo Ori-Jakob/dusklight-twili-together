@@ -88,6 +88,7 @@ void checkSaveGeneration() {
     st.exchangePending = true;
     resetFreestanding();
     resetTakes();
+    dropBossFightHolds();
 }
 
 bool acceptsWorldPacket(const nlohmann::json& packet, const char* what) {
@@ -288,6 +289,7 @@ void resetSession() {
 
 void shutdown() {
     removeItemObserver();
+    dropBossFightHolds();
     resetFreestanding();
     resetTearCounts();
     resetTakes();

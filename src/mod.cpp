@@ -14,6 +14,7 @@
 
 #include "actors/DummyPlayer.hpp"
 #include "actors/Profiles.hpp"
+#include "boss/BossFight.hpp"
 #include "core/Config.hpp"
 #include "core/Host.hpp"
 #include "core/Layout.hpp"
@@ -159,6 +160,7 @@ MOD_EXPORT ModResult mod_shutdown(ModError*) {
     ui::shutdown();
     sync::shutdown();
     push::shutdown();
+    boss::shutdown();
     story::shutdown();
     enemy_count::shutdown();
     enemy_damage::shutdown();

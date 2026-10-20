@@ -69,9 +69,14 @@ void tickDungeonItemTracking() {
 }
 
 void handleUpdateDungeonItems(const nlohmann::json& packet) {
-    if (!acceptsWorldPacket(packet, "UPDATE_DUNGEON_ITEMS")) {
-        return;
+    if (acceptsWorldPacket(packet, "UPDATE_DUNGEON_ITEMS") &&
+        !holdForBossFight("UPDATE_DUNGEON_ITEMS", packet))
+    {
+        applyUpdateDungeonItems(packet);
     }
+}
+
+void applyUpdateDungeonItems(const nlohmann::json& packet) {
     const int saveTbl = packet.value("saveTblNo", -1);
     if (saveTbl < 0 || saveTbl >= dSv_save_c::STAGE_MAX) {
         return;
