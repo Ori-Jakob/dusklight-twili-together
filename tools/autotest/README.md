@@ -612,6 +612,21 @@ Written for the look sharing host pieces, **not run yet** (the machine was in us
 `looks-inventory` (with the cosmetics mod and both looks fixtures) and `overlay-churn-alloc`
 (`scenarios/looks.js`). Both need a host with ModsService and OverlayService 1.1.
 
+Cosmetics (`StepsCosmetics.cpp`), teammates' cosmetics on their puppets. Vars are the cosmetics
+mod's names (`herosTunicTorsoColor`, ...); colours as `"rrggbb"`, Midna's hair as an index.
+
+| op | fields | does |
+| --- | --- | --- |
+| `cosmeticsSelfTest` | | the recolour (grey identity, hue kept, CMPR modes, RGB5A3 alpha, I8 to RGB5A3), Midna's palette, and the Yaz0, RARC and BMD readers on built inputs, cut ones included |
+| `cosmeticsOption` | `share`, `show` (Share My Cosmetics, Show Other Players' Cosmetics), `player` with `hidden` (that player's Their Cosmetics: Off) | |
+| `expectCosmetics` | `name` (a peer: what its manifest shares) or `self` (what we last sent), `none`, `vars` (exactly these set), `version`, `frames`, `timeoutSec` | |
+| `expectDummyCosmetics` | `name`, `horse` (its Epona's puppet), `keys` (`disc`: the disc's own textures were read; `unverified`; `pending`), `vars` / `textures` (by var or TEX1 name: `{state: recolor/block/none, rgb, hueTol (15), source: pointer/source/none, vanilla}` for every texture of it on the puppet), `noSource` (no texture renders from a content replacement: none of our own cosmetics or packs), `hair` (`[base, tips]` of Midna's palette), `frames`, `timeoutSec` | the puppet's cosmetics textures as registered, and what `debug_texture_source` says the renderer picks for each |
+| `dumpCosmetics` | | logs every peer's shared values and its dummy's textures |
+
+Written for cosmetics sharing (M1), **not run yet**: `cosmetics-share`, `cosmetics-color-rule`,
+`cosmetics-defaults`, `cosmetics-leak`, `cosmetics-absent` and `cosmetics-off`
+(`scenarios/cosmetics.js`). All but `cosmetics-absent` enable the cosmetics mod on both instances.
+
 Hook cost (`StepsPerf.cpp`):
 
 | op | fields | does |
@@ -629,7 +644,7 @@ presses posted to the game's own window (so it needs no focus) and checked throu
 | `expectPeerColor` / `expectSelfRow` | `name`, `rgb`; `saveLoaded`, `stage` | a peer's / our own client entry |
 | `expectDummyColor` | `name`, `rgb`, `timeoutSec` | the peer's dummy tints (and, with recolouring, its textures) in that colour |
 | `resetColorPushes` / `expectColorPushes` | `min`, `max` | colour updates we sent since the reset |
-| `showWindow` / `hideWindow` | `tab` (0 Connection, 1 Room, 2 Players) | the Twili-Together window |
+| `showWindow` / `hideWindow` | `tab` (0 Connection, 1 Room, 2 Players, 3 Looks) | the Twili-Together window |
 | `openColorPicker` / `closeColorPicker` | | the window's colour control pressed (the square has focus) / a cancel |
 | `pickerKey` | `key` (`left`, `right`, `up`, `down`, `confirm`, `cancel`, `next`, `prev`), `count`, `holdMs` | taps, one per tick; `holdMs` holds one, repeating every tick after 0.32 s |
 | `resizeWindow` | `width`, `height` | the game window's client size |

@@ -257,7 +257,7 @@ std::optional<bool> colorSteps(const std::string& op, StepContext& ctx) {
     }
 
     if (op == "showWindow") {
-        if (showWindow(ctx, std::clamp(step.value("tab", 0), 0, 2))) {
+        if (showWindow(ctx, std::clamp(step.value("tab", 0), 0, 3))) {
             return true;
         }
         if (ctx.seconds > ctx.timeout(10.0)) ctx.fail("showWindow: the window did not open");
