@@ -83,6 +83,7 @@ set(TWILI_SOURCES
     src/hooks/hooks_sync.cpp
     src/horse/HorsePuppet.cpp
     src/horse/HorseSync.cpp
+    src/looks/Inventory.cpp
     src/net/Link.cpp
     src/net/TcpTransport.cpp
     src/net/WsTransport.cpp
