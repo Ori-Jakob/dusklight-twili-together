@@ -1,0 +1,279 @@
+#include "looks/Archive.hpp"
+
+#include <algorithm>
+#include <cstring>
+
+namespace twili::looks {
+namespace {
+
+uint16_t be16(const uint8_t* p) {
+    return static_cast<uint16_t>(p[0] << 8 | p[1]);
+}
+
+uint32_t be32(const uint8_t* p) {
+    return static_cast<uint32_t>(p[0]) << 24 | static_cast<uint32_t>(p[1]) << 16 |
+           static_cast<uint32_t>(p[2]) << 8 | p[3];
+}
+
+// [offset, offset + size) lies inside a buffer of `total` bytes.
+bool inside(size_t total, uint64_t offset, uint64_t size) {
+    return offset <= total && size <= total - offset;
+}
+
+// A NUL-terminated name starting at `offset`, ending before `end`.
+std::optional<std::string> cString(std::span<const uint8_t> data, size_t offset, size_t end) {
+    end = std::min(end, data.size());
+    if (offset >= end) {
+        return std::nullopt;
+    }
+    const auto* first = data.data() + offset;
+    const auto* nul = static_cast<const uint8_t*>(std::memchr(first, 0, end - offset));
+    if (nul == nullptr) {
+        return std::nullopt;
+    }
+    return std::string(reinterpret_cast<const char*>(first), nul - first);
+}
+
+bool sameName(const std::string& a, const std::string& b) {
+    return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
+        const auto lower = [](char c) { return c >= 'A' && c <= 'Z' ? char(c - 'A' + 'a') : c; };
+        return lower(x) == lower(y);
+    });
+}
+
+struct TileShape {
+    uint8_t width, height, bytes;
+};
+
+std::optional<TileShape> tileShape(uint8_t format) {
+    switch (format) {
+    case 0x0:  // I4
+    case 0x8:  // C4
+    case 0xE:  // CMPR
+        return TileShape{8, 8, 32};
+    case 0x1:  // I8
+    case 0x2:  // IA4
+    case 0x9:  // C8
+        return TileShape{8, 4, 32};
+    case 0x3:  // IA8
+    case 0x4:  // RGB565
+    case 0x5:  // RGB5A3
+    case 0xA:  // C14X2
+        return TileShape{4, 4, 32};
+    case 0x6:  // RGBA8
+        return TileShape{4, 4, 64};
+    default:
+        return std::nullopt;
+    }
+}
+
+constexpr uint32_t kRarcHeader = 0x20;
+constexpr uint32_t kRarcEntryBytes = 0x14;
+constexpr uint8_t kRarcDir = 0x02;
+constexpr uint8_t kRarcCompressed = 0x04;
+constexpr uint8_t kRarcYaz0 = 0x80;
+constexpr uint32_t kResTimgBytes = 0x20;
+
+}  // namespace
+
+bool isYaz0(std::span<const uint8_t> data) {
+    return data.size() >= 16 && std::memcmp(data.data(), "Yaz0", 4) == 0;
+}
+
+std::optional<std::vector<uint8_t>> yaz0Decode(std::span<const uint8_t> data, size_t maxOut) {
+    if (!isYaz0(data)) {
+        return std::nullopt;
+    }
+    const size_t outSize = be32(data.data() + 4);
+    if (outSize > maxOut) {
+        return std::nullopt;
+    }
+    std::vector<uint8_t> out(outSize);
+    size_t src = 16, dst = 0;
+    while (dst < outSize) {
+        if (src >= data.size()) {
+            return std::nullopt;
+        }
+        uint8_t code = data[src++];
+        for (int bit = 0; bit < 8 && dst < outSize; bit++, code <<= 1) {
+            if (code & 0x80) {
+                if (src >= data.size()) {
+                    return std::nullopt;
+                }
+                out[dst++] = data[src++];
+                continue;
+            }
+            if (src + 1 >= data.size()) {
+                return std::nullopt;
+            }
+            const uint8_t b1 = data[src], b2 = data[src + 1];
+            src += 2;
+            const size_t dist = (static_cast<size_t>(b1 & 0x0F) << 8 | b2) + 1;
+            size_t count = b1 >> 4;
+            if (count == 0) {
+                if (src >= data.size()) {
+                    return std::nullopt;
+                }
+                count = static_cast<size_t>(data[src++]) + 0x12;
+            } else {
+                count += 2;
+            }
+            if (dist > dst) {
+                return std::nullopt;
+            }
+            for (; count > 0 && dst < outSize; count--, dst++) {
+                out[dst] = out[dst - dist];
+            }
+        }
+    }
+    return out;
+}
+
+std::optional<std::vector<RarcFile>> rarcFiles(std::span<const uint8_t> arc) {
+    if (arc.size() < kRarcHeader + 0x20 || std::memcmp(arc.data(), "RARC", 4) != 0) {
+        return std::nullopt;
+    }
+    const uint8_t* info = arc.data() + kRarcHeader;
+    const uint64_t dataStart = uint64_t(kRarcHeader) + be32(arc.data() + 0x0C);
+    const uint64_t entryCount = be32(info + 0x08);
+    const uint64_t entryStart = uint64_t(kRarcHeader) + be32(info + 0x0C);
+    const uint64_t strSize = be32(info + 0x10);
+    const uint64_t strStart = uint64_t(kRarcHeader) + be32(info + 0x14);
+    if (!inside(arc.size(), entryStart, entryCount * kRarcEntryBytes) ||
+        !inside(arc.size(), strStart, strSize) || dataStart > arc.size())
+    {
+        return std::nullopt;
+    }
+    std::vector<RarcFile> files;
+    for (uint64_t i = 0; i < entryCount; i++) {
+        const uint8_t* e = arc.data() + entryStart + i * kRarcEntryBytes;
+        const uint32_t typeAndName = be32(e + 4);
+        const uint8_t flags = static_cast<uint8_t>(typeAndName >> 24);
+        if (flags & kRarcDir) {
+            continue;
+        }
+        const auto name = cString(arc, strStart + (typeAndName & 0x00FFFFFF), strStart + strSize);
+        const uint64_t offset = dataStart + be32(e + 8);
+        const uint32_t size = be32(e + 12);
+        if (!name || !inside(arc.size(), offset, size)) {
+            return std::nullopt;
+        }
+        files.push_back({*name, static_cast<uint32_t>(offset), size, flags});
+    }
+    return files;
+}
+
+std::optional<std::vector<uint8_t>> rarcRead(std::span<const uint8_t> arc, const std::string& name,
+    size_t maxOut) {
+    const auto files = rarcFiles(arc);
+    if (!files) {
+        return std::nullopt;
+    }
+    for (const RarcFile& f : *files) {
+        if (!sameName(f.name, name)) {
+            continue;
+        }
+        const std::span<const uint8_t> bytes = arc.subspan(f.offset, f.size);
+        if (f.flags & kRarcCompressed) {
+            // Yay0 is not read: nothing the looks need is stored that way.
+            return (f.flags & kRarcYaz0) ? yaz0Decode(bytes, maxOut) : std::nullopt;
+        }
+        if (bytes.size() > maxOut) {
+            return std::nullopt;
+        }
+        return std::vector<uint8_t>(bytes.begin(), bytes.end());
+    }
+    return std::nullopt;
+}
+
+std::optional<std::vector<Tex1Entry>> bmdTextures(std::span<const uint8_t> bmd) {
+    if (bmd.size() < 0x20 || std::memcmp(bmd.data(), "J3D2", 4) != 0) {
+        return std::nullopt;
+    }
+    const uint32_t sections = be32(bmd.data() + 0x0C);
+    uint64_t at = 0x20;
+    for (uint32_t s = 0; s < sections && s < 64; s++) {
+        if (!inside(bmd.size(), at, 8)) {
+            return std::nullopt;
+        }
+        const uint32_t size = be32(bmd.data() + at + 4);
+        if (size < 8 || !inside(bmd.size(), at, size)) {
+            return std::nullopt;
+        }
+        if (std::memcmp(bmd.data() + at, "TEX1", 4) != 0) {
+            at += size;
+            continue;
+        }
+        if (size < 0x14) {
+            return std::nullopt;
+        }
+        const uint8_t* tex1 = bmd.data() + at;
+        const uint16_t count = be16(tex1 + 8);
+        const uint64_t headers = at + be32(tex1 + 0x0C);
+        const uint64_t names = at + be32(tex1 + 0x10);
+        if (!inside(bmd.size(), headers, uint64_t(count) * kResTimgBytes) ||
+            !inside(bmd.size(), names, 4) ||
+            !inside(bmd.size(), names + 4, uint64_t(be16(bmd.data() + names)) * 4) ||
+            be16(bmd.data() + names) < count)
+        {
+            return std::nullopt;
+        }
+        std::vector<Tex1Entry> out;
+        out.reserve(count);
+        for (uint16_t i = 0; i < count; i++) {
+            const uint8_t* entry = bmd.data() + names + 4 + i * 4;
+            const auto name = cString(bmd, names + be16(entry + 2), bmd.size());
+            const uint64_t header = headers + uint64_t(i) * kResTimgBytes;
+            const uint8_t* timg = bmd.data() + header;
+            Tex1Entry t;
+            t.name = name.value_or(std::string{});
+            t.format = timg[0];
+            t.width = be16(timg + 2);
+            t.height = be16(timg + 4);
+            t.palette = timg[8] != 0;
+            t.mipCount = std::max<uint8_t>(timg[0x18], 1);
+            t.imageBytes = gxImageBytes(t.format, t.width, t.height, t.mipCount);
+            const uint64_t image = header + be32(timg + 0x1C);
+            if (!name || t.imageBytes == 0 || !inside(bmd.size(), image, t.imageBytes)) {
+                return std::nullopt;
+            }
+            t.imageOffset = static_cast<uint32_t>(image);
+            out.push_back(std::move(t));
+        }
+        return out;
+    }
+    return std::nullopt;
+}
+
+uint32_t gxImageBytes(uint8_t format, uint16_t width, uint16_t height, uint8_t mipCount) {
+    const auto tile = tileShape(format);
+    if (!tile || width == 0 || height == 0 || width > 4096 || height > 4096) {
+        return 0;
+    }
+    uint32_t total = 0;
+    uint32_t w = width, h = height;
+    for (uint8_t level = 0; level < std::max<uint8_t>(mipCount, 1); level++) {
+        total += ((w + tile->width - 1) / tile->width) * ((h + tile->height - 1) / tile->height) *
+                 tile->bytes;
+        w = std::max(1u, w >> 1);
+        h = std::max(1u, h >> 1);
+    }
+    return total;
+}
+
+uint64_t hashBytes(const uint8_t* data, size_t size) {
+    uint64_t h = 0xCBF29CE484222325ull ^ size;
+    size_t i = 0;
+    for (; i + 8 <= size; i += 8) {
+        uint64_t word;
+        std::memcpy(&word, data + i, 8);
+        h = (h ^ word) * 0x100000001B3ull;
+        h ^= h >> 29;
+    }
+    for (; i < size; i++) {
+        h = (h ^ data[i]) * 0x100000001B3ull;
+    }
+    return h;
+}
+
+}  // namespace twili::looks
