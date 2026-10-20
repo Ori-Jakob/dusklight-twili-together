@@ -843,6 +843,8 @@ std::string reasonText(std::string_view code) {
         {"different-event", "your area differs"},
         {"refused", "the game did not start it"},
         {"ended", "it ended first"},
+        {"boss-fight", "in a boss fight"},
+        {"boss", "a boss scene"},
     };
     for (const auto& e : kTexts) {
         if (e.code == code) {
