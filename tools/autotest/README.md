@@ -373,10 +373,10 @@ its 5 (as her shadow on the back), none after it (MD_RETURN); turning wolf, only
 A's dummy draws her on each tick its pose has her, with no tick without her in between.
 
 `midna-shadow`: A, human in South Faron (light world), calls Midna out; she stands beside Link as
-her shadow. B checks A's dummy draws her that way for 60 ticks, then holds its camera 200 and 160
-units from A's dummy. A's forced cutscene then hides the dummy, Midna included. Captures: A's own
-Midna (`MIDNA_HOLD a-local`), A's dummy on B (`b-puppet`, `b-puppet-side`) and the hidden dummy
-(`b-hidden`).
+her shadow. B checks A's dummy draws her that way for 60 ticks, then holds its camera near A's dummy
+from three sides. A's forced cutscene then hides the dummy, Midna included. Captures: A's own Midna
+(`MIDNA_HOLD a-local`), A's dummy on B (`b-puppet`, `b-puppet-side`, `b-puppet-far`) and the hidden
+dummy (`b-hidden`).
 
 Wolf attacks (`StepsWolfFx.cpp`):
 
