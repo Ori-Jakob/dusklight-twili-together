@@ -16,6 +16,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <exception>
 #include <iterator>
 #include <map>
 #include <thread>
@@ -90,18 +91,20 @@ struct VanillaTex {
     uint64_t hash;
 };
 struct TargetKeys {
-    bool known = false;  // false: its file could not be read, so the texture is trusted
+    bool known = false;  // false: its file could not be read, so nothing is recoloured
     std::vector<VanillaTex> tex;
 };
 
-enum KeysState : int { kKeysIdle, kKeysRunning, kKeysReady, kKeysUnavailable };
+enum KeysState : int { kKeysIdle, kKeysRunning, kKeysReady, kKeysUnavailable, kKeysFailed };
 std::atomic<int> sKeysState{kKeysIdle};
 std::thread sKeysThread;
-std::vector<TargetKeys> sKeys;  // written by the worker before kKeysReady
+// Written by the worker before kKeysReady or kKeysFailed.
+std::vector<TargetKeys> sKeys;
 std::string sKeysSummary;
+size_t sKeysFound = 0;
 bool sKeysLogged = false;
 
-void buildKeys() {
+void buildKeysOrThrow() {
     const auto start = std::chrono::steady_clock::now();
     std::vector<TargetKeys> keys(kTargetCount);
     std::map<std::string, std::vector<uint8_t>> arcs;
@@ -110,7 +113,8 @@ void buildKeys() {
         std::optional<std::vector<looks::Tex1Entry>> textures;
     };
     std::map<std::string, Model> models;
-    size_t known = 0, textures = 0;
+    size_t known = 0, found = 0, textures = 0;
+    std::string missing;
     for (size_t t = 0; t < kTargetCount; t++) {
         const CosmeticsTarget& target = kTargets[t];
         auto arc = arcs.find(target.arc);
@@ -136,42 +140,66 @@ void buildKeys() {
             }
             model = models.emplace(modelKey, std::move(m)).first;
         }
-        if (!model->second.textures) {
-            continue;
-        }
-        keys[t].known = true;
-        known++;
-        const auto& list = *model->second.textures;
-        for (size_t i = 0; i < list.size(); i++) {
-            const looks::Tex1Entry& x = list[i];
-            if (x.name != target.texture || x.palette) {
-                continue;
+        if (model->second.textures) {
+            keys[t].known = true;
+            known++;
+            const auto& list = *model->second.textures;
+            for (size_t i = 0; i < list.size(); i++) {
+                const looks::Tex1Entry& x = list[i];
+                if (x.name != target.texture || x.palette) {
+                    continue;
+                }
+                const uint64_t hash =
+                    looks::hashBytes(model->second.bytes.data() + x.imageOffset, x.imageBytes);
+                keys[t].tex.push_back(
+                    {static_cast<uint16_t>(i), x.format, x.width, x.height, x.mipCount, hash});
+                textures++;
             }
-            keys[t].tex.push_back({static_cast<uint16_t>(i), x.format, x.width, x.height, x.mipCount,
-                looks::hashBytes(model->second.bytes.data() + x.imageOffset, x.imageBytes)});
-            textures++;
+        }
+        if (keys[t].tex.empty()) {
+            missing += fmt::format(" {}/{}:{}{}", target.arc, target.bmd, target.texture,
+                keys[t].known ? "" : " (unreadable)");
+        } else {
+            found++;
         }
     }
     sKeys = std::move(keys);
-    sKeysSummary = fmt::format("{} of {} targets read from the disc, {} textures, {:.0f} ms", known,
-        kTargetCount, textures,
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+    sKeysFound = found;
+    sKeysSummary = fmt::format("{} of {} targets found, {} files read, {} textures, {:.0f} ms{}{}",
+        found, kTargetCount, known, textures,
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count(),
+        missing.empty() ? "" : "; missing:", missing);
     sKeysState.store(kKeysReady, std::memory_order_release);
 }
 
-// 1 the disc's bytes, 2 trusted (the disc file could not be read), 0 changed, -1 not known yet.
+// An exception here would end the game: no keys then, so nothing is recoloured.
+void buildKeys() {
+    try {
+        buildKeysOrThrow();
+        return;
+    } catch (const std::exception& e) {
+        try {
+            sKeysSummary = e.what();
+        } catch (...) {
+        }
+    } catch (...) {
+    }
+    sKeysState.store(kKeysFailed, std::memory_order_release);
+}
+
+// 1 the disc's bytes, 0 changed or not checkable, -1 not known yet.
 int8_t vanillaMatch(uint8_t target, uint16_t texNo, uint8_t format, uint16_t width,
     uint16_t height, uint8_t mips, uint64_t hash) {
     const int state = sKeysState.load(std::memory_order_acquire);
-    if (state == kKeysUnavailable) {
-        return 2;
+    if (state == kKeysUnavailable || state == kKeysFailed) {
+        return 0;
     }
     if (state != kKeysReady) {
         return -1;
     }
     const TargetKeys& keys = sKeys[target];
     if (!keys.known) {
-        return 2;
+        return 0;
     }
     for (const VanillaTex& v : keys.tex) {
         if (v.index == texNo && v.format == format && v.width == width && v.height == height &&
@@ -452,13 +480,18 @@ void warmUpCosmeticsKeys() {
         sKeysLogged = true;
         TwiliLog.info("[cosmetics] vanilla texture keys: {}", sKeysSummary);
     }
+    if (state == kKeysFailed && !sKeysLogged) {
+        sKeysLogged = true;
+        TwiliLog.warn("[cosmetics] reading the disc's textures failed ({}): teammates' cosmetics "
+                      "are not shown", sKeysSummary.empty() ? "unknown error" : sKeysSummary);
+    }
     if (state != kKeysIdle) {
         return;
     }
     if (!looks::available()) {
         sKeysState.store(kKeysUnavailable, std::memory_order_release);
-        TwiliLog.info("[cosmetics] no ModsService: teammates' cosmetics go on every texture they "
-                      "target, unchecked against the disc");
+        TwiliLog.info("[cosmetics] no ModsService: teammates' cosmetics are not shown, as nothing "
+                      "can be checked against the disc");
         return;
     }
     sKeysState.store(kKeysRunning, std::memory_order_release);

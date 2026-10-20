@@ -1,8 +1,9 @@
 #pragma once
 
 // A teammate's cosmetics on their puppets (CosmeticsRecolor.cpp): our own recolour of the
-// textures the cosmetics mod colours, registered as POINTER replacements on each puppet's own
-// copies, and pristine POINTER blockers that keep our cosmetics and texture packs off them.
+// textures the cosmetics mod colours that still match the disc, registered as POINTER
+// replacements on each puppet's own copies, and pristine POINTER blockers that keep our
+// cosmetics and texture packs off them.
 
 #include "fx/PlayerRecolorMath.hpp"
 #include "looks/Cosmetics.hpp"
@@ -54,7 +55,7 @@ struct CosmeticsTexProbe {
     const char* texture = nullptr;
     uint8_t var = 0;                // looks::CosmeticsVarId
     CosmeticsTexState state = CosmeticsTexState::None;
-    int8_t vanilla = -1;            // 1 the disc's bytes, 2 unchecked, 0 changed, -1 not known yet
+    int8_t vanilla = -1;            // 1 the disc's bytes, 0 changed or uncheckable, -1 not yet
     uint32_t color = 0;             // Recolor: 0xRRGGBB
     Hsv mean{};                     // Recolor: of the replacement's colours
     int source = -1;                // ModTextureSource the renderer picks, -1 without ModsService
