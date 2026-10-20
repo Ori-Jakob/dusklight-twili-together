@@ -308,6 +308,8 @@ function modHandling(e, rules) {
     else if (kinds.size === 0) m.notes.push("no placed trigger found: ordered from code or by an unknown actor");
     else if (![...kinds].some((k) => k === "arrival" || k === "tag")) m.refusal = kinds.has("named") ? "not-a-map-event" : "actor-requester";
     else if (kinds.has("arrival") && !kinds.has("tag") && e.switchNo === NONE && e.exit === NONE) m.refusal = "repeatable-arrival";
+    // StoryEvent's boss rule (boss/BossFight.cpp isBossEvent): boss scenes are never pulled in.
+    if (e.class === "b") m.refusal = "boss";
     m.pullIn = m.refusal ? "no" : kinds.size ? "likely" : "unverified";
     if (m.pullIn === "likely" && kinds.has("tag")) m.notes.push("B's own tag must pass its trigger terms (same flags and switches)");
     if (m.pullIn === "likely" && kinds.size > 1 && [...kinds].some((k) => k !== "arrival" && k !== "tag")) m.notes.push("other requesters of the same map event are refused (actor-requester)");

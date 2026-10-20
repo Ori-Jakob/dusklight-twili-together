@@ -132,14 +132,16 @@ function renderDocs(catalog) {
         "not-a-map-event": "ordered by name (map-tool id 0xFF), so B cannot look it up in its own REVT table",
         "list": "the event lives in an actor's own list (BASE_ACTOR: NPCs outside daNpcT_c, objects) or the common list",
         "not-a-demo": "a potential event with its own camera (bosses)",
+        boss: "a boss or mini-boss scene (class b, or ordered by a boss, a mini-boss or the boss warp): a teammate's finished fight never interrupts one under way",
         camera: "a map-tool camera, not a ZEV or STB event",
     };
     for (const [k, v] of Object.entries(refusals).sort((a, b) => b[1] - a[1])) push(`| ${k} | ${v} | ${why[k] ?? ""} |`);
     push("",
         "Pulled in when likely means: the originator's instance passes notJoinable (an OTHER event with a map-tool",
         "id, from the stage, room or demo list, a ZEV or STB map event, requested by nobody, the player or an event",
-        "tag, and an arrival only when it has a switch or an exit). B then also needs the same stage, layer and",
-        "room, the same map event and name in its own tables, no event running, its switch still off (else `seen`),",
+        "tag, an arrival only when it has a switch or an exit, and no boss scene). B then also needs the same stage,",
+        "layer and room, no boss fight of its own under way (`boss-fight`), the same map event and name in its own",
+        "tables, no event running, its switch still off (else `seen`),",
         "its own tag passing its trigger terms, the same form, and a safe stance (not swimming, airborne, in a menu",
         "or loading). The generated scenarios start both players on the same checkpoint, so only the first part",
         "decides.", "",

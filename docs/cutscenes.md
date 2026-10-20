@@ -103,25 +103,26 @@ Recipes name the milestone whose flags (all those before it, too) they start fro
 
 ## Gap analysis
 
-Classes a to c: 612 events. Same-room pull-in (STORY_EVENT) likely: 191;
-refused by a rule: 386; trigger not found statically: 35.
+Classes a to c: 612 events. Same-room pull-in (STORY_EVENT) likely: 184;
+refused by a rule: 394; trigger not found statically: 34.
 
 | Refusal | Events | Why |
 | --- | --- | --- |
 | list | 162 | the event lives in an actor's own list (BASE_ACTOR: NPCs outside daNpcT_c, objects) or the common list |
 | npc-not-allowlisted | 148 | NPC table events need an allowlist entry (kNpcJoinable is empty) |
 | repeatable-arrival | 31 | an arrival demo with no switch and no exit is treated as scenery |
+| boss | 21 | a boss or mini-boss scene (class b, or ordered by a boss, a mini-boss or the boss warp): a teammate's finished fight never interrupts one under way |
 | npc-unknown-entry | 14 | a daNpcT_c event whose table entry was not found statically (refused unless the entry is known) |
 | actor-requester | 12 | a placed actor (switch, door, object, Midna hint) orders the map event with itself as requester |
-| not-a-demo | 12 | a potential event with its own camera (bosses) |
-| not-a-map-event | 5 | ordered by name (map-tool id 0xFF), so B cannot look it up in its own REVT table |
+| not-a-map-event | 4 | ordered by name (map-tool id 0xFF), so B cannot look it up in its own REVT table |
 | continuation (camera) | 1 |  |
 | continuation (repeatable-arrival) | 1 |  |
 
 Pulled in when likely means: the originator's instance passes notJoinable (an OTHER event with a map-tool
 id, from the stage, room or demo list, a ZEV or STB map event, requested by nobody, the player or an event
-tag, and an arrival only when it has a switch or an exit). B then also needs the same stage, layer and
-room, the same map event and name in its own tables, no event running, its switch still off (else `seen`),
+tag, an arrival only when it has a switch or an exit, and no boss scene). B then also needs the same stage,
+layer and room, no boss fight of its own under way (`boss-fight`), the same map event and name in its own
+tables, no event running, its switch still off (else `seen`),
 its own tag passing its trigger terms, the same form, and a safe stance (not swimming, airborne, in a menu
 or loading). The generated scenarios start both players on the same checkpoint, so only the first part
 decides.
@@ -458,7 +459,7 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 | `D_MN05/5/m22` R05-start (stb) | D_MN05 r5, Forest Temple | arrive at point 0 (r5); walk into TagEv (r 350 h 560) at -7725,3900,6150 | faron-light, layer 0; map event switch 45 off | switch 45; plays R05-start.stb | a | same room: likely; elsewhere: none | - |
 | `D_MN05/22/m31` R22-opening (stb) | D_MN05 r22, Forest Temple | walk into TagEv (r 300 h 510) at 0,2100,17250 | faron-light, layer 0; map event switch 105 off | switch 105; plays R22-opening.stb | a | same room: likely; elsewhere: none | `cut-D_MN05-22-m31` |
 | `D_MN05/2/m16` R02-rescue (stb) | D_MN05 r2, Forest Temple | unverified: no placed trigger found | unverified | switch 100; plays R02-rescue.stb | a | same room: unverified; elsewhere: none | - |
-| `boss/B_BQ` B_BQ intro and defeat (boss) | D_MN05A r50, Diababa Arena | d_a_b_bq.cpp, own camera | unverified | - | b | same room: no (not-a-demo); elsewhere: none | - |
+| `boss/B_BQ` B_BQ intro and defeat (boss) | D_MN05A r50, Diababa Arena | d_a_b_bq.cpp, own camera | unverified | - | b | same room: no (boss); elsewhere: none | - |
 
 ## Hyrule Field
 
@@ -587,7 +588,7 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 | `D_MN04/5/m20` R05-start (stb) | D_MN04 r5, Goron Mines | arrive at point 0 (r5); walk into TagEvC (box 660x530x560) at -9900,-1050,1575 | kb1-defeated, layer 0; map event switch 87 off, tag switch 88 off (set when it starts) | switch 87; switch 88; plays R05-start.stb | a | same room: likely; elsewhere: none | - |
 | `D_MN04/7/m11` R07-s1 (stb) | D_MN04 r7, Goron Mines | arrive at point 0 (r7); walk into TagEv (r 600 h 470) at 0,1650,-10850 | kb1-defeated, layer 0; map event switch 34 off, tag switch 37 off (set when it starts) | switch 34; switch 37; plays R07-s1.stb | a | same room: likely; elsewhere: none | - |
 | `D_MN04/13/m24` R13-start (stb) | D_MN04 r13, Goron Mines | arrive at point 0 (r13); walk into TagEvC (box 720x620x720) at 8025,2550,1725 | kb1-defeated, layer 0; map event switch 95 off, tag switch 96 off (set when it starts) | switch 95; switch 96; plays R13-start.stb | a | same room: likely; elsewhere: none | - |
-| `D_MN04B/51/m6` R51_st2 (stb) | D_MN04B r51, Dangoro Arena | unverified: no placed trigger found | unverified | plays R51_st2.stb | b | same room: unverified; elsewhere: none | - |
+| `D_MN04B/51/m6` R51_st2 (stb) | D_MN04B r51, Dangoro Arena | unverified: no placed trigger found | unverified | plays R51_st2.stb | b | same room: no (boss); elsewhere: none | - |
 
 ### Goron Mines: NPC and actor events
 
@@ -708,7 +709,7 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 | `D_MN01/3/m35` LV3R03OP (zev) | D_MN01 r3, Lakebed Temple | walk into TagEv (r 380 h 220) at -12,1500,1959 | zora-armor, layer 0; map event switch 122 off | switch 122 | a | same room: likely; elsewhere: none | `cut-D_MN01-3-m35` |
 | `D_MN01/0/m5` LV3_R00_213b (stb) | D_MN01 r0, Lakebed Temple | unverified: no placed trigger found | unverified | plays LV3_R00_213b.stb | a | same room: unverified; elsewhere: none | - |
 | `D_MN01/3/m0` R03-neoshige (stb) | D_MN01 r3, Lakebed Temple | unverified: no placed trigger found | unverified | plays R03-neoshige.stb | a | same room: unverified; elsewhere: none | - |
-| `boss/B_OB` B_OB intro and defeat (boss) | D_MN01A r50, Morpheel Arena | d_a_b_ob.cpp, own camera | unverified | - | b | same room: no (not-a-demo); elsewhere: none | - |
+| `boss/B_OB` B_OB intro and defeat (boss) | D_MN01A r50, Morpheel Arena | d_a_b_ob.cpp, own camera | unverified | - | b | same room: no (boss); elsewhere: none | - |
 
 ### Lakebed Temple: NPC and actor events
 
@@ -745,7 +746,7 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 | `D_MN10/1/m16` R01_start (stb) | D_MN10 r1, Arbiter's Grounds | unverified: no placed trigger found | unverified | switch 47; plays R01_start.stb | a | same room: unverified; elsewhere: none | - |
 | `D_MN10/2/m15` R02_start (stb) | D_MN10 r2, Arbiter's Grounds | unverified: no placed trigger found | unverified | plays R02_start.stb | a | same room: unverified; elsewhere: none | - |
 | `D_MN10/2/m28` testm (stb) | D_MN10 r2, Arbiter's Grounds | unverified: no placed trigger found | unverified | plays testm.stb | a | same room: unverified; elsewhere: none | - |
-| `boss/B_DS` B_DS intro and defeat (boss) | D_MN10A r50, Stallord Arena | d_a_b_ds.cpp, own camera | unverified | - | b | same room: no (not-a-demo); elsewhere: none | - |
+| `boss/B_DS` B_DS intro and defeat (boss) | D_MN10A r50, Stallord Arena | d_a_b_ds.cpp, own camera | unverified | - | b | same room: no (boss); elsewhere: none | - |
 
 ## Snowpeak
 
@@ -773,8 +774,8 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 | `D_MN11/7/m15` LV5R07BR (zev) | D_MN11 r7, Snowpeak Ruins | walk into TagEvC (box 100x200x500) at -3454,0,726 | arbiter, layer 0; map event switch 117 off | switch 117 | a | same room: likely; elsewhere: none | `cut-D_MN11-7-m15` |
 | `D_MN11/9/m20` LV5R09OP (zev) | D_MN11 r9, Snowpeak Ruins | walk into TagEvC (box 300x100x300) at -3400,0,-5400 | arbiter, layer 0; map event switch 92 off | switch 92 | a | same room: likely; elsewhere: none | - |
 | `D_MN11/5/m16` LV5R05DS (zev) | D_MN11 r5, Snowpeak Ruins | unverified: no placed trigger found | unverified | switch 119 | a | same room: unverified; elsewhere: none | - |
-| `D_MN11A/S/m0` BOSSCLEAR05 (zev) | D_MN11A (stage), Blizzeta Arena | ordered by name in d_a_b_yo.cpp; ordered by name in d_a_obj_bosswarp.cpp (not placed here) | unverified | stage change (in code) | b | same room: no (not-a-map-event); elsewhere: story move to a place decided in code: prompt if strong, else a menu row | - |
-| `boss/B_YO` B_YO intro and defeat (boss) | D_MN11A r50, Blizzeta Arena | d_a_b_yo.cpp, own camera | unverified | - | b | same room: no (not-a-demo); elsewhere: none | - |
+| `D_MN11A/S/m0` BOSSCLEAR05 (zev) | D_MN11A (stage), Blizzeta Arena | ordered by name in d_a_b_yo.cpp; ordered by name in d_a_obj_bosswarp.cpp (not placed here) | unverified | stage change (in code) | b | same room: no (boss); elsewhere: story move to a place decided in code: prompt if strong, else a menu row | - |
+| `boss/B_YO` B_YO intro and defeat (boss) | D_MN11A r50, Blizzeta Arena | d_a_b_yo.cpp, own camera | unverified | - | b | same room: no (boss); elsewhere: none | - |
 
 ### Snowpeak Ruins: NPC and actor events
 
@@ -800,8 +801,8 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 | Cutscene | Where | Trigger | When | Sets | Class | Mod today | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `D_MN06/0/m49` LV6R00OP (zev) | D_MN06 r0, Temple of Time | walk into TagEvC (box 1200x800x800) at 0,-400,1700 | snowpeak, layer 0; tag switch 21 off (set when it starts), map event switch 21 off | switch 21 | a | same room: likely; elsewhere: none | `cut-D_MN06-0-m49` |
-| `boss/B_GM` B_GM intro and defeat (boss) | D_MN06A r50, Armogohma Arena | d_a_b_gm.cpp, own camera | unverified | - | b | same room: no (not-a-demo); elsewhere: none | - |
-| `boss/B_TN` B_TN intro and defeat (boss) | D_MN06B r51, Darknut Arena | d_a_b_tn.cpp, own camera | unverified | - | b | same room: no (not-a-demo); elsewhere: none | - |
+| `boss/B_GM` B_GM intro and defeat (boss) | D_MN06A r50, Armogohma Arena | d_a_b_gm.cpp, own camera | unverified | - | b | same room: no (boss); elsewhere: none | - |
+| `boss/B_TN` B_TN intro and defeat (boss) | D_MN06B r51, Darknut Arena | d_a_b_tn.cpp, own camera | unverified | - | b | same room: no (boss); elsewhere: none | - |
 
 ## City in the Sky
 
@@ -812,8 +813,8 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 | `D_MN07/5/m21` LV7R05OP (zev) | D_MN07 r5, City in the Sky | walk into TagEvC (box 700x100x100) at 19419,1500,-10949 | cannon-fixed, layer 0; map event switch 58 off | switch 58 | a | same room: likely; elsewhere: none | `cut-D_MN07-5-m21` |
 | `D_MN07/15/m22` LV7R15OP (zev) | D_MN07 r15, City in the Sky | walk into TagEvC (box 500x100x100) at -1,300,-24329 | cannon-fixed, layer 0; map event switch 59 off | switch 59 | a | same room: likely; elsewhere: none | - |
 | `D_MN07/5/LV7R05OP0` LV7R05OP0 (named) | D_MN07 r5, City in the Sky | unverified: no placed trigger found | unverified | - | a | same room: no (not-a-map-event); elsewhere: none | - |
-| `boss/B_GG` B_GG intro and defeat (boss) | D_MN07 r15, City in the Sky | d_a_b_gg.cpp, own camera | unverified | - | b | same room: no (not-a-demo); elsewhere: none | - |
-| `boss/B_DR` B_DR intro and defeat (boss) | D_MN07A r50, Argorok Arena | d_a_b_dr.cpp, own camera | unverified | - | b | same room: no (not-a-demo); elsewhere: none | - |
+| `boss/B_GG` B_GG intro and defeat (boss) | D_MN07 r15, City in the Sky | d_a_b_gg.cpp, own camera | unverified | - | b | same room: no (boss); elsewhere: none | - |
+| `boss/B_DR` B_DR intro and defeat (boss) | D_MN07A r50, Argorok Arena | d_a_b_dr.cpp, own camera | unverified | - | b | same room: no (boss); elsewhere: none | - |
 
 ## Palace of Twilight
 
@@ -825,10 +826,10 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 | `D_MN08/9/m19` demo23_04 (stb) | D_MN08 r9, Palace of Twilight | arrive at point 21 (r9) | mirror, layer 8 (explicit) | goes to F_SP124 r0 p52 L10; plays demo23_04.stb | a | same room: likely; elsewhere: menu row, or a prompt if the move changes form or levels | `cut-D_MN08-9-m19` |
 | `D_MN08/11/m11` demo33_02 (stb) | D_MN08 r11, Palace of Twilight | arrive at point 22 (r11) | mirror, layer 8 (explicit) | goes to D_MN08D r50 p20; plays demo33_02.stb | a | same room: likely; elsewhere: prompt (side-effect entrance) | `cut-D_MN08-11-m11` |
 | `D_MN08/11/m12` demo24_02 (stb) | D_MN08 r11, Palace of Twilight | arrive at point 21 (r11) | mirror, layer 9 (explicit) | goes to D_MN08 r0 p20 L9; plays demo24_02.stb | a | same room: likely; elsewhere: menu row, or a prompt if the move changes form or levels | `cut-D_MN08-11-m12` |
-| `D_MN08A/10/m3` demo33_01 (stb) | D_MN08A r10, Palace of Twilight Throne Room | arrive at point 21 (r10) | mirror, layer 8 (explicit) | goes to D_MN08 r11 p22 L8; plays demo33_01.stb | b | same room: likely; elsewhere: prompt (boss clear) | `cut-D_MN08A-10-m3` |
-| `D_MN08A/10/m4` demo25_01 (stb) | D_MN08A r10, Palace of Twilight Throne Room | arrive at point 24 (r10); arrive at point 25 (r10) | mirror, layer 9 (explicit) | goes to D_MN08A r10 p23; plays demo25_01.stb | b | same room: likely; elsewhere: menu row, or a prompt if the move changes form or levels | `cut-D_MN08A-10-m4` |
+| `D_MN08A/10/m3` demo33_01 (stb) | D_MN08A r10, Palace of Twilight Throne Room | arrive at point 21 (r10) | mirror, layer 8 (explicit) | goes to D_MN08 r11 p22 L8; plays demo33_01.stb | b | same room: no (boss); elsewhere: prompt (boss clear) | `cut-D_MN08A-10-m3` |
+| `D_MN08A/10/m4` demo25_01 (stb) | D_MN08A r10, Palace of Twilight Throne Room | arrive at point 24 (r10); arrive at point 25 (r10) | mirror, layer 9 (explicit) | goes to D_MN08A r10 p23; plays demo25_01.stb | b | same room: no (boss); elsewhere: menu row, or a prompt if the move changes form or levels | `cut-D_MN08A-10-m4` |
 | `D_MN08/0/m32` R00_start (stb) | D_MN08 r0, Palace of Twilight | after LV8_EXIT (next) | unverified | switch 1; plays R00_start.stb | a | same room: no (continuation (repeatable-arrival)); elsewhere: none | - |
-| `boss/B_ZANT` B_ZANT intro and defeat (boss) | D_MN08D (stage), Zant Arenas | d_a_b_zant.cpp, own camera | unverified | - | b | same room: no (not-a-demo); elsewhere: none | - |
+| `boss/B_ZANT` B_ZANT intro and defeat (boss) | D_MN08D (stage), Zant Arenas | d_a_b_zant.cpp, own camera | unverified | - | b | same room: no (boss); elsewhere: none | - |
 
 ### Palace of Twilight: NPC and actor events
 
@@ -848,19 +849,19 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 | `D_MN09/9/m28` R09_start (stb) | D_MN09 r9, Hyrule Castle | arrive at point 0 (r9); arrive at point 1 (r9); walk into TagEv (r 1000 h 500) at -2325,0,-6650 L1 | zant, layer 1; map event switch 16 off | switch 16; plays R09_start.stb | a | same room: likely; elsewhere: none | - |
 | `D_MN09/11/m9` R11_start (stb) | D_MN09 r11, Hyrule Castle | arrive at point 0 (r11) | zant, layer 0; map event switch 93 off | switch 93; plays R11_start.stb | a | same room: likely; elsewhere: none | `cut-D_MN09-11-m9` |
 | `D_MN09/14/m13` R14_start (stb) | D_MN09 r14, Hyrule Castle | arrive at point 0 (r14); walk into TagEvC (box 1070x2300x970) at 6550,-75,5925 L0 | zant, layer 0; map event switch 83 off, tag switch 82 off (set when it starts) | switch 83; switch 82; plays R14_start.stb | a | same room: likely; elsewhere: none | `cut-D_MN09-14-m13` |
-| `D_MN09A/51/m7` R51_start (stb) | D_MN09A r51, Hyrule Castle Throne Room | walk into TagEv (r 500 h 500) at -25,-1500,6350 | zant, layer 0; tag switch 53 off (set when it starts), map event switch 52 off | switch 52; switch 53; plays R51_start.stb | b | same room: likely; elsewhere: none | `cut-D_MN09A-51-m7` |
-| `D_MN09A/50/m0` demo27_01 (stb) | D_MN09A r50, Hyrule Castle Throne Room | arrive at point 20 (r50) | barrier, layer 8 (explicit) | goes to D_MN09A r50 p1 L0; plays demo27_01.stb | b | same room: likely; elsewhere: prompt (curated final-battle) | `cut-D_MN09A-50-m0` |
-| `D_MN09A/50/m1` demo28_01 (stb) | D_MN09A r50, Hyrule Castle Throne Room | arrive at point 21 (r50) | barrier, layer 9 (explicit) | goes to D_MN09C r0 p20 L8; plays demo28_01.stb | b | same room: likely; elsewhere: prompt (curated final-battle) | `cut-D_MN09A-50-m1` |
-| `D_MN09A/50/m4` demo27_02 (stb) | D_MN09A r50, Hyrule Castle Throne Room | arrive at point 22 (r50) | barrier, layer 10 (explicit) | goes to D_MN09A r50 p2 L1; plays demo27_02.stb | b | same room: likely; elsewhere: prompt (curated final-battle) | `cut-D_MN09A-50-m4` |
-| `D_MN09B/0/m0` r00_start (stb) | D_MN09B r0, Horseback Ganondorf Arena | arrive at point 0 (r0) | barrier, layer 0; map event switch 148 off | switch 148; plays r00_start.stb | b | same room: likely; elsewhere: none | `cut-D_MN09B-0-m0` |
+| `D_MN09A/51/m7` R51_start (stb) | D_MN09A r51, Hyrule Castle Throne Room | walk into TagEv (r 500 h 500) at -25,-1500,6350 | zant, layer 0; tag switch 53 off (set when it starts), map event switch 52 off | switch 52; switch 53; plays R51_start.stb | b | same room: no (boss); elsewhere: none | `cut-D_MN09A-51-m7` |
+| `D_MN09A/50/m0` demo27_01 (stb) | D_MN09A r50, Hyrule Castle Throne Room | arrive at point 20 (r50) | barrier, layer 8 (explicit) | goes to D_MN09A r50 p1 L0; plays demo27_01.stb | b | same room: no (boss); elsewhere: prompt (curated final-battle) | `cut-D_MN09A-50-m0` |
+| `D_MN09A/50/m1` demo28_01 (stb) | D_MN09A r50, Hyrule Castle Throne Room | arrive at point 21 (r50) | barrier, layer 9 (explicit) | goes to D_MN09C r0 p20 L8; plays demo28_01.stb | b | same room: no (boss); elsewhere: prompt (curated final-battle) | `cut-D_MN09A-50-m1` |
+| `D_MN09A/50/m4` demo27_02 (stb) | D_MN09A r50, Hyrule Castle Throne Room | arrive at point 22 (r50) | barrier, layer 10 (explicit) | goes to D_MN09A r50 p2 L1; plays demo27_02.stb | b | same room: no (boss); elsewhere: prompt (curated final-battle) | `cut-D_MN09A-50-m4` |
+| `D_MN09B/0/m0` r00_start (stb) | D_MN09B r0, Horseback Ganondorf Arena | arrive at point 0 (r0) | barrier, layer 0; map event switch 148 off | switch 148; plays r00_start.stb | b | same room: no (boss); elsewhere: none | `cut-D_MN09B-0-m0` |
 | `D_MN09C/0/m0` demo28_02 (stb) | D_MN09C r0, Dark Lord Ganondorf Arena | arrive at point 20 (r0) | barrier, layer 8 (explicit) | goes to R_SP300 r0 p20 L8; plays demo28_02.stb | a | same room: likely; elsewhere: menu row, or a prompt if the move changes form or levels | `cut-D_MN09C-0-m0` |
 | `D_MN09C/0/m1` demo30_01 (stb) | D_MN09C r0, Dark Lord Ganondorf Arena | arrive at point 21 (r0) | barrier, layer 9 (explicit) | goes to D_MN09C r0 p23 L11; plays demo30_01.stb | a | same room: likely; elsewhere: prompt (curated final-battle) | `cut-D_MN09C-0-m1` |
 | `D_MN09C/0/m3` demo29 (stb) | D_MN09C r0, Dark Lord Ganondorf Arena | arrive at point 22 (r0) | barrier, layer 10 (explicit) | goes to D_MN09C r0 p21 L9; plays demo29.stb | a | same room: likely; elsewhere: prompt (curated final-battle) | `cut-D_MN09C-0-m3` |
 | `D_MN09C/0/m4` demo31_15 (stb) | D_MN09C r0, Dark Lord Ganondorf Arena | arrive at point 23 (r0) | barrier, layer 11 (explicit) | goes to F_SP110 r0 p200 L8; plays demo31_15.stb | a | same room: likely; elsewhere: menu row, or a prompt if the move changes form or levels | `cut-D_MN09C-0-m4` |
 | `D_MN09/1/m22` R01_yami2 (stb) | D_MN09 r1, Hyrule Castle | unverified: no placed trigger found | unverified | switch 56; plays R01_yami2.stb | a | same room: unverified; elsewhere: none | - |
 | `D_MN09/15/m24` R15_left (stb) | D_MN09 r15, Hyrule Castle | unverified: no placed trigger found | unverified | switch 49; plays R15_left.stb | a | same room: unverified; elsewhere: none | - |
-| `boss/B_MGN` B_MGN intro and defeat (boss) | D_MN09A r50, Hyrule Castle Throne Room | d_a_b_mgn.cpp, own camera | unverified | - | b | same room: no (not-a-demo); elsewhere: none | - |
-| `boss/B_GND` B_GND intro and defeat (boss) | D_MN09B r0, Horseback Ganondorf Arena | d_a_b_gnd.cpp, own camera | unverified | - | b | same room: no (not-a-demo); elsewhere: none | - |
+| `boss/B_MGN` B_MGN intro and defeat (boss) | D_MN09A r50, Hyrule Castle Throne Room | d_a_b_mgn.cpp, own camera | unverified | - | b | same room: no (boss); elsewhere: none | - |
+| `boss/B_GND` B_GND intro and defeat (boss) | D_MN09B r0, Horseback Ganondorf Arena | d_a_b_gnd.cpp, own camera | unverified | - | b | same room: no (boss); elsewhere: none | - |
 
 ### Hyrule Castle: NPC and actor events
 
@@ -924,7 +925,7 @@ Class a events a same-room teammate would not see, with the rule that refuses th
 
 | Cutscene | Where | Trigger | When | Sets | Class | Mod today | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `boss/B_DRE` B_DRE intro and defeat (boss) |  | d_a_b_dre.cpp, own camera | unverified | - | b | same room: no (not-a-demo); elsewhere: none | - |
+| `boss/B_DRE` B_DRE intro and defeat (boss) |  | d_a_b_dre.cpp, own camera | unverified | - | b | same room: no (boss); elsewhere: none | - |
 
 ### Unplaced: NPC and actor events
 

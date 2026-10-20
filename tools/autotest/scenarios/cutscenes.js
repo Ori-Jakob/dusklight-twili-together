@@ -18,16 +18,20 @@ const playSec = (e) => (e.mapType === "stb" ? 90 : e.source === "actor" ? 45 : 6
 const tagsOf = (e) => ["cutscene", `cutscene-${e.class}`, ...(e.mod.pullIn === "likely" ? ["cutscene-likely"] : [])];
 
 // One cutscene with both players in its room: the trigger, both checks, both settled, back together.
+// A boss scene (class b) is never pulled in: B checks that it stays out.
 function play(e, i, soft) {
     const t = `${e.id}#${i}`;
     const allow = e.test.allowNpc ? [{ op: "allowNpcEvent", ...e.test.allowNpc }] : [];
     const name = e.test.expectEvent;
+    const bCheck = e.class === "b" ?
+        { op: "expectNoCutsceneJoin", name, sec: 60, tag: t } :
+        { op: "expectCutsceneJoin", name, timeoutSec: 90, soft, tag: t };
     return {
         // The pause lets B's join check begin before A's STORY_EVENT can arrive.
         a: [...allow, ...barrier(`ready-${i}`, "B", 240), { op: "wait", sec: 1 }, e.test.trigger,
             { op: "expectEventName", name, timeoutSec: 90, soft, tag: t }, settle, ...barrier(`done-${i}`, "B", 420)],
         b: [...allow, ...barrier(`ready-${i}`, "A", 240),
-            { op: "expectCutsceneJoin", name, timeoutSec: 90, soft, tag: t }, settle, ...barrier(`done-${i}`, "A", 420)],
+            bCheck, settle, ...barrier(`done-${i}`, "A", 420)],
     };
 }
 
@@ -36,7 +40,9 @@ const goTo = (s) => [{ op: "warp", stage: s.stage, room: s.room, point: s.point,
 function isolated(e) {
     const p = play(e, 0, false);
     const s = e.test.start;
-    const desc = `${e.class} ${e.name} in ${s.stage} r${s.room}${s.layer !== undefined ? ` L${s.layer}` : ""}: B in the same room watches it too (expected today: ${e.mod.pullIn === "no" ? `missed, ${e.mod.refusal}` : e.mod.pullIn})`;
+    const where = `${e.class} ${e.name} in ${s.stage} r${s.room}${s.layer !== undefined ? ` L${s.layer}` : ""}`;
+    const desc = e.class === "b" ? `${where}: a boss scene, B in the same room stays out of it` :
+        `${where}: B in the same room watches it too (expected today: ${e.mod.pullIn === "no" ? `missed, ${e.mod.refusal}` : e.mod.pullIn})`;
     return {
         name: scenarioName(e),
         description: desc,
@@ -121,7 +127,8 @@ function build() {
     const catalog = JSON.parse(fs.readFileSync(DATA, "utf8"));
     // Catalog order: region, story milestone, stage, room.
     const tests = catalog.cutscenes.filter((e) => e.test && e.class !== "d");
-    return [...tests.map(isolated), ...batches(tests.filter((e) => e.class !== "c"), "story"), ...batches(tests.filter((e) => e.class === "c"), "npc")];
+    return [...tests.map(isolated), ...batches(tests.filter((e) => e.class === "a"), "story"),
+        ...batches(tests.filter((e) => e.class === "b"), "boss"), ...batches(tests.filter((e) => e.class === "c"), "npc")];
 }
 
 module.exports = build();
