@@ -335,4 +335,40 @@ module.exports = [
             },
         ],
     },
+    {
+        name: "puppet-no-push",
+        description: "A stands right against B's dummy (their colliders overlap), with PvP off and then on: A's own Link stays put, no push from the dummy, and with PvP on the dummy's hurtbox is still registered",
+        timeoutSec: 300,
+        cvars: COMMON_CVARS,
+        instances: ["A", "B"].map((name) => ({
+            name,
+            start: STAGES.faronField,
+            steps: [
+                ...connect,
+                ...meetIn(STAGES.faronField, name === "A" ? "B" : "A"),
+                { op: "clearEnemies", radius: 0, keep: true },
+                ...barrier("still", name === "A" ? "B" : "A"),
+                ...(name === "A"
+                    ? [
+                        { op: "approachDummy", dist: 40 },
+                        { op: "measureSelfDrift", frames: 150, maxDrift: 3 },
+                    ]
+                    : [{ op: "wait", frames: 220 }]),
+                ...barrier("pvp-off-done", name === "A" ? "B" : "A"),
+                { op: "setRoomOption", name: "pvpMode", value: true },
+                { op: "waitRoomOption", name: "pvpMode", value: true, timeoutSec: 20 },
+                ...barrier("pvp-on", name === "A" ? "B" : "A"),
+                ...(name === "A"
+                    ? [
+                        { op: "expectDummyHurtbox", registered: true, timeoutSec: 10 },
+                        { op: "approachDummy", dist: 40 },
+                        { op: "measureSelfDrift", frames: 150, maxDrift: 3 },
+                        { op: "expectDummyHurtbox", registered: true, timeoutSec: 5 },
+                    ]
+                    : [{ op: "wait", frames: 220 }]),
+                ...barrier("done", name === "A" ? "B" : "A"),
+                { op: "quit" },
+            ],
+        })),
+    },
 ];

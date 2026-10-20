@@ -605,6 +605,50 @@ bool expectDummyBody(StepContext& ctx) {
     return false;
 }
 
+struct DriftProbe {
+    cXyz start = cXyz::Zero;
+    float startDummyDist = 0.0f;
+    float maxDrift = 0.0f;
+};
+DriftProbe sDrift;
+
+// Our player stands without input next to the first peer's dummy: it may move at most `maxDrift`.
+bool measureSelfDrift(StepContext& ctx) {
+    daAlink_c* link = daAlink_getAlinkActorClass();
+    fopAc_ac_c* dummy = firstPeerDummy();
+    if (link == nullptr || (dummy == nullptr && ctx.step.value("needDummy", true))) {
+        ctx.fail("measureSelfDrift: no player or no peer dummy");
+        return false;
+    }
+    const int settle = ctx.step.value("settleFrames", 10);
+    const int frames = ctx.step.value("frames", 150);
+    if (!ctx.begun) {
+        sDrift = DriftProbe{};
+    }
+    if (ctx.ticks < settle) {
+        return false;
+    }
+    if (ctx.ticks == settle || !ctx.begun) {
+        sDrift.start = link->current.pos;
+        sDrift.startDummyDist = dummy != nullptr ? link->current.pos.absXZ(dummy->current.pos) : -1.0f;
+    }
+    sDrift.maxDrift = (std::max)(sDrift.maxDrift, link->current.pos.absXZ(sDrift.start));
+    if (ctx.ticks < settle + frames) {
+        return false;
+    }
+    const float endDummyDist = dummy != nullptr ? link->current.pos.absXZ(dummy->current.pos) : -1.0f;
+    TwiliLog.info("[autotest] self drift over {} ticks: at most {:.2f} (dummy {:.1f} -> {:.1f} "
+                  "away)",
+        frames, sDrift.maxDrift, sDrift.startDummyDist, endDummyDist);
+    if (sDrift.maxDrift > ctx.step.value("maxDrift", 3.0f)) {
+        ctx.fail(fmt::format("measureSelfDrift: our player moved {:.2f} standing next to the "
+                             "dummy ({:.1f} -> {:.1f} away)",
+            sDrift.maxDrift, sDrift.startDummyDist, endDummyDist));
+        return false;
+    }
+    return true;
+}
+
 std::optional<bool> motionSteps(const std::string& op, StepContext& ctx) {
     const json& step = ctx.step;
     auto& b = Session::instance();
@@ -778,6 +822,10 @@ std::optional<bool> motionSteps(const std::string& op, StepContext& ctx) {
 
     if (op == "expectDummyBody") {
         return expectDummyBody(ctx);
+    }
+
+    if (op == "measureSelfDrift") {
+        return measureSelfDrift(ctx);
     }
 
     return std::nullopt;

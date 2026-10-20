@@ -170,6 +170,7 @@ Motion (`StepsMotion.cpp`):
 | `findSlope` | `minDeg` (12), `maxDeg` (30), `radius` (1200), `step` (60) | puts our Link on the nearest steady slope around it, standing across it (none near Faron Field's start; South Faron's spawn is on one) |
 | `expectFeetOnGround` | `self`, `maxSpread` (4), `minBend` (0), `contact` (true), `frames` (30), `trace`, `timeoutSec` | the feet (paws) of the first peer's dummy (or ours) stand at the same height over our ground, the legs bent at least `minBend` degrees, and the dummy's leg adjustment on |
 | `expectDummyAirborne` | `timeoutSec` (5) | the first peer's dummy has its feet off the ground (its sender's are) |
+| `measureSelfDrift` | `frames` (150), `settleFrames` (10), `maxDrift` (3), `needDummy` (true) | our player, standing without input (next to the first peer's dummy), moves at most `maxDrift` |
 | `expectDummyBody` | `rootX`, `rootZ` (cleared to these), `rootMatch` with `rootTol` (0.5), `notStanding`, `magne`, `up` (`[x, y, z]`) with `upTol` (0.05), `tweak`, `turnDeg` or `tweakA`/`tweakB` with `turnTol` (2), `minTicks` (1), `timeoutSec` | the first peer's dummy's body matrix extras ("ym") on `minTicks` ticks: the root where the sender's calc put it (`notStanding`: not the old standing pin), the body matrix's up axis and its turn beyond the shape angle |
 
 The thresholds of `puppet-ground-steady` and `puppet-feet-slope(-wolf)` come from their runs: the
@@ -180,6 +181,11 @@ ground (`maxSpread` 10).
 `puppet-root-matrix`: B's plain slash clears the root's Z to -7 (the dummy used to pin the standing
 5); the patched "ym" phases (a ladder-style root, a magnetic-boots ceiling, a horse run tweak, a
 climbing wall's turn) come out exactly: root (12, -20), up (0, -1, 0) at 180 degrees, 28.3 and 45.
+
+`puppet-no-push`: 40 units from B's dummy (the colliders overlap), PvP off and on, A's Link moved
+0.00 in 150 ticks: the dummy registers no co collider, only its PvP hurtbox. A player standing alone
+on Hyrule Field's event tag 36 spot slides about 22 units a second on its own (the slope), dummy
+or not.
 
 World sync (`StepsWorld.cpp`):
 
