@@ -25,6 +25,7 @@
 #include "enemy/EnemyScaling.hpp"
 #include "enemy/EnemySync.hpp"
 #include "hooks/Hooks.hpp"
+#include "looks/Cosmetics.hpp"
 #include "push/PushSync.hpp"
 #include "story/Story.hpp"
 #include "sync/WorldSync.hpp"
@@ -169,6 +170,7 @@ MOD_EXPORT ModResult mod_shutdown(ModError*) {
     enemy_damage::shutdown();
     enemy_sync::shutdown();
     enemy_scaling::shutdown();
+    looks::shutdown();
     Session::shutdown();
     // Our actors are gone by now; make sure the local Link owns the audio again.
     restoreLocalLinkAudioPtr();

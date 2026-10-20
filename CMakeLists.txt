@@ -60,6 +60,7 @@ set(TWILI_SOURCES
     src/enemy/EnemyDefeated.cpp
     src/enemy/EnemyScaling.cpp
     src/enemy/EnemySync.cpp
+    src/fx/CosmeticsRecolor.cpp
     src/fx/Fishing.cpp
     src/fx/GetItem.cpp
     src/fx/ItemFx.cpp
@@ -84,6 +85,7 @@ set(TWILI_SOURCES
     src/horse/HorsePuppet.cpp
     src/horse/HorseSync.cpp
     src/looks/Archive.cpp
+    src/looks/Cosmetics.cpp
     src/looks/Inventory.cpp
     src/net/Link.cpp
     src/net/TcpTransport.cpp

@@ -10,6 +10,7 @@
 #include "enemy/EnemySync.hpp"
 #include "game/GameIdentity.hpp"
 #include "game/TeamGame.hpp"
+#include "looks/Cosmetics.hpp"
 #include "presence/Presence.hpp"
 #include "push/PushSync.hpp"
 #include "story/Story.hpp"
@@ -98,6 +99,7 @@ void Session::resetSessionState() {
     story::resetSession();
     pvp::resetSession();
     push::resetSession();
+    looks::resetSession();
 }
 
 void Session::connect() {
@@ -238,6 +240,7 @@ void Session::update() {
         tickRoomOwnerSettings();
         manageDummyActors();
         pvp::tick();
+        looks::tick();
     }
     // Connected or not: a stage change already under way is seen through.
     enemy_sync::tick();
@@ -298,6 +301,7 @@ void Session::onMessage(const nlohmann::json& packet) {
     }
     if (type == "ALL_CLIENT_STATE") {
         handleAllClientState(packet);
+        looks::onRoster(packet);
     } else if (type == "UPDATE_CLIENT_STATE") {
         handleUpdateClientState(packet);
     } else if (type == "PLAYER_UPDATE") {
@@ -314,6 +318,7 @@ void Session::onMessage(const nlohmann::json& packet) {
     } else if (story::handlePacket(type, packet)) {
     } else if (pvp::handlePacket(type, packet)) {
     } else if (push::handlePacket(type, packet)) {
+    } else if (looks::handlePacket(type, packet)) {
     } else if (type == "AUTOTEST_SIGNAL") {
 #if TWILI_ENABLE_AUTOTEST
         autotest::onSignal(packet.value("instance", std::string{}),
@@ -346,6 +351,8 @@ void Session::sendHandshake() {
         {"sessionKey", mSessionKey},
         {"color", {{"r", color[0]}, {"g", color[1]}, {"b", color[2]}}},
         {"game", game_identity::handshakeJson()},
+        {"features", looks::handshakeFeatures()},
+        {"gameId", looks::gameId()},
     });
 }
 

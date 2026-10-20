@@ -77,6 +77,13 @@ public:
     void apply(uint32_t key, int32_t tick);
     uint32_t bytes() const { return mBytes; }
     void probe(RecolorProbe& out) const;
+    // The tint holds these texels rewritten right now.
+    bool rewrites(const void* image) const {
+        for (uint8_t i = 0; i < mCount && mAppliedKey != kPristine; i++) {
+            if (mTex[i].image == image) return true;
+        }
+        return false;
+    }
 
 private:
     struct Tex {

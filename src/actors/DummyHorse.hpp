@@ -4,6 +4,7 @@
 
 #include "actors/DummyHoZelda.hpp"
 #include "actors/PrivateArchives.hpp"
+#include "fx/CosmeticsRecolor.hpp"
 #include "fx/PlayerRecolor.hpp"
 #include "presence/RemotePose.hpp"
 
@@ -71,6 +72,7 @@ public:
     bool isRidden() const { return mRidden && isShown(); }
     uint32_t clientId() const { return mClientId; }
     void getDebugInfo(DummyHorseDebugInfo& out) const;
+    void getCosmeticsProbe(CosmeticsProbe& out) const { mCosmetics.probe(out); }
     bool archiveBusy() const { return mArchives.busy(); }
 
 private:
@@ -92,6 +94,8 @@ private:
     // Every Horse.arc BCK with its BAS, loaded in createHeap before the heap is trimmed.
     mDoExt_transAnmBas* mBck[kHorseLastAnm + 1] = {};
     HorseRecolor mRecolor;
+    // The owner's eponaColor on this puppet's textures, and the blockers of ours.
+    PuppetCosmetics mCosmetics;
     DummyHoZelda mZelda;
     uint32_t mClientId = 0;
     uint32_t mHeapUsed = 0;

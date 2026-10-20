@@ -1,5 +1,6 @@
 #pragma once
 
+#include "fx/CosmeticsRecolor.hpp"
 #include "presence/RemotePose.hpp"
 
 #include "d/actor/d_a_player.h"
@@ -99,6 +100,10 @@ public:
     // The hair hand turned toward the remote's lock target on the last update, by this angle.
     bool hairAimApplied() const { return mActive && mHairAimApplied; }
     int16_t hairAimAngle() const { return mHairAimAngle; }
+    // The owner's cosmetics hair palette indices, 0 for the game's colours.
+    void setHairPalette(uint32_t base, uint32_t tips);
+    uint8_t hairBase() const { return mHairBase; }
+    uint8_t hairTips() const { return mHairTips; }
 
 private:
     // Whether `id` may be read into a slot
@@ -155,6 +160,8 @@ private:
     J3DGXColorS10 mHairColor;
     J3DGXColor mHairK1;
     J3DGXColor mHairK2;
+    MidnaHairColours mHair = midnaHairColours(0, 0);
+    uint8_t mHairBase = 0, mHairTips = 0;
     dKy_tevstr_c mTevStr;
     cXyz mPos = cXyz::Zero;
     float mBackDist = 0.0f;

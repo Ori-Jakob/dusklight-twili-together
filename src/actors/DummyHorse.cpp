@@ -4,6 +4,7 @@
 #include "core/Log.hpp"
 #include "core/Session.hpp"
 #include "core/Visibility.hpp"
+#include "looks/Cosmetics.hpp"
 
 #include "JSystem/J3DGraphAnimator/J3DAnimation.h"
 #include "JSystem/J3DGraphAnimator/J3DModel.h"
@@ -152,6 +153,7 @@ int daDummyHorse_c::createHeapImpl() {
     mpArchive = nullptr;
     std::fill(std::begin(mBck), std::end(mBck), nullptr);
     mRecolor = HorseRecolor{};
+    mCosmetics.release();
     mpArchive = mArchives.get(0);
     if (mpArchive == nullptr) {
         TwiliLog.warn("[horse {}] createHeap: {} mount failed", mClientId, kHorseArcPath);
@@ -176,6 +178,9 @@ int daDummyHorse_c::createHeapImpl() {
     if (!bindHorseRecolor(mRecolor, m_modelData, mDoExt_getCurrentHeap(), mClientId)) {
         TwiliLog.warn("[horse {}] createHeap: mane recolour not bound", mClientId);
     }
+    PuppetCosmetics::Models models{};
+    models[static_cast<size_t>(CosmeticsModel::Horse)] = m_modelData;
+    mCosmetics.bind(models, mClientId);
     J3DTransformInfo* transInfo = JKR_NEW_ARRAY(J3DTransformInfo, kJointNum);
     Quaternion* quat = JKR_NEW_ARRAY(Quaternion, kJointNum);
     if (transInfo == nullptr || quat == nullptr) {
@@ -326,7 +331,14 @@ int daDummyHorse_c::execute() {
             mRidden = false;
         }
     }
-    updateHorseRecolor(mRecolor, c->colorR, c->colorG, c->colorB);
+    const looks::CosmeticsValues* shown = looks::shownCosmetics(mClientId);
+    // The owner's Epona colour replaces our tint of the mane.
+    if (cosmeticsReplaceHorse(shown)) {
+        updateHorseRecolor(mRecolor, 255, 255, 255);
+    } else {
+        updateHorseRecolor(mRecolor, c->colorR, c->colorG, c->colorB);
+    }
+    mCosmetics.update(shown, nullptr);
     updateSound(isShown());
     return TRUE;
 }
@@ -718,6 +730,7 @@ void daDummyHorse_c::destroy() {
     // Never ~daHorse_c: it would drop the resident "Horse" archive our own Epona uses.
     m_sound.deleteObject();
     mZelda.destroy();
+    mCosmetics.release();
     mpArchive = nullptr;
     mArchives.release();
     TwiliLog.info("[horse {}] destroyed", mClientId);

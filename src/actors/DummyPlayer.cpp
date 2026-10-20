@@ -7,6 +7,7 @@
 #include "core/Visibility.hpp"
 #include "fx/WolfFx.hpp"
 #include "horse/HorsePuppet.hpp"
+#include "looks/Cosmetics.hpp"
 #include "presence/RemoteFrame.hpp"
 
 #include "d/d_com_inf_game.h"
@@ -1059,6 +1060,7 @@ void daDummyPlayer_c::clearPrivateModelPointers() {
     for (twili::RecolorSet& set : mDummyRecolor) {
         set.reset();
     }
+    mDummyCosmetics.release();
 }
 
 int daDummyPlayer_c::createHeapImpl() {
@@ -1190,6 +1192,7 @@ int daDummyPlayer_c::createHeapImpl() {
     mpDummySlingAmmoModel = makeModel(mpDummyAlinkArchive, dRes_ID_ALINK_BMD_AL_PACHI_NUT_e);
     // The boomerang in hand.
     mpDummyBoomerangModel = makeModel(mpDummyAlinkArchive, dRes_ID_ALINK_BMD_AL_BOOM_e);
+    J3DModelData* spinnerData = nullptr;
     {
         twili::DummyItemFx::Models items;
         for (J3DModel*& m : items.arrow) {
@@ -1222,6 +1225,7 @@ int daDummyPlayer_c::createHeapImpl() {
         items.spinner = makeModelEx(mpDummyAlinkArchive, dRes_ID_ALINK_BMD_AL_SP_e, 0x80000,
                                     0x11000084);
         items.spinnerBck = loadPrivateBck(mpDummyAlinkArchive, dRes_ID_ALINK_BCK_SPOUT_e);
+        spinnerData = items.spinner != nullptr ? items.spinner->getModelData() : nullptr;
         items.crodBall = makeModelEx(mpDummyAlinkArchive, dRes_ID_ALINK_BMD_CROD_BALL_e, 0x80000,
                                      0x11000284);
         items.crodBrk = loadPrivateBrk(mpDummyAlinkArchive, dRes_ID_ALINK_BRK_CROD_BALL_e);
@@ -1359,6 +1363,7 @@ int daDummyPlayer_c::createHeapImpl() {
     }
 
     bindRemoteRecolor();
+    bindRemoteCosmetics(spinnerData);
 
     // fopAcM_entrySolidHeap trims the heap to this use right after
     JKRHeap* heap = mDoExt_getCurrentHeap();
@@ -3304,11 +3309,23 @@ static constexpr int32_t kRecolorMinTicks = 3;
 
 void daDummyPlayer_c::updateRemoteRecolor() {
     ++mDummyRecolorTick;
+    const twili::looks::CosmeticsValues* shown = twili::looks::shownCosmetics(mDummyClientId);
+    // A teammate's cosmetics take over the sets they colour, worn or not.
+    for (size_t i = 0; i < std::size(mDummyRecolor); i++) {
+        twili::RecolorSet& s = mDummyRecolor[i];
+        if (s.bound() && s.appliedKey() != twili::RecolorSet::kPristine &&
+            twili::cosmeticsReplaceSet(shown, static_cast<twili::RecolorSetId>(i)))
+        {
+            s.apply(twili::RecolorSet::kPristine, mDummyRecolorTick);
+        }
+    }
     const twili::RecolorSetId id = wornRecolorSet();
     const bool justWorn = mDummyRecolorWorn != static_cast<int8_t>(id);
     mDummyRecolorWorn = static_cast<int8_t>(id);
     twili::RecolorSet& set = mDummyRecolor[static_cast<size_t>(id)];
-    const uint32_t key = twili::recolorKey(mDummyColorR, mDummyColorG, mDummyColorB);
+    const uint32_t key = twili::cosmeticsReplaceSet(shown, id) ?
+                             twili::RecolorSet::kPristine :
+                             twili::recolorKey(mDummyColorR, mDummyColorG, mDummyColorB);
     if (!set.bound() || set.appliedKey() == key) {
         return;
     }
@@ -3371,11 +3388,68 @@ void daDummyPlayer_c::getRecolorProbe(twili::RecolorProbe& out) const {
     scan(mpLinkHatModel, list.hat, list.hatCount);
 }
 
+// Every model a cosmetics colour targets, as this dummy loaded it.
+void daDummyPlayer_c::bindRemoteCosmetics(J3DModelData* spinner) {
+    using twili::CosmeticsModel;
+    twili::PuppetCosmetics::Models models{};
+    auto set = [&](CosmeticsModel slot, J3DModel* model) {
+        models[static_cast<size_t>(slot)] = model != nullptr ? model->getModelData() : nullptr;
+    };
+    set(CosmeticsModel::KokiriBody, mpDummyKokiriLinkModel);
+    set(CosmeticsModel::KokiriHead, mpDummyKokiriHatModel);
+    set(CosmeticsModel::KokiriSword, mpDummyKokiriWoodSwordModel);
+    set(CosmeticsModel::KokiriBoots, mpDummyKokiriBootModels[0]);
+    set(CosmeticsModel::ZoraBody, mpDummyZoraLinkModel);
+    set(CosmeticsModel::ZoraHead, mpDummyZoraHatModel);
+    set(CosmeticsModel::ZoraSword, mpDummyZoraWoodSwordModel);
+    set(CosmeticsModel::ZoraBoots, mpDummyZoraBootModels[0]);
+    set(CosmeticsModel::MagicHead, mpDummyMagicHatModel);
+    set(CosmeticsModel::MagicSword, mpDummyMagicWoodSwordModel);
+    set(CosmeticsModel::MagicBoots, mpDummyMagicBootModels[0]);
+    set(CosmeticsModel::CasualHead, mpDummyCasualHatModel);
+    set(CosmeticsModel::CasualSword, mpDummyCasualWoodSwordModel);
+    set(CosmeticsModel::CasualBoots, mpDummyCasualBootModels[0]);
+    set(CosmeticsModel::SwordA, mpSwAModel);
+    set(CosmeticsModel::SwordM, mpSwMModel);
+    set(CosmeticsModel::Boomerang, mpDummyBoomerangModel);
+    set(CosmeticsModel::Wolf, mpDummyWolfModel);
+    models[static_cast<size_t>(CosmeticsModel::Spinner)] = spinner;
+    mDummyCosmetics.bind(models, mDummyClientId);
+}
+
+void daDummyPlayer_c::updateRemoteCosmetics() {
+    const twili::looks::CosmeticsValues* shown = twili::looks::shownCosmetics(mDummyClientId);
+    mDummyCosmetics.update(shown, [this](const uint8_t* image) {
+        for (const twili::RecolorSet& set : mDummyRecolor) {
+            if (set.rewrites(image)) {
+                return true;
+            }
+        }
+        return false;
+    });
+    mDummyMidna.setHairPalette(shown != nullptr ? shown->get(twili::looks::kMidnaHairBase) : 0,
+        shown != nullptr ? shown->get(twili::looks::kMidnaHairTips) : 0);
+}
+
+void daDummyPlayer_c::getCosmeticsProbe(twili::CosmeticsProbe& out) const {
+    mDummyCosmetics.probe(out);
+    out.hairBase = mDummyMidna.hairBase();
+    out.hairTips = mDummyMidna.hairTips();
+}
+
 bool GetDummyPlayerRecolorProbe(fopAc_ac_c* actor, RecolorProbe& out) {
     if (!isDummyPlayer(actor)) {
         return false;
     }
     static_cast<daDummyPlayer_c*>(actor)->getRecolorProbe(out);
+    return true;
+}
+
+bool GetDummyPlayerCosmeticsProbe(fopAc_ac_c* actor, CosmeticsProbe& out) {
+    if (!isDummyPlayer(actor)) {
+        return false;
+    }
+    static_cast<daDummyPlayer_c*>(actor)->getCosmeticsProbe(out);
     return true;
 }
 
@@ -4352,6 +4426,7 @@ int daDummyPlayer_c::execute() {
     if (!mDummyShellReady) {
         return TRUE;
     }
+    updateRemoteCosmetics();
 
     const auto& client = it->second;
     const char* myStage = dComIfGp_getStartStageName();
@@ -4845,6 +4920,7 @@ void daDummyPlayer_c::destroyDummyAnmHeaps() {
 }
 
 void daDummyPlayer_c::unmountPrivateArchives() {
+    mDummyCosmetics.release();
     mpDummyKmdlArchive = mpDummyMmdlArchive = mpDummyZmdlArchive = mpDummyBmdlArchive = nullptr;
     mpDummyAlinkArchive = mpDummyHylianShieldArchive = mpDummyOrdonShieldArchive = nullptr;
     mpDummyWoodShieldArchive = mpDummyWmdlArchive = nullptr;

@@ -50,15 +50,6 @@ const cXyz kHairScale[5] = {
     cXyz(0.3f, 0.8f, 0.7f), cXyz(0.2f, 0.8f, 0.4f), cXyz(0.15f, 0.75f, 0.5f),
     cXyz(0.1f, 0.7f, 0.7f), cXyz(1.0f, 1.0f, 1.0f),
 };
-const GXColorS10 kNormalColor = {0x50, 0x00, 0x00, 0x00};
-const GXColor kNormalKColor = {0xB4, 0x87, 0x00, 0x00};
-const GXColor kNormalKColor2 = {0x00, 0xC3, 0xC3, 0x00};
-const GXColorS10 kBigColor = {0xFF, 0x64, 0x78, 0x00};
-const GXColor kBigKColor = {0x1E, 0x00, 0x00, 0x00};
-const GXColor kLightNormalKColor = {0xFF, 0xDC, 0x00, 0x00};
-const GXColor kLightNormalKColor2 = {0x00, 0xC3, 0xEB, 0x00};
-const GXColorS10 kLightBigColor = {0xFF, 0x78, 0x00, 0x00};
-const GXColor kLightBigKColor2 = {0xAA, 0xFF, 0xC3, 0x00};
 
 // Only what daMidna_c reads into that kind of heap (setAnm, setUpperAnime, setFaceAnime)
 bool isMidnaClip(u16 id, bool face) {
@@ -896,24 +887,33 @@ void DummyMidna::setTired(bool tired) {
     mTired = tired;
 }
 
-// daMidna_c::create.
+// The owner's cosmetics hair palette (0: the game's colours); the next chase moves toward it.
+void DummyMidna::setHairPalette(uint32_t base, uint32_t tips) {
+    if (base != mHairBase || tips != mHairTips) {
+        mHairBase = static_cast<uint8_t>(base);
+        mHairTips = static_cast<uint8_t>(tips);
+        mHair = midnaHairColours(base, tips);
+    }
+}
+
+// daMidna_c::create, in the d_a_midna.cpp statics (or the palette's).
 void DummyMidna::initHairColours() {
     const bool dark = dKy_darkworld_check() != 0;
-    mHairColor.r = kNormalColor.r;
-    mHairColor.g = kNormalColor.g;
-    mHairColor.b = kNormalColor.b;
-    mHairColor.a = kNormalColor.a;
-    static_cast<GXColor&>(mHairK1) = dark ? kNormalKColor : kLightNormalKColor;
-    static_cast<GXColor&>(mHairK2) = dark ? kNormalKColor2 : kLightNormalKColor2;
+    mHairColor.r = mHair.normal.r;
+    mHairColor.g = mHair.normal.g;
+    mHairColor.b = mHair.normal.b;
+    mHairColor.a = mHair.normal.a;
+    static_cast<GXColor&>(mHairK1) = dark ? mHair.normalK : mHair.lightNormalK;
+    static_cast<GXColor&>(mHairK2) = dark ? mHair.normalK2 : mHair.lightNormalK2;
 }
 
 // setBodyPartMatrix
 void DummyMidna::chaseHairColours(bool big) {
     const bool dark = dKy_darkworld_check() != 0;
-    const GXColorS10& color = big ? (dark ? kBigColor : kLightBigColor) : kNormalColor;
-    const GXColor& kColor1 = big ? kBigKColor : (dark ? kNormalKColor : kLightNormalKColor);
-    const GXColor& kColor2 =
-        big ? (dark ? kNormalKColor2 : kLightBigKColor2) : (dark ? kNormalKColor2 : kLightNormalKColor2);
+    const GXColorS10& color = big ? (dark ? mHair.big : mHair.lightBig) : mHair.normal;
+    const GXColor& kColor1 = big ? mHair.bigK : (dark ? mHair.normalK : mHair.lightNormalK);
+    const GXColor& kColor2 = big ? (dark ? mHair.normalK2 : mHair.lightBigK2)
+                                 : (dark ? mHair.normalK2 : mHair.lightNormalK2);
     cLib_chaseS(&mHairColor.r, color.r, 10);
     cLib_chaseS(&mHairColor.g, color.g, 10);
     cLib_chaseS(&mHairColor.b, color.b, 10);

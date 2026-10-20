@@ -5,6 +5,7 @@
 #include "actors/DummyItemFx.hpp"
 #include "actors/DummyMidna.hpp"
 #include "actors/PrivateArchives.hpp"
+#include "fx/CosmeticsRecolor.hpp"
 #include "fx/PlayerRecolor.hpp"
 #include "fx/RemoteTransformFx.hpp"
 
@@ -184,6 +185,7 @@ public:
     bool isBodyShown() const;
     void getDebugInfo(twili::DummyPlayerDebugInfo& out) const;
     void getRecolorProbe(twili::RecolorProbe& out) const;
+    void getCosmeticsProbe(twili::CosmeticsProbe& out) const;
     void onPvpTgHit(dCcD_GObjInf* tg, fopAc_ac_c* atActor, dCcD_GObjInf* at);
     void playPvpHitSe(uint32_t hitSe, uint32_t guardSe, bool blocked);
 
@@ -239,6 +241,8 @@ private:
     void bindRemoteRecolor();
     twili::RecolorSetId wornRecolorSet() const;
     void updateRemoteRecolor();
+    void bindRemoteCosmetics(J3DModelData* spinner);
+    void updateRemoteCosmetics();
     void updateRemoteEquipment(const twili::LinkPuppetState& state);
     void updateRemoteBodyShapes(const twili::LinkPuppetState& state);
     void updateRemoteFace();
@@ -390,6 +394,8 @@ private:
     twili::RecolorSet mDummyRecolor[static_cast<size_t>(twili::RecolorSetId::Count)];
     int32_t mDummyRecolorTick = 0;  // applyRemoteState calls, for the rewrite rate limit
     int8_t mDummyRecolorWorn = -1;  // RecolorSetId worn at the last call
+    // The owner's cosmetics on this dummy's own textures, and the blockers of ours.
+    twili::PuppetCosmetics mDummyCosmetics;
     uint32_t mDummyDrawCount = 0;   // autotest: draws that submitted the body
     // The Magic Armor BRK bound (0 power_down, 1 power_up_a, -1 none).
     int8_t mDummyArmorBrkStatus = -1;
@@ -468,6 +474,8 @@ bool IsDummyPlayerShown(fopAc_ac_c* actor);
 bool GetDummyPlayerDebugInfo(fopAc_ac_c* actor, DummyPlayerDebugInfo& out);
 // The worn set's recolour state (autotest).
 bool GetDummyPlayerRecolorProbe(fopAc_ac_c* actor, RecolorProbe& out);
+// Its cosmetics textures and Midna's hair palette (autotest).
+bool GetDummyPlayerCosmeticsProbe(fopAc_ac_c* actor, CosmeticsProbe& out);
 // PvP: the sound of our hit on `actor`, a dummy player.
 void PlayDummyPlayerHitSe(fopAc_ac_c* actor, uint32_t hitSe, uint32_t guardSe, bool blocked);
 }  // namespace twili
