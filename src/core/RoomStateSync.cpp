@@ -31,6 +31,7 @@ RoomState Session::roomStateFromSettings() const {
     state.syncNPCs = config::getBool(Var::SyncEnemyDeaths);
     state.syncEnemyDamage = config::getBool(Var::SyncEnemyDamage);
     state.cutsceneSync = config::getBool(Var::CutsceneSync);
+    state.syncPushPull = config::getBool(Var::SyncPushPull);
     state.enemyHealthMultiplier = static_cast<int>(config::getInt(Var::EnemyHealthMultiplier));
     state.enemyCountMultiplier = static_cast<int>(config::getInt(Var::EnemyCountMultiplier));
     return state;

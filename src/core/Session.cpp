@@ -10,6 +10,7 @@
 #include "game/GameIdentity.hpp"
 #include "game/TeamGame.hpp"
 #include "presence/Presence.hpp"
+#include "push/PushSync.hpp"
 #include "story/Story.hpp"
 #include "sync/WorldSync.hpp"
 #include "teleport/Teleport.hpp"
@@ -95,6 +96,7 @@ void Session::resetSessionState() {
     enemy_damage::resetSession();
     story::resetSession();
     pvp::resetSession();
+    push::resetSession();
 }
 
 void Session::connect() {
@@ -243,6 +245,7 @@ void Session::update() {
     story::tick();
     enemy_scaling::tick();
     enemy_count::tick();
+    push::tick();
 }
 
 void Session::onConnected() {
@@ -308,6 +311,7 @@ void Session::onMessage(const nlohmann::json& packet) {
     } else if (enemy_damage::handlePacket(type, packet)) {
     } else if (story::handlePacket(type, packet)) {
     } else if (pvp::handlePacket(type, packet)) {
+    } else if (push::handlePacket(type, packet)) {
     } else if (type == "AUTOTEST_SIGNAL") {
 #if TWILI_ENABLE_AUTOTEST
         autotest::onSignal(packet.value("instance", std::string{}),

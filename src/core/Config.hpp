@@ -43,6 +43,7 @@ enum class Var : uint8_t {
     PlayersWidgetScale,
     SharePickups,
     ShowPlayerHealth,
+    SyncPushPull,
 #if TWILI_ENABLE_AUTOTEST
     AutotestScript,
 #endif

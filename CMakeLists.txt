@@ -76,6 +76,7 @@ set(TWILI_SOURCES
     src/hooks/hooks_map.cpp
     src/hooks/hooks_player.cpp
     src/hooks/hooks_pvp.cpp
+    src/hooks/hooks_push.cpp
     src/hooks/hooks_save.cpp
     src/hooks/hooks_story.cpp
     src/hooks/hooks_sync.cpp
@@ -91,6 +92,9 @@ set(TWILI_SOURCES
     src/pvp/DamagePlayer.cpp
     src/pvp/PlantedHit.cpp
     src/pvp/Pvp.cpp
+    src/push/PushBlocks.cpp
+    src/push/PushChains.cpp
+    src/push/PushSync.cpp
     src/story/StoryEvent.cpp
     src/story/StoryLog.cpp
     src/story/StoryMove.cpp

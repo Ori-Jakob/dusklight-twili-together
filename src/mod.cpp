@@ -24,6 +24,7 @@
 #include "enemy/EnemyScaling.hpp"
 #include "enemy/EnemySync.hpp"
 #include "hooks/Hooks.hpp"
+#include "push/PushSync.hpp"
 #include "story/Story.hpp"
 #include "sync/WorldSync.hpp"
 #include "ui/Ui.hpp"
@@ -119,6 +120,9 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
     // Optional: without it PvP hits are not taken.
     std::string pvpError;
     hooks::install(hooks::Group::Pvp, pvpError);
+    // Optional: without it blocks and chains move only for whoever moves them.
+    std::string pushError;
+    hooks::install(hooks::Group::Push, pushError);
 
     ui::init();
 
@@ -154,6 +158,7 @@ MOD_EXPORT ModResult mod_shutdown(ModError*) {
 #endif
     ui::shutdown();
     sync::shutdown();
+    push::shutdown();
     story::shutdown();
     enemy_count::shutdown();
     enemy_damage::shutdown();

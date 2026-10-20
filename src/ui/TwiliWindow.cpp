@@ -357,6 +357,12 @@ const RoomBool kSyncOptions[] = {
         "too, up to your wallet, hearts, quiver and bags. Everyone keeps their own copy of each "
         "pickup in the world; purchases are not shared. Needs Sync World State.</p>",
         Var::SyncWorldState},
+    {Var::SyncPushPull, &RoomState::syncPushPull, "Sync Blocks and Chains",
+        "<p>When a teammate in your area pushes or pulls a block or pulls a chain switch, it moves "
+        "for you too and stops on the same spot. Only their game flips the switch; you get it "
+        "like any other flag. A block that does not save its spot goes back when the area "
+        "reloads, as usual. Needs Sync World State.</p>",
+        Var::SyncWorldState},
     {Var::SyncEnemyDeaths, &RoomState::syncNPCs, "Sync Enemy Deaths",
         "<p>When a teammate in your area defeats a regular enemy, it disappears for you too. "
         "Bosses and mini-bosses are excluded, and drops go to whoever defeated it.</p>"},
