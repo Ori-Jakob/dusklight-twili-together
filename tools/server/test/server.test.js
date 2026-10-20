@@ -474,6 +474,68 @@ test("ENEMY_DAMAGE is never queued for a teammate who joins later", () => withSe
     await b.expectNone((p) => p.type === "ENEMY_DAMAGE", "replayed ENEMY_DAMAGE");
 }));
 
+const PUSH_KEY = { roomNo: 6, procName: 0x1e4, params: 0xf100ffff, setId: 0xffff, home: { x: -1480, y: 580, z: -3425 },
+    angle: [0, 0, -1] };
+const PUSH_PACKETS = [
+    { type: "PUSH_MOVE", v: 1, key: PUSH_KEY, from: { x: -1480, z: -3425 }, to: { x: -1480, z: -3350 }, dir: 0, pull: false },
+    { type: "PUSH_REST", v: 1, key: PUSH_KEY, from: { x: -1480, z: -3425 }, pos: { x: -1480, z: -3350 } },
+    { type: "CHAIN_PULL", v: 1, key: PUSH_KEY, held: true, hook: false, out: 9, cap: 0, end: { x: 1, y: 2, z: 3 },
+        rel: { x: 25, y: 100, z: 60 } },
+];
+
+test("PUSH_MOVE, PUSH_REST and CHAIN_PULL reach only teammates in the sender's stage and layer, stamped", () => withServer(async (mk) => {
+    const a = mk();
+    const b = mk();
+    const otherTeam = mk();
+    const otherLayer = mk();
+    const otherStage = mk();
+    const noSave = mk();
+    await a.join({ teamId: "red", sessionKey: "ka" });
+    await b.join({ teamId: "red" });
+    await otherTeam.join({ teamId: "blue" });
+    await otherLayer.join({ teamId: "red" });
+    await otherStage.join({ teamId: "red" });
+    await noSave.join({ teamId: "red" });
+    a.enterStage("D_MN04", 0);
+    b.enterStage("D_MN04", 0);
+    otherTeam.enterStage("D_MN04", 0);
+    otherLayer.enterStage("D_MN04", 1);
+    otherStage.enterStage("F_SP108", 0);
+    noSave.enterStage("D_MN04", 0, { isSaveLoaded: false });
+    await settle();
+    for (const packet of PUSH_PACKETS) {
+        a.send({ ...packet, teamId: "blue", addToQueue: true, stageName: "D_MN04", layerNo: 0 });
+        const got = await b.waitType(packet.type);
+        assert.equal(got.clientId, a.id);
+        assert.equal(got.teamId, "red", "server overrides a spoofed teamId with the sender's real team");
+        assert.equal(got.senderSessionKey, "ka");
+        assert.equal(got.addToQueue, false);
+        assert.deepEqual(got.key, PUSH_KEY);
+    }
+    for (const [c, what] of [[otherTeam, "another team"], [otherLayer, "another layer"], [otherStage, "another stage"],
+        [noSave, "a client with no save"], [a, "the sender"]]) {
+        await c.expectNone((p) => PUSH_PACKETS.some((q) => q.type === p.type), `block or chain packet to ${what}`);
+    }
+}));
+
+test("PUSH_MOVE, PUSH_REST and CHAIN_PULL are never queued for a teammate who joins later", () => withServer(async (mk) => {
+    const a = mk();
+    await a.join({ teamId: "t" });
+    a.enterStage("D_MN04", 0);
+    await settle();
+    for (const packet of PUSH_PACKETS) {
+        a.send({ ...packet, addToQueue: true, stageName: "D_MN04", layerNo: 0 });
+    }
+    a.send({ type: "SET_FLAG", flagNo: 3, addToQueue: true });
+    await settle();
+    const b = mk();
+    await b.join({ teamId: "t" });
+    b.enterStage("D_MN04", 0);
+    b.send({ type: "REQUEST_WORLD_STATE", catchUp: true });
+    await b.waitType("SET_FLAG", (p) => p.flagNo === 3 && p.fromQueue === true);
+    await b.expectNone((p) => PUSH_PACKETS.some((q) => q.type === p.type), "replayed block or chain packet");
+}));
+
 test("STORY_EVENT reaches only teammates in the sender's stage and layer, stamped and never queued", () => withServer(async (mk) => {
     const a = mk();
     const b = mk();
@@ -1179,6 +1241,18 @@ test("room state drops hidePlayersInCutscene, now a personal setting, even from 
     assert.equal("hidePlayersInCutscene" in got.state, false);
 }));
 
+test("room state carries syncPushPull, on by default and type-checked", () => withServer(async (mk) => {
+    const a = mk();
+    const b = mk();
+    await a.join();
+    const state = await b.join();
+    assert.equal(state.roomState.syncPushPull, true);
+    a.send({ type: "UPDATE_ROOM_STATE", state: { syncPushPull: 0 } });
+    assert.equal((await b.waitType("UPDATE_ROOM_STATE")).state.syncPushPull, true);
+    a.send({ type: "UPDATE_ROOM_STATE", state: { syncPushPull: false } });
+    assert.equal((await b.waitType("UPDATE_ROOM_STATE")).state.syncPushPull, false);
+}));
+
 test("room state carries the enemy count multiplier, clamped to 100-300", () => withServer(async (mk) => {
     const a = mk();
     const b = mk();
@@ -1366,13 +1440,13 @@ test("hostile field types and unserializable packets do not kill the server", ()
     const evil = { toString: 1 };
     for (const type of ["UPDATE_CLIENT_STATE", "SET_FLAG", "UNSET_FLAG", "SET_EVENT_BIT", "UNSET_EVENT_BIT", "GIVE_ITEM",
         "UPDATE_DUNGEON_ITEMS", "UPDATE_WORLD_STATE", "REQUEST_WORLD_STATE", "UPDATE_ROOM_STATE", "PLAYER_SFX",
-        "ENEMY_DEFEATED", "ENEMY_DAMAGE", "STORY_EVENT", "STORY_MOVE"]) {
+        "ENEMY_DEFEATED", "ENEMY_DAMAGE", "STORY_EVENT", "STORY_MOVE", "PUSH_MOVE", "PUSH_REST", "CHAIN_PULL"]) {
         a.send({
             type, no: evil, itemNo: evil, flagNo: evil, roomNo: evil, stageName: evil, saveTblNo: evil, layerNo: evil,
             isSaveLoaded: evil, category: evil, keyDelta: evil, dungeonItemBits: evil, targetClientId: evil,
             soundId: evil, kind: evil, kills: evil, hits: evil, state: { pvpMode: evil, nested: [evil] },
             ph: evil, id: evil, stage: evil, room: evil, layer: evil, m: evil, req: evil, from: evil, to: evil,
-            curated: evil, qual: evil,
+            curated: evil, qual: evil, key: { roomNo: evil, procName: evil }, dir: evil, held: evil, out: evil,
         });
     }
     a.send({ type: "AUTOTEST_SIGNAL", instance: evil, name: evil });
@@ -2677,4 +2751,21 @@ test("the team colour survives promotion and succession", () => withServer(async
     assert.deepEqual((await teamState(watcher, "red", (p) => p.members.length === 1)).color, want);
     c.send({ type: "SET_TEAM_COLOR", color: { r: 99, g: 99, b: 99 } });
     assert.equal((await teamState(watcher, "red", (p) => p.color.r === 99)).ownerClientId, c.id);
+}));
+
+test("block and chain packets from a member off the team game are dropped", () => withServer(async (mk) => {
+    const a = mk();
+    const b = mk();
+    const off = mk();
+    await a.join({ name: "A", teamId: "red", game: rando("rando/f3/1111111111111111") });
+    await b.join({ name: "B", teamId: "red", game: rando("rando/f3/1111111111111111") });
+    await off.join({ name: "X", teamId: "red", game: rando("rando/f3/2222222222222222") });
+    for (const c of [a, b, off]) c.enterStage("D_MN04", 0);
+    await waitSync(a, "red", { [off.id]: "mismatch" });
+    await settle();
+    off.send({ ...PUSH_PACKETS[0], stageName: "D_MN04", layerNo: 0 });
+    await a.expectNone((p) => p.type === "PUSH_MOVE", "PUSH_MOVE from a mismatched member");
+    a.send({ ...PUSH_PACKETS[0], stageName: "D_MN04", layerNo: 0 });
+    await b.waitType("PUSH_MOVE");
+    await off.expectNone((p) => p.type === "PUSH_MOVE", "PUSH_MOVE to a mismatched member");
 }));

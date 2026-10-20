@@ -51,7 +51,8 @@ const TEAM_PACKET_TYPES = new Set([
 const TEAM_LIVE_PACKET_TYPES = new Set(["SHARE_PICKUP"]);
 const PRESENCE_PACKET_TYPES = new Set(["PLAYER_UPDATE", "PLAYER_SFX"]);
 // Teammates in the sender's stage and layer only; never cached or queued.
-const TEAM_PRESENCE_PACKET_TYPES = new Set(["ENEMY_DEFEATED", "ENEMY_DAMAGE", "STORY_EVENT"]);
+const TEAM_PRESENCE_PACKET_TYPES = new Set(["ENEMY_DEFEATED", "ENEMY_DAMAGE", "STORY_EVENT", "PUSH_MOVE",
+    "PUSH_REST", "CHAIN_PULL"]);
 // The whole team; the last arrives are replayed on catch-up (see sendTeamStoryMoves).
 const TEAM_STORY_PACKET_TYPES = new Set(["STORY_MOVE"]);
 // Every client obeys these, so a relayed copy could rewrite the roster or disconnect the room.
@@ -138,6 +139,14 @@ function packetSummary(packet) {
             return `${packet.type} stage=${text(packet.stageName)} layer=${text(packet.layerNo)} kills=${Array.isArray(packet.kills) ? packet.kills.length : "?"}`;
         case "ENEMY_DAMAGE":
             return `${packet.type} stage=${text(packet.stageName)} layer=${text(packet.layerNo)} hits=${Array.isArray(packet.hits) ? packet.hits.length : "?"}`;
+        case "PUSH_MOVE":
+        case "PUSH_REST":
+        case "CHAIN_PULL": {
+            const key = packet.key && typeof packet.key === "object" ? packet.key : {};
+            const what = packet.type === "PUSH_MOVE" ? `dir=${text(packet.dir)}${packet.pull === true ? " pull" : ""}` :
+                packet.type === "CHAIN_PULL" ? `held=${text(packet.held)} out=${text(packet.out)}` : "rest";
+            return `${packet.type} stage=${text(packet.stageName)} room=${text(key.roomNo)} proc=${text(key.procName)} ${what}`;
+        }
         case "STORY_EVENT":
             return `${packet.type} ph=${text(packet.ph)} id=${text(packet.id)}` +
                 (packet.ph === "start" ? ` ${text(packet.stage)}/${text(packet.room)}/${text(packet.layer)} m=${text(packet.m)} req=${text(packet.req)}` : "");
@@ -204,6 +213,7 @@ function defaultRoomState() {
         syncNPCs: false,
         syncEnemyDamage: true,
         cutsceneSync: true,
+        syncPushPull: true,
         enemyHealthMultiplier: 100,
         enemyCountMultiplier: 100,
     };
