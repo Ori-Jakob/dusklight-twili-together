@@ -1,0 +1,8 @@
+{
+  "id": "dev.n0ted.tt_fixture_looks_d",
+  "name": "Twili-Together test: looks D",
+  "version": "1.0.0",
+  "author": "Twili-Together autotest",
+  "description": "Autotest fixture: an Epona entry under a root no archive has, from a mod that forbids sharing.",
+  "multiplayer": {"share": false}
+}

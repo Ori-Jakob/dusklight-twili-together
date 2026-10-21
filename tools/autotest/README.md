@@ -612,6 +612,26 @@ Written for the look sharing host pieces, **not run yet** (the machine was in us
 `looks-inventory` (with the cosmetics mod and both looks fixtures) and `overlay-churn-alloc`
 (`scenarios/looks.js`). Both need a host with ModsService and OverlayService 1.1.
 
+Look mods between players (`StepsLookShare.cpp`). Archives by name (`Kmdl`, `Mmdl`, `Zmdl`,
+`Bmdl`, `Alink`, `HyShd`, `CWShd`, `SWShd`, `Wmdl`, `Midna`, `Horse`), look types `link`, `wolf`,
+`midna`, `epona`, choices `theirs`, `default`, `mine`:
+
+| op | fields | does |
+| --- | --- | --- |
+| `looksSelfTest` | | SHA-256 and XXH64 vectors, the allowlist, and a peer's look entries (a file of another type or path dropped, names lowercased, a bad sha drops all, a file over 8 MB leaves its type unshared) |
+| `lookOption` | `share` (`off`, `team`, `room`), `show` (Show Other Players' Looks), `fallback` (`mine`, `default`), `modList` (Show My Mod List), `allowPacks`; `player` with `choice` (Their Look), with `type` and `choice` (also `same`: back to Their Look), or with `block` | |
+| `looksArchiveOverride` | `arc`, `bmd`; or `remove` | overlays the archive's default path with the disc's archive (decompressed), one texel of `bmd`'s first plain texture changed: a whole-archive look of ours |
+| `expectLocalLooks` | `types` (`{state, files: [[arc, name], ...]}`, the exact files), `mods` (`{types, shareable}` per mod id), `notMods`, `dirty` (exactly the archives our mods touch), `sent` (type to state in the last manifest we sent; `[]` for none), `frames`, `timeoutSec` | our scan with the current Share My Looks |
+| `expectPeerLooks` | `name`, `none` (lists no looks), `types` (`{state, files: count, mods: [ids]}`), `installId` (a valid one), `modList` (these ids; `[]` for none), `tag` / `noTag` (in their row's look tag), `frames`, `timeoutSec` | what a player's manifest and client state say |
+| `expectDummyArcPath` | `name`, `horse`, `base` (exactly these archives from `/res/Object/tt/base`, the rest from their default paths), `frames`, `timeoutSec` | where the puppet mounted its private archives |
+| `looksSourceTexture` | `register: {arc, bmd}`; or `name`, `horse`, `source` (`pointer`, `source`, `none`), `frames`, `timeoutSec` | registers a content (SOURCE) replacement for the first plain texture of that model on the disc (failing unless a copy of the disc's texels renders from it); then checks what the renderer picks for every texture of that name on the puppet |
+| `expectLooksFile` | `player`, `byId` (true: under their install id, else their name), `none`, `look`, `types` (exactly), `blocked` (how many files), `frames`, `timeoutSec` | data_dir/looks.json after a flush, and our install id in it |
+
+Written for look detection and the game's look on puppets (M2), **not run yet**: `looks-detect`
+and `looks-default` (`scenarios/looks.js`), with fixtures C and D (look entries under a root no
+archive has, so nothing loads them; D's `mod.json` forbids sharing). Shared files are not fetched
+yet: a puppet shows its player's look only when that look is the game's.
+
 Cosmetics (`StepsCosmetics.cpp`), teammates' cosmetics on their puppets. Vars are the cosmetics
 mod's names (`herosTunicTorsoColor`, ...); colours as `"rrggbb"`, Midna's hair as an index.
 

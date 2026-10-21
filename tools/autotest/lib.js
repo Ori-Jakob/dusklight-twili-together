@@ -15,6 +15,9 @@ const MODS = {
     // Fixture bundles in mods/autotest/, installed only where enabled.
     looksFixtureA: "dev.n0ted.tt_fixture_looks_a",
     looksFixtureB: "dev.n0ted.tt_fixture_looks_b",
+    // Look entries nothing loads (C shareable, D forbids sharing).
+    looksFixtureC: "dev.n0ted.tt_fixture_looks_c",
+    looksFixtureD: "dev.n0ted.tt_fixture_looks_d",
 };
 
 // Load without a forced cutscene on a fresh save.

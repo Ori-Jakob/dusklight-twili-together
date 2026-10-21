@@ -160,6 +160,7 @@ if (TWILI_ENABLE_AUTOTEST)
         src/autotest/StepsHorse.cpp
         src/autotest/StepsItemFx.cpp
         src/autotest/StepsItemToast.cpp
+        src/autotest/StepsLookShare.cpp
         src/autotest/StepsLooks.cpp
         src/autotest/StepsMapCursor.cpp
         src/autotest/StepsMotion.cpp
@@ -210,6 +211,16 @@ if (TWILI_ENABLE_AUTOTEST)
     add_mod(tt_fixture_looks_b
         MOD_JSON     tools/autotest/mods/looks_b/mod.json
         OVERLAY_DIR  tools/autotest/mods/looks_b/overlay
+        OUTPUT_DIR   "${DUSK_MODS_OUTPUT_DIR}/autotest"
+    )
+    add_mod(tt_fixture_looks_c
+        MOD_JSON     tools/autotest/mods/looks_c/mod.json
+        OVERLAY_DIR  tools/autotest/mods/looks_c/overlay
+        OUTPUT_DIR   "${DUSK_MODS_OUTPUT_DIR}/autotest"
+    )
+    add_mod(tt_fixture_looks_d
+        MOD_JSON     tools/autotest/mods/looks_d/mod.json
+        OVERLAY_DIR  tools/autotest/mods/looks_d/overlay
         OUTPUT_DIR   "${DUSK_MODS_OUTPUT_DIR}/autotest"
     )
 endif ()

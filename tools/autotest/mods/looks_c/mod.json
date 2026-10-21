@@ -1,0 +1,8 @@
+{
+  "id": "dev.n0ted.tt_fixture_looks_c",
+  "name": "Twili-Together test: looks C",
+  "version": "1.2.0",
+  "author": "Twili-Together autotest",
+  "description": "Autotest fixture: entries of Link's, the wolf's and Midna's archives under a root no archive has, so nothing loads them.",
+  "multiplayer": {"share": true}
+}
