@@ -611,14 +611,17 @@ bool registerSourceTexture(StepContext& ctx) {
     std::memcpy(copy, texels.data(), base);
     GXTexObj obj;
     GXInitTexObj(&obj, copy, tex->width, tex->height, static_cast<GXTexFmt>(tex->format), GX_CLAMP, GX_CLAMP, GX_FALSE);
-    ModTextureSource source = MOD_TEXTURE_SOURCE_NONE;
+    int source = 0;
 #if TWILI_HAS_MODS_SERVICE
-    svc_mods->debug_texture_source(mod_ctx, &obj, nullptr, &source);
+    ModTextureSource found = MOD_TEXTURE_SOURCE_NONE;
+    svc_mods->debug_texture_source(mod_ctx, &obj, nullptr, &found);
+    source = static_cast<int>(found);
 #endif
     TwiliLog.info("[autotest] looks: SOURCE key {:016x} {}x{} fmt {} for {} in {}/{}, a copy renders from {}",
         key.texture_hash, key.width, key.height, key.gx_format, sSource.name, looks::arcName(*arc),
-        spec.value("bmd", std::string{}), static_cast<int>(source));
-    if (source != MOD_TEXTURE_SOURCE_SOURCE) {
+        spec.value("bmd", std::string{}), source);
+    // 2: MOD_TEXTURE_SOURCE_SOURCE
+    if (source != 2) {
         ctx.fail("looksSourceTexture: a copy of the disc's texels does not render from the new key");
     }
     return true;
