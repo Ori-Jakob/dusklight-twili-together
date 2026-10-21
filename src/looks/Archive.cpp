@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <utility>
 
 namespace twili::looks {
 namespace {
@@ -41,6 +42,13 @@ bool sameName(const std::string& a, const std::string& b) {
     });
 }
 
+std::string lowercase(std::string text) {
+    for (char& c : text) {
+        c = c >= 'A' && c <= 'Z' ? char(c - 'A' + 'a') : c;
+    }
+    return text;
+}
+
 struct TileShape {
     uint8_t width, height, bytes;
 };
@@ -68,6 +76,7 @@ std::optional<TileShape> tileShape(uint8_t format) {
 }
 
 constexpr uint32_t kRarcHeader = 0x20;
+constexpr uint32_t kRarcNodeBytes = 0x10;
 constexpr uint32_t kRarcEntryBytes = 0x14;
 constexpr uint8_t kRarcDir = 0x02;
 constexpr uint8_t kRarcCompressed = 0x04;
@@ -170,20 +179,99 @@ std::optional<std::vector<uint8_t>> rarcRead(std::span<const uint8_t> arc, const
         return std::nullopt;
     }
     for (const RarcFile& f : *files) {
-        if (!sameName(f.name, name)) {
-            continue;
+        if (sameName(f.name, name)) {
+            return rarcReadFile(arc, f, maxOut);
         }
-        const std::span<const uint8_t> bytes = arc.subspan(f.offset, f.size);
-        if (f.flags & kRarcCompressed) {
-            // Yay0 is not read: nothing the looks need is stored that way.
-            return (f.flags & kRarcYaz0) ? yaz0Decode(bytes, maxOut) : std::nullopt;
-        }
-        if (bytes.size() > maxOut) {
-            return std::nullopt;
-        }
-        return std::vector<uint8_t>(bytes.begin(), bytes.end());
     }
     return std::nullopt;
+}
+
+std::optional<std::vector<uint8_t>> rarcReadFile(std::span<const uint8_t> arc, const RarcFile& file,
+    size_t maxOut) {
+    if (!inside(arc.size(), file.offset, file.size)) {
+        return std::nullopt;
+    }
+    const std::span<const uint8_t> bytes = arc.subspan(file.offset, file.size);
+    if (file.flags & kRarcCompressed) {
+        // Yay0 is not read: nothing the looks need is stored that way.
+        return (file.flags & kRarcYaz0) ? yaz0Decode(bytes, maxOut) : std::nullopt;
+    }
+    if (bytes.size() > maxOut) {
+        return std::nullopt;
+    }
+    return std::vector<uint8_t>(bytes.begin(), bytes.end());
+}
+
+std::optional<std::vector<RarcPath>> rarcPaths(std::span<const uint8_t> arc) {
+    const auto files = rarcFiles(arc);
+    if (!files) {
+        return std::nullopt;
+    }
+    const uint8_t* info = arc.data() + kRarcHeader;
+    const uint64_t nodeCount = be32(info + 0x00);
+    const uint64_t nodeStart = uint64_t(kRarcHeader) + be32(info + 0x04);
+    const uint64_t entryCount = be32(info + 0x08);
+    const uint64_t entryStart = uint64_t(kRarcHeader) + be32(info + 0x0C);
+    const uint64_t strSize = be32(info + 0x10);
+    const uint64_t strStart = uint64_t(kRarcHeader) + be32(info + 0x14);
+    if (nodeCount == 0 || !inside(arc.size(), nodeStart, nodeCount * kRarcNodeBytes)) {
+        return std::nullopt;
+    }
+    const auto nameAt = [&](uint32_t offset) {
+        return cString(arc, strStart + offset, strStart + strSize);
+    };
+    // Entry index to path, walked from the root node as JKRArchive::buildIndexToPathMap does.
+    std::vector<std::string> paths(entryCount);
+    std::vector<bool> visited(nodeCount, false);
+    const auto rootName = nameAt(be32(arc.data() + nodeStart + 4));
+    if (!rootName) {
+        return std::nullopt;
+    }
+    std::vector<std::pair<uint64_t, std::string>> stack{{0, *rootName + "/"}};
+    while (!stack.empty()) {
+        auto [node, prefix] = std::move(stack.back());
+        stack.pop_back();
+        if (node >= nodeCount || visited[node]) {
+            continue;
+        }
+        visited[node] = true;
+        const uint8_t* n = arc.data() + nodeStart + node * kRarcNodeBytes;
+        const uint64_t first = be32(n + 0x0C);
+        const uint64_t count = be16(n + 0x0A);
+        if (first > entryCount || count > entryCount - first) {
+            return std::nullopt;
+        }
+        for (uint64_t i = first; i < first + count; i++) {
+            const uint8_t* e = arc.data() + entryStart + i * kRarcEntryBytes;
+            const uint32_t typeAndName = be32(e + 4);
+            const auto name = nameAt(typeAndName & 0x00FFFFFF);
+            if (!name) {
+                return std::nullopt;
+            }
+            if (*name == "." || *name == "..") {
+                continue;
+            }
+            if ((typeAndName >> 24) & kRarcDir) {
+                stack.emplace_back(be32(e + 8), prefix + *name + "/");
+            } else {
+                paths[i] = lowercase(prefix + *name);
+            }
+        }
+    }
+    // rarcFiles lists the file entries in table order.
+    std::vector<RarcPath> out;
+    size_t next = 0;
+    for (uint64_t i = 0; i < entryCount; i++) {
+        const uint8_t* e = arc.data() + entryStart + i * kRarcEntryBytes;
+        if ((be32(e + 4) >> 24) & kRarcDir) {
+            continue;
+        }
+        if (next < files->size() && !paths[i].empty()) {
+            out.push_back({std::move(paths[i]), (*files)[next]});
+        }
+        next++;
+    }
+    return out;
 }
 
 std::optional<std::vector<Tex1Entry>> bmdTextures(std::span<const uint8_t> bmd) {

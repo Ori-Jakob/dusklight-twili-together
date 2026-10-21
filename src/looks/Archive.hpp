@@ -28,6 +28,16 @@ std::optional<std::vector<RarcFile>> rarcFiles(std::span<const uint8_t> arc);
 // The first file named `name` (ASCII case-insensitive), decompressed when stored with Yaz0.
 std::optional<std::vector<uint8_t>> rarcRead(std::span<const uint8_t> arc, const std::string& name,
     size_t maxOut);
+// One file of rarcFiles(arc), decompressed when stored with Yaz0.
+std::optional<std::vector<uint8_t>> rarcReadFile(std::span<const uint8_t> arc, const RarcFile& file,
+    size_t maxOut);
+
+struct RarcPath {
+    std::string path;  // "root/dir/name", lowercase: where JKRArchive looks for an entry overlay
+    RarcFile file;
+};
+// The files reachable from the root node, in rarcFiles order, or nullopt when it is malformed.
+std::optional<std::vector<RarcPath>> rarcPaths(std::span<const uint8_t> arc);
 
 struct Tex1Entry {
     std::string name;

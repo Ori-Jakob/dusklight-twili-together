@@ -7,6 +7,8 @@
 
 #include <fmt/format.h>
 
+#include <utility>
+
 #if TWILI_HAS_MODS_SERVICE
 // Without it nothing of the player's mods is visible: look sharing stays off.
 IMPORT_OPTIONAL_SERVICE(ModsService, svc_mods);
@@ -129,15 +131,22 @@ std::vector<ModEntry> listMods() {
     return mods;
 }
 
-std::vector<OverrideEntry> listOverrides(const std::string& modId) {
-    std::vector<OverrideEntry> overrides;
+std::vector<OverrideEntry> listOverrides(const std::string& modId, bool textures) {
+    struct Listing {
+        std::vector<OverrideEntry> overrides;
+        bool textures;
+    } listing{{}, textures};
     if (svc_mods == nullptr) {
-        return overrides;
+        return {};
     }
     svc_mods->list_overrides(
         mod_ctx, modId.c_str(),
         [](void* user, const ModOverride* o) {
-            static_cast<std::vector<OverrideEntry>*>(user)->push_back({
+            auto* l = static_cast<Listing*>(user);
+            if (!l->textures && o->kind == MOD_OVR_TEXTURE) {
+                return true;
+            }
+            l->overrides.push_back({
                 .id = o->id,
                 .kind = o->kind == MOD_OVR_ARC_ENTRY ? OverrideKind::ArcEntry :
                         o->kind == MOD_OVR_TEXTURE   ? OverrideKind::Texture :
@@ -157,8 +166,8 @@ std::vector<OverrideEntry> listOverrides(const std::string& modId) {
             });
             return true;
         },
-        &overrides);
-    return overrides;
+        &listing);
+    return std::move(listing.overrides);
 }
 
 std::optional<Sha256> hashOverride(const std::string& modId, uint64_t id) {
@@ -244,7 +253,7 @@ std::vector<ModEntry> listMods() {
     return {};
 }
 
-std::vector<OverrideEntry> listOverrides(const std::string&) {
+std::vector<OverrideEntry> listOverrides(const std::string&, bool) {
     return {};
 }
 

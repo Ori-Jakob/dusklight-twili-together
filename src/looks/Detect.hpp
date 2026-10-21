@@ -1,8 +1,10 @@
 #pragma once
 
 // The look mods the player has installed, through ModsService: per look type, the allowlisted
-// archive entries whose bytes differ from the disc's, with their SHA-256. The listing runs on the
-// game thread when the mods change; reading and hashing run on a worker thread.
+// archive entries whose bytes differ from the disc's, with their SHA-256. An entry overlay counts
+// only at the path its archive resolves it from (the archive's own root and directory names). The
+// listing runs on the game thread once the mods stop changing; reading and hashing run on a worker
+// thread.
 
 #include "looks/Slots.hpp"
 
@@ -46,6 +48,8 @@ struct LocalLooks {
 
 // False when the host has no ModsService.
 bool detectAvailable();
+// A mod.json allows sharing: not "multiplayer": {"share": false}.
+bool shareAllowed(const std::string& manifest);
 // Starts a scan when the mods changed and takes a finished one; cheap otherwise.
 void refreshLocalLooks();
 const LocalLooks& localLooks();

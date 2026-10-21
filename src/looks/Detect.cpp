@@ -17,33 +17,46 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <thread>
+#include <tuple>
 
 namespace twili::looks {
 namespace {
 
+using Clock = std::chrono::steady_clock;
+
 constexpr size_t kMaxArchiveBytes = 64u << 20;
 constexpr size_t kMaxEntryBytes = 16u << 20;
+// A scan waits for the mods to stop changing this long, but never longer than kMaxWait.
+constexpr auto kSettle = std::chrono::milliseconds(500);
+constexpr auto kMaxWait = std::chrono::seconds(3);
 
 struct EntryJob {
     std::string modId;
     uint64_t id = 0;
     LookArc arc = LookArc::Kmdl;
-    std::string name;
+    std::string name;  // lowercase base name
+    std::string path;  // lowercase disc path
     uint64_t size = 0;
 };
 struct ArchiveJob {
     std::string modId;
     uint64_t id = 0;
+    uint64_t size = 0;
     LookArc arc = LookArc::Kmdl;
+    // The cosmetics mod's: where its entries sit counts, the entries do not.
+    bool counts = true;
 };
 struct Job {
     uint64_t generation = 0;
+    std::string key;
     std::vector<EntryJob> entries;
     std::vector<ArchiveJob> archives;
 };
 struct Result {
     uint64_t generation = 0;
+    std::string key;
     std::vector<LookFile> files;
     std::array<bool, kLookTypeCount> unreadable{};
     std::string summary;
@@ -54,14 +67,29 @@ LocalLooks sLocal;
 std::vector<LookMod> sJobMods;
 uint64_t sListed = ~0ull;
 bool sListedOnce = false;
+// What the last taken scan was made of: a listing with the same key needs no new one.
+std::string sScannedKey;
+uint64_t sSeen = ~0ull;
+Clock::time_point sSeenAt{};
+bool sPending = false;
+Clock::time_point sPendingSince{};
 
 std::thread sThread;
 std::atomic<bool> sRunning{false};
 std::mutex sMutex;
 std::optional<Result> sResult;
 
-// Worker only: the disc's own entries, by lowercase name.
-std::array<std::optional<std::map<std::string, std::string>>, kLookArcCount> sVanilla;
+// Worker only: per allowlisted name of an archive, the disc path an entry overlay of it must have
+// (JKRArchive resolves them by the archive's own root and directory names), and its bytes.
+struct ArcLayout {
+    bool ok = false;
+    std::map<std::string, std::string> paths;
+    std::map<std::string, std::pair<std::string, uint32_t>> entries;
+};
+std::array<std::optional<ArcLayout>, kLookArcCount> sVanilla;
+// Whole-archive overrides by (mod, override id, size): ids change with the bytes.
+using WholeKey = std::tuple<std::string, uint64_t, uint64_t>;
+std::map<WholeKey, ArcLayout> sWhole;
 
 std::string lower(std::string_view text) {
     std::string out(text);
@@ -71,9 +99,9 @@ std::string lower(std::string_view text) {
     return out;
 }
 
-std::string baseName(const std::string& path) {
+std::string_view baseName(std::string_view path) {
     const size_t slash = path.find_last_of('/');
-    return slash == std::string::npos ? path : path.substr(slash + 1);
+    return slash == std::string_view::npos ? path : path.substr(slash + 1);
 }
 
 std::optional<std::vector<uint8_t>> decoded(std::vector<uint8_t> raw) {
@@ -83,80 +111,133 @@ std::optional<std::vector<uint8_t>> decoded(std::vector<uint8_t> raw) {
     return yaz0Decode(raw, kMaxArchiveBytes);
 }
 
-const std::map<std::string, std::string>& vanillaOf(LookArc arc) {
-    auto& slot = sVanilla[static_cast<size_t>(arc)];
-    if (slot) {
-        return *slot;
+ArcLayout layoutOf(LookArc arc, std::optional<std::vector<uint8_t>> raw) {
+    ArcLayout out;
+    const auto bytes = raw ? decoded(std::move(*raw)) : std::nullopt;
+    const auto files = bytes ? rarcPaths(*bytes) : std::nullopt;
+    if (!files) {
+        return out;
     }
-    slot.emplace();
-    auto raw = readBaseDiscFile(arcDefaultPath(arc));
-    auto arcBytes = raw ? decoded(std::move(*raw)) : std::nullopt;
-    if (!arcBytes) {
-        return *slot;
-    }
+    std::string dir = lower(arcDefaultPath(arc));
+    dir.resize(dir.size() - 4);  // ".arc"
+    dir += '/';
     for (const AllowedEntry& entry : allowedEntries(arc)) {
-        if (auto bytes = rarcRead(*arcBytes, entry.name, kMaxEntryBytes)) {
-            (*slot)[entry.name] = hex(sha256(*bytes));
+        const auto file = std::ranges::find_if(
+            *files, [&](const RarcPath& f) { return baseName(f.path) == entry.name; });
+        if (file == files->end()) {
+            continue;
         }
+        out.paths[entry.name] = dir + file->path;
+        if (const auto data = rarcReadFile(*bytes, file->file, kMaxEntryBytes)) {
+            out.entries[entry.name] = {hex(sha256(*data)), static_cast<uint32_t>(data->size())};
+        }
+    }
+    out.ok = true;
+    return out;
+}
+
+const ArcLayout& vanillaOf(LookArc arc) {
+    auto& slot = sVanilla[static_cast<size_t>(arc)];
+    if (!slot) {
+        slot = layoutOf(arc, readBaseDiscFile(arcDefaultPath(arc)));
     }
     return *slot;
 }
 
-bool sameAsDisc(LookArc arc, const std::string& name, const std::string& sha) {
-    const auto& vanilla = vanillaOf(arc);
-    const auto it = vanilla.find(name);
-    return it != vanilla.end() && it->second == sha;
+const ArcLayout& wholeOf(const ArchiveJob& a) {
+    const WholeKey key{a.modId, a.id, a.size};
+    auto it = sWhole.find(key);
+    if (it == sWhole.end()) {
+        it = sWhole.emplace(key, layoutOf(a.arc, readOverride(a.modId, a.id))).first;
+    }
+    return it->second;
+}
+
+bool sameAsDisc(const ArcLayout& vanilla, const std::string& name, const std::string& sha) {
+    const auto it = vanilla.entries.find(name);
+    return it != vanilla.entries.end() && it->second.first == sha;
 }
 
 void runJob(const Job& job, Result& out) {
     out.generation = job.generation;
-    size_t same = 0;
-    for (const EntryJob& e : job.entries) {
-        const LookType type = *entryType(e.arc, e.name);
-        const auto sha = hashOverride(e.modId, e.id);
-        if (!sha) {
-            out.unreadable[static_cast<size_t>(type)] = true;
+    out.key = job.key;
+    size_t same = 0, misplaced = 0;
+    std::set<WholeKey> used;
+    for (size_t i = 0; i < kLookArcCount; i++) {
+        const auto arc = static_cast<LookArc>(i);
+        const auto archive =
+            std::ranges::find_if(job.archives, [&](const ArchiveJob& a) { return a.arc == arc; });
+        const bool hasArchive = archive != job.archives.end();
+        if (!hasArchive &&
+            std::ranges::none_of(job.entries, [&](const EntryJob& e) { return e.arc == arc; }))
+        {
             continue;
         }
-        const std::string text = hex(*sha);
-        if (sameAsDisc(e.arc, e.name, text)) {
-            same++;
+        const ArcLayout& vanilla = vanillaOf(arc);
+        const ArcLayout* whole = nullptr;
+        if (hasArchive) {
+            used.insert({archive->modId, archive->id, archive->size});
+            whole = &wholeOf(*archive);
+        }
+        // The archive a puppet mounts names where its entry overlays go.
+        const ArcLayout& mounted = whole != nullptr ? *whole : vanilla;
+        if (!vanilla.ok || !mounted.ok) {
+            if (hasArchive && archive->counts) {
+                out.unreadable[static_cast<size_t>(arcType(arc))] = true;
+            }
+            for (const EntryJob& e : job.entries) {
+                if (e.arc == arc) {
+                    out.unreadable[static_cast<size_t>(*entryType(arc, e.name))] = true;
+                }
+            }
             continue;
         }
-        out.files.push_back({e.arc, e.name, text, static_cast<uint32_t>(e.size), e.modId});
-    }
-    for (const ArchiveJob& a : job.archives) {
-        auto raw = readOverride(a.modId, a.id);
-        auto bytes = raw ? decoded(std::move(*raw)) : std::nullopt;
-        if (!bytes || !rarcFiles(*bytes)) {
-            out.unreadable[static_cast<size_t>(arcType(a.arc))] = true;
-            continue;
-        }
-        for (const AllowedEntry& entry : allowedEntries(a.arc)) {
-            // An entry overlay of the same name is what the puppet reads.
-            if (std::ranges::any_of(job.entries,
-                    [&](const EntryJob& e) { return e.arc == a.arc && e.name == entry.name; }))
-            {
+        std::set<std::string> overlaid;
+        for (const EntryJob& e : job.entries) {
+            if (e.arc != arc) {
                 continue;
             }
-            const auto data = rarcRead(*bytes, entry.name, kMaxEntryBytes);
-            if (!data) {
+            const auto path = mounted.paths.find(e.name);
+            if (path == mounted.paths.end() || path->second != e.path) {
+                misplaced++;
                 continue;
             }
-            const std::string text = hex(sha256(*data));
-            if (sameAsDisc(a.arc, entry.name, text)) {
+            overlaid.insert(e.name);
+            const auto sha = hashOverride(e.modId, e.id);
+            if (!sha) {
+                out.unreadable[static_cast<size_t>(*entryType(arc, e.name))] = true;
+                continue;
+            }
+            const std::string text = hex(*sha);
+            if (sameAsDisc(vanilla, e.name, text)) {
                 same++;
                 continue;
             }
-            out.files.push_back(
-                {a.arc, entry.name, text, static_cast<uint32_t>(data->size()), a.modId});
+            out.files.push_back({arc, e.name, text, static_cast<uint32_t>(e.size), e.modId});
+        }
+        if (whole == nullptr || !archive->counts) {
+            continue;
+        }
+        for (const auto& [name, data] : whole->entries) {
+            // An entry overlay at its path is what the puppet reads.
+            if (overlaid.contains(name)) {
+                continue;
+            }
+            if (sameAsDisc(vanilla, name, data.first)) {
+                same++;
+                continue;
+            }
+            out.files.push_back({arc, name, data.first, data.second, archive->modId});
         }
     }
-    out.summary = fmt::format("{} look file(s) differ from the disc, {} match it", out.files.size(), same);
+    std::erase_if(sWhole, [&](const auto& item) { return !used.contains(item.first); });
+    out.summary = fmt::format("{} look file(s) differ from the disc, {} match it, {} at a path no "
+                              "archive reads",
+        out.files.size(), same, misplaced);
 }
 
 void worker(Job job) {
-    const auto start = std::chrono::steady_clock::now();
+    const auto start = Clock::now();
     Result result;
     try {
         runJob(job, result);
@@ -174,8 +255,8 @@ void worker(Job job) {
         result.unreadable.fill(true);
     }
     try {
-        result.summary += fmt::format(", {:.0f} ms",
-            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+        result.summary += fmt::format(
+            ", {:.0f} ms", std::chrono::duration<double, std::milli>(Clock::now() - start).count());
     } catch (...) {
     }
     {
@@ -185,20 +266,8 @@ void worker(Job job) {
     sRunning.store(false, std::memory_order_release);
 }
 
-bool shareAllowed(const std::string& manifest) {
-    const auto json = nlohmann::json::parse(manifest, nullptr, false);
-    if (!json.is_object()) {
-        return true;
-    }
-    const auto mp = json.find("multiplayer");
-    if (mp == json.end() || !mp->is_object()) {
-        return true;
-    }
-    const auto share = mp->find("share");
-    return share == mp->end() || !share->is_boolean() || share->get<bool>();
-}
-
-// Game thread: the listing, which archives are ours and what the worker reads.
+// Game thread: the listing, which archives are ours and what the worker reads. Texture overrides
+// are left out, so the puppets' own texture registrations cost little here.
 void startScan(uint64_t generation) {
     Job job;
     job.generation = generation;
@@ -206,10 +275,11 @@ void startScan(uint64_t generation) {
     uint32_t whole = 0;
     std::vector<LookMod> mods;
     for (const ModEntry& mod : listMods()) {
-        const auto overrides = listOverrides(mod.id);
         const bool cosmetics = mod.id == kCosmeticsModId;
         LookMod info{mod.id, mod.name, mod.version, mod.author, shareAllowed(mod.manifest)};
-        for (const OverrideEntry& o : overrides) {
+        job.key += fmt::format("m {} {} {} {} {}\n", mod.id, mod.name, mod.version, mod.author,
+            info.shareable);
+        for (const OverrideEntry& o : listOverrides(mod.id, false)) {
             if (!o.wins || o.kind == OverrideKind::Texture) {
                 continue;
             }
@@ -217,9 +287,8 @@ void startScan(uint64_t generation) {
                 if (const auto arc = arcByPath(o.discPath)) {
                     dirty |= 1u << static_cast<uint32_t>(*arc);
                     whole |= 1u << static_cast<uint32_t>(*arc);
-                    if (!cosmetics) {
-                        job.archives.push_back({mod.id, o.id, *arc});
-                    }
+                    job.archives.push_back({mod.id, o.id, o.size, *arc, !cosmetics});
+                    job.key += fmt::format("a {} {} {}\n", o.id, o.size, o.discPath);
                 }
                 continue;
             }
@@ -230,13 +299,17 @@ void startScan(uint64_t generation) {
             dirty |= 1u << static_cast<uint32_t>(*arc);
             const std::string name = lower(baseName(o.discPath));
             if (!cosmetics && entryType(*arc, name)) {
-                job.entries.push_back({mod.id, o.id, *arc, name, o.size});
+                job.entries.push_back({mod.id, o.id, *arc, name, lower(o.discPath), o.size});
+                job.key += fmt::format("e {} {} {}\n", o.id, o.size, o.discPath);
             }
         }
         mods.push_back(std::move(info));
     }
     sLocal.dirtyArcs = dirty;
     sLocal.wholeArcs = whole;
+    if (sLocal.known && job.key == sScannedKey) {
+        return;
+    }
     sLocal.scanning = true;
     sJobMods = std::move(mods);
     if (sThread.joinable()) {
@@ -250,6 +323,7 @@ void takeResult(Result result) {
     sLocal.scanning = false;
     sLocal.known = true;
     sLocal.revision++;
+    sScannedKey = std::move(result.key);
     for (auto& list : sLocal.files) {
         list.clear();
     }
@@ -285,6 +359,19 @@ void takeResult(Result result) {
 
 }  // namespace
 
+bool shareAllowed(const std::string& manifest) {
+    const auto json = nlohmann::json::parse(manifest, nullptr, false);
+    if (!json.is_object()) {
+        return true;
+    }
+    const auto mp = json.find("multiplayer");
+    if (mp == json.end() || !mp->is_object()) {
+        return true;
+    }
+    const auto share = mp->find("share");
+    return share == mp->end() || !share->is_boolean() || share->get<bool>();
+}
+
 bool detectAvailable() {
     return available();
 }
@@ -311,11 +398,26 @@ void refreshLocalLooks() {
     }
 #if TWILI_HAS_MODS_SERVICE
     const uint64_t generation = svc_mods->generation(mod_ctx);
-    if ((!sListedOnce || generation != sListed) && !sRunning.load(std::memory_order_acquire)) {
-        sListedOnce = true;
-        sListed = generation;
-        startScan(generation);
+    const auto now = Clock::now();
+    if (generation != sSeen) {
+        sSeen = generation;
+        sSeenAt = now;
     }
+    if (sRunning.load(std::memory_order_acquire) || (sListedOnce && generation == sListed)) {
+        return;
+    }
+    if (!sPending) {
+        sPending = true;
+        sPendingSince = now;
+    }
+    // Registrations come in bursts (a puppet's blockers, a mod loading): list once they settle.
+    if (sListedOnce && now - sSeenAt < kSettle && now - sPendingSince < kMaxWait) {
+        return;
+    }
+    sPending = false;
+    sListedOnce = true;
+    sListed = generation;
+    startScan(generation);
 #endif
 }
 
@@ -327,7 +429,9 @@ bool archiveDirty(LookArc arc) {
     if (!available()) {
         return true;
     }
-    refreshLocalLooks();
+    if (!sListedOnce) {
+        refreshLocalLooks();
+    }
     return ((sLocal.dirtyArcs >> static_cast<uint32_t>(arc)) & 1) != 0;
 }
 
@@ -341,6 +445,10 @@ void shutdownDetect() {
     sJobMods.clear();
     sListed = ~0ull;
     sListedOnce = false;
+    sScannedKey.clear();
+    sSeen = ~0ull;
+    sPending = false;
+    sWhole.clear();
 }
 
 }  // namespace twili::looks

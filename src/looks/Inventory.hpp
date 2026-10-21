@@ -54,7 +54,8 @@ using Sha256 = std::array<uint8_t, 32>;
 // False when the host has no ModsService.
 bool available();
 std::vector<ModEntry> listMods();
-std::vector<OverrideEntry> listOverrides(const std::string& modId);
+// Without `textures`, texture overrides are skipped before anything of them is copied.
+std::vector<OverrideEntry> listOverrides(const std::string& modId, bool textures = true);
 std::optional<Sha256> hashOverride(const std::string& modId, uint64_t id);
 std::optional<std::vector<uint8_t>> readOverride(const std::string& modId, uint64_t id);
 std::optional<std::vector<uint8_t>> readBaseDiscFile(const char* discPath);
