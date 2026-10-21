@@ -102,7 +102,12 @@ Personal settings, on the Connection tab:
 | Server URL | empty | see Connecting |
 | Reconnect Automatically | on | |
 | Always Sync Unverified Randomizer Games | off | (Room tab) skip the Sync Unverified Match question |
-| Share My Looks | Off | (Looks tab) Off, My Team or Everyone in Room: who sees your Cosmetics mod colours on your puppets |
+| Share My Looks | Off | (Looks tab) Off, My Team or Everyone in Room: who sees your look mods and Cosmetics mod colours on your puppets |
+| Show My Mod List to the Room | off | (Looks tab) everyone in the room sees the id, name and version of your mods in the Players tab |
+| Show Other Players' Looks | off | (Looks tab) puppets wear their player's shared look mods; their files are not fetched yet |
+| While a Look Is Unavailable, Show | My Own Look | (Looks tab) or Game Default: what a puppet wears while its player's look cannot be shown |
+| Auto-Download Limit | 16 MB | (Looks tab) how much of one player's looks downloads per session without asking; 0 always asks |
+| Allow My Texture Packs on Other Players | off | (Looks tab) your texture packs and mods' textures also land on puppets showing their own look or the game's |
 | Show Other Players' Cosmetics | on | (Looks tab) puppets wear their player's Cosmetics mod colours |
 
 Room settings, on the Room tab. Everyone sets their own values, but only the room owner's apply;
@@ -168,7 +173,8 @@ Lists everyone in the room, grouped by team, with where they are and whether the
 Each player has small buttons beside them: teleport to them (on a team only teammates are offered,
 unless the room allows teleporting across teams; greyed out with the reason in its tooltip while
 teleporting is off or not possible now), and Player Options: their look (Theirs, Game Default or
-My Own) and, for the room owner or team leader, hand over the room or the team. A teleport puts you right beside
+My Own, with an own choice for Link, Wolf, Midna or Epona if you like, and Block This Look) and,
+for the room owner or team leader, hand over the room or the team. A teleport puts you right beside
 the other player, facing their way, in your own form: at once when their room is loaded around
 you, else after loading their area (the version of it your story progress loads, when they stand
 in a cutscene-only one). It works while they watch a
@@ -199,9 +205,23 @@ join later too). The relay's operator can see what you share. Your own cosmetics
 other players' puppets, and neither do your texture packs on the textures cosmetics colour. A
 puppet that shows your own installed look mod instead of the game's textures is not recoloured.
 Hide every player's with **Show Other Players' Cosmetics**, or pick one player's look from their
-row in the Players tab (until you restart): **Theirs**, **Game Default**, or **My Own** (your own
-cosmetics and texture packs on their puppets). Sharing and showing both need a Dusklight with
-ModsService, and a relay that knows cosmetics; the Looks tab says when one of them is too old.
+row in the Players tab: **Theirs**, **Game Default**, or **My Own** (your own look mods, cosmetics
+and texture packs on their puppets). Sharing and showing both need a Dusklight with ModsService,
+and a relay that knows cosmetics; the Looks tab says when one of them is too old.
+
+## Look mods
+
+The Looks tab lists the look mods you have on: mods that change Link's four outfits and his gear
+(swords, sheaths, shields, boomerang, spinner, bombs, arrows, lantern), the wolf, Midna or Epona,
+with what each changes and its size. With **Share My Looks** on, the others learn which of your
+looks are the game's own and which are shared (with their files' SHA-256 and sizes); a mod whose
+`mod.json` says `"multiplayer": {"share": false}` is never shared, and texture packs never are.
+Fetching shared files is not built yet, so a puppet shows its player's look only while that look
+is the game's own (from the disc's own archives, whatever look mods you have on); for a shared
+look it shows what **While a Look Is Unavailable, Show** says. **Game Default** shows the game's
+look on a player's puppets, **My Own** your own look mods. Choices are kept per player across
+restarts, by a random id each install sends (their name when the relay is older). Puppets showing
+their own look or the game's keep your texture packs and mods' textures off unless you allow them.
 
 ## The players widget
 

@@ -6,6 +6,7 @@
 #include "core/Session.hpp"
 #include "game/TeamGame.hpp"
 #include "looks/Cosmetics.hpp"
+#include "looks/Looks.hpp"
 #include "story/StoryUi.hpp"
 #include "sync/WorldSync.hpp"
 #include "teleport/Teleport.hpp"
@@ -20,6 +21,7 @@
 #include <array>
 #include <cstring>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -87,6 +89,8 @@ struct Live {
     std::string lastCatchUp;
     UiElementHandle looksStatus = 0;
     std::string lastLooksStatus;
+    UiElementHandle ownLooks = 0;
+    std::string lastOwnLooks;
 };
 Live s_live;
 
@@ -728,10 +732,16 @@ std::string playerRml(uint32_t id, const Client& c, bool ownTeam) {
     if (!c.modVersion.empty()) {
         details += " · " + c.modVersion;
     }
+    if (const std::string tag = looks::looksPlayerTag(id); !c.self && !tag.empty()) {
+        details += " · " + tag;
+    }
     if (const std::string tag = looks::cosmeticsPlayerTag(id); !c.self && !tag.empty()) {
         details += " · " + tag;
     }
     rml += "<p class=\"twili-player-detail\">" + escapeRml(details) + "</p>";
+    if (const std::string mods = looks::modListText(id); !c.self && !mods.empty()) {
+        rml += "<p class=\"twili-player-detail\">Mods: " + escapeRml(mods) + "</p>";
+    }
     if (const std::string story = story::clientLine(id); !story.empty()) {
         rml += "<p class=\"twili-player-detail\">Story: " + escapeRml(story) + "</p>";
     }
@@ -843,6 +853,34 @@ void onLookChoice(ModContext*, void* data) {
         static_cast<uint32_t>(value >> 2), static_cast<looks::LookChoice>(value & 3));
 }
 
+void* lookTypeData(uint32_t clientId, looks::LookType type) {
+    return reinterpret_cast<void*>((static_cast<uintptr_t>(clientId) << 2) |
+                                   static_cast<uintptr_t>(type));
+}
+
+// No submenus: each press moves a type on to the next choice, then back to Their Look's.
+void onLookTypeChoice(ModContext*, void* data) {
+    using looks::LookChoice;
+    const auto value = reinterpret_cast<uintptr_t>(data);
+    const auto id = static_cast<uint32_t>(value >> 2);
+    const auto type = static_cast<looks::LookType>(value & 3);
+    const std::optional<LookChoice> current = looks::typeChoice(id, type);
+    std::optional<LookChoice> next = LookChoice::Theirs;
+    if (current == LookChoice::Theirs) {
+        next = LookChoice::GameDefault;
+    } else if (current == LookChoice::GameDefault) {
+        next = LookChoice::MyOwn;
+    } else if (current == LookChoice::MyOwn) {
+        next.reset();
+    }
+    looks::setTypeChoice(id, type, next);
+}
+
+void onBlockLook(ModContext*, void* data) {
+    const auto id = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(data));
+    looks::setLookBlocked(id, !looks::lookBlocked(id));
+}
+
 void onPlayerActions(ModContext*, void* data) {
     const auto slot = reinterpret_cast<uintptr_t>(data);
     const uint32_t id = slotClient(data);
@@ -866,6 +904,7 @@ void onPlayerActions(ModContext*, void* data) {
     using looks::LookChoice;
     static constexpr const char* kLookLabels[3] = {"Their Look: Theirs", "Their Look: Game Default",
                                                    "Their Look: My Own"};
+    std::string typeLabels[looks::kLookTypeCount];
     if (!it->second.self) {
         const LookChoice current = looks::lookChoice(id);
         for (const LookChoice choice :
@@ -877,6 +916,28 @@ void onPlayerActions(ModContext*, void* data) {
             item.user_data = lookChoiceData(id, choice);
             item.selected = current == choice;
             item.separator_before = choice == LookChoice::Theirs && !items.empty();
+            items.push_back(item);
+        }
+        for (size_t t = 0; t < looks::kLookTypeCount; t++) {
+            const auto type = static_cast<looks::LookType>(t);
+            const std::optional<LookChoice> own = looks::typeChoice(id, type);
+            typeLabels[t] = fmt::format("{}: {}", looks::lookTypeName(type),
+                own ? looks::lookChoiceName(*own) : "As Their Look");
+            UiContextMenuItem item = UI_CONTEXT_MENU_ITEM_INIT;
+            item.label = typeLabels[t].c_str();
+            item.on_pressed = onLookTypeChoice;
+            item.user_data = lookTypeData(id, type);
+            item.selected = own.has_value();
+            item.separator_before = t == 0;
+            items.push_back(item);
+        }
+        if (looks::lookBlockable(id)) {
+            UiContextMenuItem item = UI_CONTEXT_MENU_ITEM_INIT;
+            item.label = looks::lookBlocked(id) ? "Unblock This Look" : "Block This Look";
+            item.on_pressed = onBlockLook;
+            item.user_data = reinterpret_cast<void*>(static_cast<uintptr_t>(id));
+            item.destructive = !looks::lookBlocked(id);
+            item.separator_before = true;
             items.push_back(item);
         }
     }
@@ -955,11 +1016,14 @@ void addPlayerSlot(UiElementHandle pane, size_t index) {
     actions.icon = "expand_more";
     actions.label = "Player Options";
     actions.tooltip = "Their look; make room owner or team leader";
-    actions.help_rml = "<p>How this player's puppets look to you: Theirs (the cosmetics they "
-                       "share, while the Looks tab shows other players' cosmetics), Game Default, "
-                       "or My Own (your own cosmetics and texture packs). The room owner can hand "
-                       "the room to anyone here, a team leader the team to a teammate. When one "
-                       "of them leaves, the longest-connected player takes over.</p>";
+    actions.help_rml = "<p>How this player's puppets look to you: Theirs (what they share: "
+                       "their cosmetics, and the game's look when they use no look mod), Game "
+                       "Default, or My Own (your own look mods, cosmetics and texture packs). Link, "
+                       "Wolf, Midna and Epona can each have their own choice (press again for the "
+                       "next one); Block This Look never shows the look mod they share now. "
+                       "Remembered for this player. The room owner can hand the room to anyone "
+                       "here, a team leader the team to a teammate. When one of them leaves, the "
+                       "longest-connected player takes over.</p>";
     actions.on_pressed = onPlayerActions;
     actions.user_data = data;
     addControl(slot.row.elem, actions, &slot.actions.elem);
@@ -1086,25 +1150,75 @@ std::string looksStatusRml() {
     return rml;
 }
 
+std::string ownLooksRml() {
+    std::string rml;
+    for (const std::string& line : looks::localLooksLines()) {
+        rml += "<p>" + escapeRml(line) + "</p>";
+    }
+    return rml;
+}
+
 ModResult buildLooksTab(ModContext*, UiWindowHandle, UiElementHandle left, UiElementHandle,
     void*, ModError*) {
     s_live = {};
-    svc_ui->pane_add_section(mod_ctx, left, "Cosmetics");
+    svc_ui->pane_add_section(mod_ctx, left, "Your Looks");
     static constexpr const char* kShareOptions[] = {"Off", "My Team", "Everyone in Room"};
     UiControlDesc share = UI_CONTROL_DESC_INIT;
     share.kind = UI_CONTROL_SELECT;
     share.label = "Share My Looks";
     share.help_rml =
-        "<p>Who sees your looks on your puppets in their game: for now your Cosmetics mod "
-        "colours (tunics, hair, swords, boots, boomerang, spinner, wolf, Epona and Midna's hair). "
-        "My Team: your teammates, or everyone without a team while you have none. Everyone in "
-        "Room: also other teams and players who join later. The relay's operator can see what "
-        "you share. Off shares nothing.</p>";
+        "<p>Who sees your looks on your puppets in their game: your look mods (Link's clothes "
+        "and gear, the wolf, Midna and Epona) and your Cosmetics mod colours. My Team: your "
+        "teammates, or everyone without a team while you have none. Everyone in Room: also other "
+        "teams and players who join later. The relay's operator can see what you share. Off "
+        "shares nothing. A mod whose mod.json forbids sharing is never shared.</p>";
     share.binding = UI_BINDING_CONFIG_VAR;
     share.config_var = config::handle(Var::ShareLooks);
     share.options = kShareOptions;
     share.option_count = std::size(kShareOptions);
     addControl(left, share);
+    s_live.lastOwnLooks = ownLooksRml();
+    s_live.ownLooks = addRml(left, s_live.lastOwnLooks);
+    addToggle(left, Var::ShowModList, "Show My Mod List to the Room",
+        "<p>Everyone in the room sees the id, name and version of each mod you have on, in the "
+        "Players tab: handy when a randomizer or another mod differs between you. Nothing else "
+        "of your mods leaves your game.</p>");
+
+    svc_ui->pane_add_section(mod_ctx, left, "Other Players' Looks");
+    addToggle(left, Var::ShowLooks, "Show Other Players' Looks",
+        "<p>Other players' puppets wear the look mods they share. Not available yet: their "
+        "files are not fetched, so their puppets show what the setting below says. A player "
+        "using no look mod always shows the game's look.</p>");
+    static constexpr const char* kFallbackOptions[] = {"My Own Look", "Game Default"};
+    UiControlDesc fallback = UI_CONTROL_DESC_INIT;
+    fallback.kind = UI_CONTROL_SELECT;
+    fallback.label = "While a Look Is Unavailable, Show";
+    fallback.help_rml = "<p>What a puppet wears while its player's look is downloading, too big, "
+                        "blocked, unshared or not shown: your own look mods (as before look "
+                        "sharing) or the game's look.</p>";
+    fallback.binding = UI_BINDING_CONFIG_VAR;
+    fallback.config_var = config::handle(Var::LooksFallback);
+    fallback.options = kFallbackOptions;
+    fallback.option_count = std::size(kFallbackOptions);
+    addControl(left, fallback);
+    UiControlDesc limit = UI_CONTROL_DESC_INIT;
+    limit.kind = UI_CONTROL_NUMBER;
+    limit.label = "Auto-Download Limit";
+    limit.help_rml = "<p>How much of one player's looks downloads per session without asking. "
+                     "0 always asks.</p>";
+    limit.binding = UI_BINDING_CONFIG_VAR;
+    limit.config_var = config::handle(Var::LooksAutoDownloadMiB);
+    limit.min = 0;
+    limit.max = 48;
+    limit.step = 1;
+    limit.suffix = " MB";
+    addControl(left, limit);
+    addToggle(left, Var::AllowMyTexturePacks, "Allow My Texture Packs on Other Players",
+        "<p>Your texture packs and look mods' textures also land on other players' puppets "
+        "showing their look or the game's. Off keeps them on your own Link and on puppets you "
+        "show in My Own.</p>");
+
+    svc_ui->pane_add_section(mod_ctx, left, "Cosmetics");
     addToggle(left, Var::ShowCosmetics, "Show Other Players' Cosmetics",
         "<p>Other players' puppets wear the colours they set in the Cosmetics mod, in "
         "Twili-Together's own recolour; clothes they recoloured lose their player colour tint. "
@@ -1113,13 +1227,14 @@ ModResult buildLooksTab(ModContext*, UiWindowHandle, UiElementHandle left, UiEle
     s_live.lastLooksStatus = looksStatusRml();
     s_live.looksStatus = addRml(left, s_live.lastLooksStatus);
     addRml(left, "<p class=\"twili-player-detail\">Your texture packs are never shared, and they "
-                 "stay off the clothes and gear other players' cosmetics colour unless you pick "
-                 "My Own for that player.</p>");
+                 "stay off other players' puppets unless you pick My Own for that player or "
+                 "allow them above.</p>");
     return MOD_OK;
 }
 
 ModResult updateLooksTab(ModContext*, void*, ModError*) {
     setRml(s_live.looksStatus, s_live.lastLooksStatus, looksStatusRml());
+    setRml(s_live.ownLooks, s_live.lastOwnLooks, ownLooksRml());
     return MOD_OK;
 }
 
