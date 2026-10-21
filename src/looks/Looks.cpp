@@ -46,16 +46,8 @@ bool sModListSent = false;
 nlohmann::json sSentModList = nlohmann::json::array();
 Clock::time_point sModListAt{};
 
-// At most kMaxText bytes, never cut inside a UTF-8 sequence.
 std::string clip(std::string text) {
-    if (text.size() > kMaxText) {
-        size_t end = kMaxText;
-        while (end > 0 && (static_cast<uint8_t>(text[end]) & 0xC0) == 0x80) {
-            end--;
-        }
-        text.resize(end);
-    }
-    return text;
+    return clipUtf8(std::move(text), kMaxText);
 }
 
 std::string textOf(const nlohmann::json& j, const char* key) {

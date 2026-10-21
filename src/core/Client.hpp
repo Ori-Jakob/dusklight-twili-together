@@ -22,6 +22,18 @@ struct ListedMod {
     std::string id, name, version;
 };
 
+// At most maxBytes of text, never cut inside a UTF-8 sequence.
+inline std::string clipUtf8(std::string text, size_t maxBytes) {
+    if (text.size() > maxBytes) {
+        size_t end = maxBytes;
+        while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80) {
+            end--;
+        }
+        text.resize(end);
+    }
+    return text;
+}
+
 struct Client {
     uint32_t clientId = 0;
     std::string name;

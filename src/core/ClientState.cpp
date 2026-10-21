@@ -89,7 +89,7 @@ static void applyClientState(Client& client, const nlohmann::json& state) {
             }
             const auto text = [&](const char* key) {
                 const auto it = m.find(key);
-                return it != m.end() && it->is_string() ? it->get<std::string>().substr(0, 64) :
+                return it != m.end() && it->is_string() ? clipUtf8(it->get<std::string>(), 64) :
                                                           std::string{};
             };
             if (std::string id = text("id"); !id.empty()) {
