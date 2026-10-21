@@ -8,6 +8,7 @@
 #include "fx/WolfFx.hpp"
 #include "horse/HorsePuppet.hpp"
 #include "looks/Cosmetics.hpp"
+#include "looks/Looks.hpp"
 #include "presence/RemoteFrame.hpp"
 
 #include "d/d_com_inf_game.h"
@@ -450,9 +451,12 @@ struct PrivateBmdCacheEntry {
 };
 static PrivateBmdCacheEntry s_privateBmdCache[64];
 static int s_privateBmdCacheCount = 0;
+// Every model data one createHeap loaded, cached or not, for the texture blockers.
+static std::vector<PrivateBmdCacheEntry> s_privateModelLog;
 
 static void resetPrivateBmdCache() {
     s_privateBmdCacheCount = 0;
+    s_privateModelLog.clear();
 }
 
 static J3DModelData* loadPrivateBmd(JKRArchive* archive, u16 bmdIndex, u32* outTag = nullptr) {
@@ -480,6 +484,9 @@ static J3DModelData* loadPrivateBmd(JKRArchive* archive, u16 bmdIndex, u32* outT
         *outTag = tag;
     }
     J3DModelData* data = dRes_info_c::loaderBasicBmd(tag, raw);
+    if (data) {
+        s_privateModelLog.push_back({archive, bmdIndex, tag, data});
+    }
     if (data && s_privateBmdCacheCount < (int)ARRAY_SIZE(s_privateBmdCache)) {
         s_privateBmdCache[s_privateBmdCacheCount++] = {archive, bmdIndex, tag, data};
     } else if (data) {
@@ -493,11 +500,17 @@ enum PrivateArc {
     kArcMidna,
     kArcCount,
 };
-constexpr const char* kPrivateArcPaths[kArcCount] = {
-    kLinkArcPath, kMagicArmorArcPath, kZoraArcPath, kCasualArcPath, kAlinkArcPath,
-    kHylianShieldArcPath, kOrdonShieldArcPath, kWoodShieldArcPath, kWolfArcPath, kMidnaArcPath,
-};
 static_assert(kArcCount <= PrivateArchives::kMax);
+// The same archives as the look sharing code names them.
+constexpr twili::looks::LookArc kLookArcs[kArcCount] = {
+    twili::looks::LookArc::Kmdl, twili::looks::LookArc::Mmdl, twili::looks::LookArc::Zmdl,
+    twili::looks::LookArc::Bmdl, twili::looks::LookArc::Alink, twili::looks::LookArc::HyShd,
+    twili::looks::LookArc::CWShd, twili::looks::LookArc::SWShd, twili::looks::LookArc::Wmdl,
+    twili::looks::LookArc::Midna,
+};
+// A base copy is ready a frame or two after it is asked for (a read from the disc takes longer);
+// after about 5 s of create phases the default paths are used.
+constexpr int kMaxArcPathWait = 150;
 // About 0x290000 decompressed; trimmed once they are mounted.
 constexpr u32 kPrivateArcHeapSize = 0x400000;
 
@@ -1014,7 +1027,28 @@ int daDummyPlayer_c::createHeap() {
 }
 
 cPhs_Step daDummyPlayer_c::loadPrivateArchives() {
-    switch (mDummyArchives.update(this, kPrivateArcPaths, kArcCount, kPrivateArcHeapSize)) {
+    if (!mDummyArcPathsFixed) {
+        bool ready = true;
+        for (int i = 0; i < kArcCount; i++) {
+            ready &= twili::looks::puppetArcPath(mDummyClientId, kLookArcs[i], mDummyArcPaths[i]);
+        }
+        if (!ready && mDummyArcPathWait++ < kMaxArcPathWait) {
+            return cPhs_INIT_e;
+        }
+        mDummyArcPathsFixed = true;
+        mDummyLookSignature = 0;
+        std::string base;
+        for (int i = 0; i < kArcCount; i++) {
+            if (mDummyArcPaths[i] == twili::looks::arcAliasPath(kLookArcs[i])) {
+                mDummyLookSignature |= 1u << static_cast<uint32_t>(kLookArcs[i]);
+                base += fmt::format(" {}", twili::looks::arcName(kLookArcs[i]));
+            }
+        }
+        if (!base.empty()) {
+            TwiliLog.info("[dummy {}] the game's own archives for{}", mDummyClientId, base);
+        }
+    }
+    switch (mDummyArchives.update(this, mDummyArcPaths, kArcCount, kPrivateArcHeapSize)) {
     case twili::PrivateArchives::State::Idle:
         if (mDummyArchives.failed()) {
             TwiliLog.warn("[dummy {}] create: no heap for the private archives", mDummyClientId);
@@ -3309,12 +3343,19 @@ static constexpr int32_t kRecolorMinTicks = 3;
 
 void daDummyPlayer_c::updateRemoteRecolor() {
     ++mDummyRecolorTick;
-    const twili::looks::CosmeticsValues* shown = twili::looks::shownCosmetics(mDummyClientId);
+    const twili::looks::CosmeticsValues* link =
+        twili::looks::shownCosmetics(mDummyClientId, twili::looks::LookType::Link);
+    const twili::looks::CosmeticsValues* wolf =
+        twili::looks::shownCosmetics(mDummyClientId, twili::looks::LookType::Wolf);
+    const auto shownFor = [&](twili::RecolorSetId set) {
+        return set == twili::RecolorSetId::Wolf ? wolf : link;
+    };
     // A teammate's cosmetics take over the sets they colour, worn or not.
     for (size_t i = 0; i < std::size(mDummyRecolor); i++) {
         twili::RecolorSet& s = mDummyRecolor[i];
+        const auto setId = static_cast<twili::RecolorSetId>(i);
         if (s.bound() && s.appliedKey() != twili::RecolorSet::kPristine &&
-            twili::cosmeticsReplaceSet(shown, static_cast<twili::RecolorSetId>(i)))
+            twili::cosmeticsReplaceSet(shownFor(setId), setId))
         {
             s.apply(twili::RecolorSet::kPristine, mDummyRecolorTick);
         }
@@ -3323,7 +3364,7 @@ void daDummyPlayer_c::updateRemoteRecolor() {
     const bool justWorn = mDummyRecolorWorn != static_cast<int8_t>(id);
     mDummyRecolorWorn = static_cast<int8_t>(id);
     twili::RecolorSet& set = mDummyRecolor[static_cast<size_t>(id)];
-    const uint32_t key = twili::cosmeticsReplaceSet(shown, id) ?
+    const uint32_t key = twili::cosmeticsReplaceSet(shownFor(id), id) ?
                              twili::RecolorSet::kPristine :
                              twili::recolorKey(mDummyColorR, mDummyColorG, mDummyColorB);
     if (!set.bound() || set.appliedKey() == key) {
@@ -3388,7 +3429,8 @@ void daDummyPlayer_c::getRecolorProbe(twili::RecolorProbe& out) const {
     scan(mpLinkHatModel, list.hat, list.hatCount);
 }
 
-// Every model a cosmetics colour targets, as this dummy loaded it.
+// Every model a cosmetics colour targets, as this dummy loaded it, and every other model of its
+// private archives.
 void daDummyPlayer_c::bindRemoteCosmetics(J3DModelData* spinner) {
     using twili::CosmeticsModel;
     twili::PuppetCosmetics::Models models{};
@@ -3414,12 +3456,37 @@ void daDummyPlayer_c::bindRemoteCosmetics(J3DModelData* spinner) {
     set(CosmeticsModel::Boomerang, mpDummyBoomerangModel);
     set(CosmeticsModel::Wolf, mpDummyWolfModel);
     models[static_cast<size_t>(CosmeticsModel::Spinner)] = spinner;
-    mDummyCosmetics.bind(models, mDummyClientId);
+    std::vector<twili::PrivateModel> others;
+    for (const PrivateBmdCacheEntry& entry : s_privateModelLog) {
+        int arc = 0;
+        while (arc < kArcCount && mDummyArchives.get(arc) != entry.archive) {
+            arc++;
+        }
+        if (arc == kArcCount) {
+            continue;
+        }
+        twili::looks::LookType type = twili::looks::arcType(kLookArcs[arc]);
+        // Midna rides the wolf in Wmdl.
+        if (arc == kArcWmdl && entry.index != dRes_ID_WMDL_BMD_WL_e &&
+            entry.index != dRes_ID_WMDL_BMD_WL_KUSARI_e)
+        {
+            type = twili::looks::LookType::Midna;
+        }
+        others.push_back({entry.data, type});
+    }
+    mDummyCosmetics.bind(models, mDummyClientId, others);
 }
 
 void daDummyPlayer_c::updateRemoteCosmetics() {
-    const twili::looks::CosmeticsValues* shown = twili::looks::shownCosmetics(mDummyClientId);
-    mDummyCosmetics.update(shown, twili::looks::blockOwnLooks(mDummyClientId),
+    twili::PuppetLookState state;
+    for (size_t t = 0; t < twili::looks::kLookTypeCount; t++) {
+        const auto type = static_cast<twili::looks::LookType>(t);
+        const auto bit = static_cast<uint8_t>(1u << t);
+        state.shown[t] = twili::looks::shownCosmetics(mDummyClientId, type);
+        state.block |= twili::looks::blockOwnLooks(mDummyClientId, type) ? bit : 0;
+        state.blockAll |= twili::looks::blockOwnLooks(mDummyClientId, type, true) ? bit : 0;
+    }
+    mDummyCosmetics.update(state,
         [this](const uint8_t* image) {
             for (const twili::RecolorSet& set : mDummyRecolor) {
                 if (set.rewrites(image)) {
@@ -3437,6 +3504,18 @@ void daDummyPlayer_c::getCosmeticsProbe(twili::CosmeticsProbe& out) const {
     mDummyCosmetics.probe(out);
     out.hairBase = mDummyMidna.hairBase();
     out.hairTips = mDummyMidna.hairTips();
+}
+
+bool GetDummyPlayerArcPaths(fopAc_ac_c* actor, std::vector<std::string>& out) {
+    if (!isDummyPlayer(actor)) {
+        return false;
+    }
+    out.clear();
+    const char* const* paths = static_cast<daDummyPlayer_c*>(actor)->arcPaths();
+    for (int i = 0; i < kArcCount; i++) {
+        out.emplace_back(paths[i] != nullptr ? paths[i] : "");
+    }
+    return true;
 }
 
 bool GetDummyPlayerRecolorProbe(fopAc_ac_c* actor, RecolorProbe& out) {
@@ -4426,6 +4505,15 @@ int daDummyPlayer_c::execute() {
     attention_info.flags &= ~fopAc_AttnFlag_BATTLE_e;
 
     if (!mDummyShellReady) {
+        return TRUE;
+    }
+    // A new look (our choice, or what the player lists) mounts other archives: a new puppet.
+    if (mDummyArcPathsFixed &&
+        twili::looks::puppetSignature(mDummyClientId, kLookArcs) != mDummyLookSignature &&
+        twili::looks::mayRespawn(mDummyClientId, false))
+    {
+        TwiliLog.info("[dummy {}] respawning for a new look", mDummyClientId);
+        fopAcM_delete(this);
         return TRUE;
     }
     updateRemoteCosmetics();

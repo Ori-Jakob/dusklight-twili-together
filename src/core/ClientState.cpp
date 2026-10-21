@@ -73,6 +73,30 @@ static void applyClientState(Client& client, const nlohmann::json& state) {
         client.colorG = static_cast<uint8_t>(color->value("g", 255u));
         client.colorB = static_cast<uint8_t>(color->value("b", 255u));
     }
+    if (const auto id = state.find("installId"); id != state.end() && id->is_string()) {
+        const std::string& value = id->get_ref<const std::string&>();
+        const bool hex = value.size() == 32 && std::all_of(value.begin(), value.end(), [](char c) {
+            return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+        });
+        client.installId = hex ? value : std::string{};
+    }
+    // Only what Show My Mod List sends: id, name and version, cut to 64 bytes each.
+    if (const auto mods = state.find("modList"); mods != state.end()) {
+        client.modList.clear();
+        for (const auto& m : *mods) {
+            if (!mods->is_array() || !m.is_object() || client.modList.size() >= 64) {
+                continue;
+            }
+            const auto text = [&](const char* key) {
+                const auto it = m.find(key);
+                return it != m.end() && it->is_string() ? it->get<std::string>().substr(0, 64) :
+                                                          std::string{};
+            };
+            if (std::string id = text("id"); !id.empty()) {
+                client.modList.push_back({std::move(id), text("name"), text("version")});
+            }
+        }
+    }
     if (const auto name = state.find("horseName"); name != state.end() && name->is_string()) {
         const std::string& value = name->get_ref<const std::string&>();
         client.horseName = value.size() <= kMaxHorseNameBytes ? value : std::string{};

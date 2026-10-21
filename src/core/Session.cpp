@@ -10,7 +10,9 @@
 #include "enemy/EnemySync.hpp"
 #include "game/GameIdentity.hpp"
 #include "game/TeamGame.hpp"
+#include "looks/Choices.hpp"
 #include "looks/Cosmetics.hpp"
+#include "looks/Looks.hpp"
 #include "presence/Presence.hpp"
 #include "push/PushSync.hpp"
 #include "story/Story.hpp"
@@ -242,6 +244,8 @@ void Session::update() {
         pvp::tick();
         looks::tick();
     }
+    // Connected or not: the Looks tab shows our look mods offline too.
+    looks::updateLooks();
     // Connected or not: a stage change already under way is seen through.
     enemy_sync::tick();
     enemy_damage::tick();
@@ -349,6 +353,7 @@ void Session::sendHandshake() {
         {"teamId", mParams.team},
         {"roomId", trimAsciiWhitespace(mParams.room)},
         {"sessionKey", mSessionKey},
+        {"installId", looks::installId()},
         {"color", {{"r", color[0]}, {"g", color[1]}, {"b", color[2]}}},
         {"game", game_identity::handshakeJson()},
         {"features", looks::handshakeFeatures()},

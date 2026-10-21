@@ -5,6 +5,7 @@
 #include "core/Session.hpp"
 #include "core/Visibility.hpp"
 #include "looks/Cosmetics.hpp"
+#include "looks/Looks.hpp"
 
 #include "JSystem/J3DGraphAnimator/J3DAnimation.h"
 #include "JSystem/J3DGraphAnimator/J3DModel.h"
@@ -31,6 +32,9 @@ namespace twili {
 namespace {
 
 constexpr const char* kHorseArcPath = "/res/Object/Horse.arc";
+constexpr looks::LookArc kHorseArc[] = {looks::LookArc::Horse};
+// As the player puppet's: about 5 s of create phases for a base copy, then the default path.
+constexpr int kMaxArcPathWait = 150;
 // Both heaps are trimmed to what they use; Horse.arc decompressed is about 0x59000.
 constexpr u32 kDummyHorseHeapSize = 0x60000;
 constexpr u32 kDummyHorseHeapFlags = 0x80000000 | 0x20000000;
@@ -156,7 +160,7 @@ int daDummyHorse_c::createHeapImpl() {
     mCosmetics.release();
     mpArchive = mArchives.get(0);
     if (mpArchive == nullptr) {
-        TwiliLog.warn("[horse {}] createHeap: {} mount failed", mClientId, kHorseArcPath);
+        TwiliLog.warn("[horse {}] createHeap: {} mount failed", mClientId, mArcPath);
         return 0;
     }
     const u16 bmd = dRes_INDEX_HORSE_BMD_HS_e;
@@ -180,7 +184,8 @@ int daDummyHorse_c::createHeapImpl() {
     }
     PuppetCosmetics::Models models{};
     models[static_cast<size_t>(CosmeticsModel::Horse)] = m_modelData;
-    mCosmetics.bind(models, mClientId);
+    const PrivateModel others[] = {{m_modelData, looks::LookType::Epona}};
+    mCosmetics.bind(models, mClientId, others);
     J3DTransformInfo* transInfo = JKR_NEW_ARRAY(J3DTransformInfo, kJointNum);
     Quaternion* quat = JKR_NEW_ARRAY(Quaternion, kJointNum);
     if (transInfo == nullptr || quat == nullptr) {
@@ -241,10 +246,25 @@ cPhs_Step daDummyHorse_c::create() {
     // daHorse_c's member constructors only set fields; nothing registers a horse here.
     fopAcM_ct(this, daDummyHorse_c);
     mClientId = static_cast<uint32_t>(fopAcM_GetParam(this));
-    switch (mArchives.update(this, &kHorseArcPath, 1, kHorseArcHeapSize)) {
+    if (mArcPath == nullptr) {
+        const char* path = kHorseArcPath;
+        if (!looks::puppetArcPath(mClientId, looks::LookArc::Horse, path) &&
+            mArcPathWait++ < kMaxArcPathWait)
+        {
+            return cPhs_INIT_e;
+        }
+        mArcPath = path;
+        mLookSignature = path == looks::arcAliasPath(looks::LookArc::Horse) ?
+                             1u << static_cast<uint32_t>(looks::LookArc::Horse) :
+                             0;
+        if (mLookSignature != 0) {
+            TwiliLog.info("[horse {}] the game's own {}", mClientId, path);
+        }
+    }
+    switch (mArchives.update(this, &mArcPath, 1, kHorseArcHeapSize)) {
     case PrivateArchives::State::Idle:
         if (mArchives.failed()) {
-            TwiliLog.warn("[horse {}] create: no heap for {}", mClientId, kHorseArcPath);
+            TwiliLog.warn("[horse {}] create: no heap for {}", mClientId, mArcPath);
             return cPhs_ERROR_e;
         }
         return cPhs_INIT_e;
@@ -315,6 +335,14 @@ int daDummyHorse_c::execute() {
     }
     attention_info.flags = 0;
     mExecTicks++;
+    // Her owner's new look mounts another Horse.arc: a new puppet.
+    if (looks::puppetSignature(mClientId, kHorseArc) != mLookSignature &&
+        looks::mayRespawn(mClientId, true))
+    {
+        TwiliLog.info("[horse {}] respawning for a new look", mClientId);
+        fopAcM_delete(this);
+        return TRUE;
+    }
     if (parkedWanted(*c)) {
         // No rider whose cutscene could hide it: only ours does.
         mHidden = hideRemotePlayersForCutscene();
@@ -331,14 +359,20 @@ int daDummyHorse_c::execute() {
             mRidden = false;
         }
     }
-    const looks::CosmeticsValues* shown = looks::shownCosmetics(mClientId);
+    const looks::CosmeticsValues* shown = looks::shownCosmetics(mClientId, looks::LookType::Epona);
     // The owner's Epona colour replaces our tint of the mane.
     if (cosmeticsReplaceHorse(shown)) {
         updateHorseRecolor(mRecolor, 255, 255, 255);
     } else {
         updateHorseRecolor(mRecolor, c->colorR, c->colorG, c->colorB);
     }
-    mCosmetics.update(shown, looks::blockOwnLooks(mClientId), nullptr);
+    PuppetLookState state;
+    constexpr auto kEpona = static_cast<size_t>(looks::LookType::Epona);
+    state.shown[kEpona] = shown;
+    constexpr auto kBit = static_cast<uint8_t>(1u << kEpona);
+    state.block = looks::blockOwnLooks(mClientId, looks::LookType::Epona) ? kBit : 0;
+    state.blockAll = looks::blockOwnLooks(mClientId, looks::LookType::Epona, true) ? kBit : 0;
+    mCosmetics.update(state, nullptr);
     updateSound(isShown());
     return TRUE;
 }

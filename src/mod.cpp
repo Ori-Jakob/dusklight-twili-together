@@ -25,6 +25,7 @@
 #include "enemy/EnemyScaling.hpp"
 #include "enemy/EnemySync.hpp"
 #include "hooks/Hooks.hpp"
+#include "looks/Choices.hpp"
 #include "looks/Cosmetics.hpp"
 #include "push/PushSync.hpp"
 #include "story/Story.hpp"
@@ -96,6 +97,8 @@ MOD_EXPORT ModResult mod_initialize(ModError* error) {
 
     Session::init();
     sync::installItemObserver();
+    // Our install id and the saved per-player look choices, before any handshake.
+    looks::loadChoices();
 
     std::string hookError;
     result = hooks::install(hooks::Group::Core, hookError);

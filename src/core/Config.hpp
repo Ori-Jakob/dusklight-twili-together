@@ -47,6 +47,13 @@ enum class Var : uint8_t {
     // Personal: who gets our looks (looks::ShareScope); whether theirs show on their puppets.
     ShareLooks,
     ShowCosmetics,
+    ShowLooks,
+    // What a puppet shows while its look is unavailable: 0 our own installed look, 1 the game's.
+    LooksFallback,
+    // MiB downloaded per player and session without asking; 0 always asks.
+    LooksAutoDownloadMiB,
+    AllowMyTexturePacks,
+    ShowModList,
 #if TWILI_ENABLE_AUTOTEST
     AutotestScript,
 #endif

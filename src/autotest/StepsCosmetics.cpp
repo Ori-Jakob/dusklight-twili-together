@@ -97,7 +97,15 @@ const char* sourceName(int s) {
 std::string probeText(const CosmeticsProbe& p) {
     std::string s = fmt::format("keys={} ({} of {} targets) recolored={} blocked={} hair={}/{}",
         p.keys, p.keysFound, p.keysTotal, p.recolored, p.blocked, p.hairBase, p.hairTips);
+    // The textures no colour targets, counted: [blocked, renders from a content replacement].
+    size_t others[2] = {}, otherCount = 0;
     for (const CosmeticsTexProbe& t : p.tex) {
+        if (t.var == kNoCosmeticsVar) {
+            otherCount++;
+            others[0] += t.state == CosmeticsTexState::Block ? 1 : 0;
+            others[1] += t.source == 2 ? 1 : 0;
+            continue;
+        }
         s += fmt::format(" [{} {} {}{} src={}{}]", t.texture, looks::kCosmeticsVars[t.var].name,
             stateName(t.state),
             t.state == CosmeticsTexState::Recolor ? fmt::format(" #{:06X} h{:.0f} s{:.2f}", t.color,
@@ -105,7 +113,7 @@ std::string probeText(const CosmeticsProbe& p) {
                                                     std::string{},
             sourceName(t.source), t.vanilla == 1 ? "" : t.vanilla == 0 ? " custom" : " pending");
     }
-    return s;
+    return s + fmt::format(" others={} ({} blocked, {} src=source)", otherCount, others[0], others[1]);
 }
 
 // One texture against {state, rgb, hueTol, source, vanilla}.

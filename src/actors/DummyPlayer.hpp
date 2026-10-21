@@ -13,6 +13,9 @@
 
 #include <mods/svc/actor.h>
 
+#include <string>
+#include <vector>
+
 class JKRArchive;
 
 namespace twili {
@@ -186,6 +189,8 @@ public:
     void getDebugInfo(twili::DummyPlayerDebugInfo& out) const;
     void getRecolorProbe(twili::RecolorProbe& out) const;
     void getCosmeticsProbe(twili::CosmeticsProbe& out) const;
+    // The private archives' paths as mounted (null until loading starts).
+    const char* const* arcPaths() const { return mDummyArcPaths; }
     void onPvpTgHit(dCcD_GObjInf* tg, fopAc_ac_c* atActor, dCcD_GObjInf* at);
     void playPvpHitSe(uint32_t hitSe, uint32_t guardSe, bool blocked);
 
@@ -449,6 +454,12 @@ private:
     bool mDummyConstructed = true;
     twili::PrivateArchives mDummyArchives;
     bool mDummyArchivesUsed = false;
+    // Each private archive's default path or its base copy (looks::puppetArcPath), fixed once
+    // loading starts; bit per looks::LookArc of the base copies.
+    const char* mDummyArcPaths[twili::PrivateArchives::kMax] = {};
+    bool mDummyArcPathsFixed = false;
+    int mDummyArcPathWait = 0;
+    uint32_t mDummyLookSignature = 0;
     // The last queued PLAYER_SFX handled (RemoteSfx::index)
     uint32_t mDummySfxDone = 0;
     bool mDummySfxPrimed = false;
@@ -476,6 +487,8 @@ bool GetDummyPlayerDebugInfo(fopAc_ac_c* actor, DummyPlayerDebugInfo& out);
 bool GetDummyPlayerRecolorProbe(fopAc_ac_c* actor, RecolorProbe& out);
 // Its cosmetics textures and Midna's hair palette (autotest).
 bool GetDummyPlayerCosmeticsProbe(fopAc_ac_c* actor, CosmeticsProbe& out);
+// Where its private archives were mounted from, in looks::LookArc order (autotest).
+bool GetDummyPlayerArcPaths(fopAc_ac_c* actor, std::vector<std::string>& out);
 // PvP: the sound of our hit on `actor`, a dummy player.
 void PlayDummyPlayerHitSe(fopAc_ac_c* actor, uint32_t hitSe, uint32_t guardSe, bool blocked);
 }  // namespace twili

@@ -73,6 +73,8 @@ public:
     uint32_t clientId() const { return mClientId; }
     void getDebugInfo(DummyHorseDebugInfo& out) const;
     void getCosmeticsProbe(CosmeticsProbe& out) const { mCosmetics.probe(out); }
+    // Where Horse.arc was mounted from (null until loading starts).
+    const char* arcPath() const { return mArcPath; }
     bool archiveBusy() const { return mArchives.busy(); }
 
 private:
@@ -91,6 +93,10 @@ private:
     JKRArchive* mpArchive = nullptr;
     PrivateArchives mArchives;
     bool mArchiveUsed = false;
+    // Its default path or its base copy (looks::puppetArcPath), fixed once loading starts.
+    const char* mArcPath = nullptr;
+    int mArcPathWait = 0;
+    uint32_t mLookSignature = 0;
     // Every Horse.arc BCK with its BAS, loaded in createHeap before the heap is trimmed.
     mDoExt_transAnmBas* mBck[kHorseLastAnm + 1] = {};
     HorseRecolor mRecolor;

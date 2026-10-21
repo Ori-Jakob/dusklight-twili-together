@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace twili {
 
@@ -16,9 +17,17 @@ struct HorsePlace {
     int16_t angleY = 0;
 };
 
+// A mod a player lists to the room (Show My Mod List).
+struct ListedMod {
+    std::string id, name, version;
+};
+
 struct Client {
     uint32_t clientId = 0;
     std::string name;
+    // Persistent per install (32 hex digits), empty from an older client or relay.
+    std::string installId;
+    std::vector<ListedMod> modList;
     uint8_t colorR = 255, colorG = 255, colorB = 255;
     std::string teamId;
     std::string horseName;

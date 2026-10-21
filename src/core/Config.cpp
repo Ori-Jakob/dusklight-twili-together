@@ -54,6 +54,12 @@ constexpr VarDef kVars[] = {
     {Var::SyncPushPull, "sync_push_pull", CONFIG_VAR_BOOL, true},
     {Var::ShareLooks, "share_looks", CONFIG_VAR_INT, false, 0},
     {Var::ShowCosmetics, "show_cosmetics", CONFIG_VAR_BOOL, true},
+    // Off until peers' files are validated (look sharing M3).
+    {Var::ShowLooks, "show_looks", CONFIG_VAR_BOOL, false},
+    {Var::LooksFallback, "looks_fallback", CONFIG_VAR_INT, false, 0},
+    {Var::LooksAutoDownloadMiB, "looks_auto_download_mib", CONFIG_VAR_INT, false, 16},
+    {Var::AllowMyTexturePacks, "allow_my_texture_packs", CONFIG_VAR_BOOL, false},
+    {Var::ShowModList, "show_mod_list", CONFIG_VAR_BOOL, false},
 #if TWILI_ENABLE_AUTOTEST
     {Var::AutotestScript, "autotest_script", CONFIG_VAR_STRING},
 #endif

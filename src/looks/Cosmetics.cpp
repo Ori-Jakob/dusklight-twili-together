@@ -5,6 +5,7 @@
 #include "core/Session.hpp"
 #include "fx/CosmeticsRecolor.hpp"
 #include "looks/Inventory.hpp"
+#include "looks/Looks.hpp"
 
 #include <mods/svc/host.h>
 
@@ -39,15 +40,15 @@ bool sPacksChecked = false;
 bool sPackFiles = false;
 
 bool sRelayCosmetics = false;
+bool sRelayLooks = false;
 bool sSent = false;
 std::optional<CosmeticsValues> sSentValues;
+nlohmann::json sSentLooks = nlohmann::json::array();
 ShareScope sSentScope = ShareScope::Off;
 Clock::time_point sSentAt{};
 uint32_t sRev = 0;
 
 std::map<uint32_t, CosmeticsValues> sShared;
-// Their Look, by name so a reconnect keeps it.
-std::map<std::string, LookChoice> sChoices;
 bool sShow = true;
 
 std::optional<uint32_t> parseColor(const std::string& text) {
@@ -260,12 +261,6 @@ void refreshLocal() {
     }
 }
 
-const Client* clientOf(uint32_t clientId) {
-    const auto& clients = Session::instance().clients();
-    const auto it = clients.find(clientId);
-    return it == clients.end() ? nullptr : &it->second;
-}
-
 std::optional<CosmeticsValues> wanted(ShareScope scope) {
     if (scope == ShareScope::Off || !sLocal || sLocal->mask == 0) {
         return std::nullopt;
@@ -273,7 +268,8 @@ std::optional<CosmeticsValues> wanted(ShareScope scope) {
     return sLocal;
 }
 
-void sendManifest(const std::optional<CosmeticsValues>& values, ShareScope scope) {
+void sendManifest(const std::optional<CosmeticsValues>& values, ShareScope scope,
+    const nlohmann::json& looks) {
     const char* scopeName = scope == ShareScope::Team ? "team" : "room";
     Session::instance().send({
         {"type", "LOOK_MANIFEST"},
@@ -281,12 +277,13 @@ void sendManifest(const std::optional<CosmeticsValues>& values, ShareScope scope
         {"rev", ++sRev},
         {"gameId", gameId()},
         {"scope", scopeName},
-        {"looks", nlohmann::json::array()},
+        {"looks", looks},
         {"cosmetics", cosmeticsJson(values)},
     });
-    TwiliLog.info("[cosmetics] sent manifest rev {} ({}): {}", sRev, scopeName,
+    TwiliLog.info("[cosmetics] sent manifest rev {} ({}): {}, {}", sRev, scopeName,
         values ? fmt::format("{} values (cosmetics {})", std::popcount(values->mask), values->version) :
-                 std::string("none"));
+                 std::string("no cosmetics"),
+        manifestLooksSummary(looks));
 }
 
 }  // namespace
@@ -304,6 +301,12 @@ nlohmann::json handshakeFeatures() {
     if (canShow()) {
         features.push_back("cos.recv");
     }
+    if (canSendLooks()) {
+        features.push_back("looks.send");
+    }
+    if (canReceiveLooks()) {
+        features.push_back("looks.recv");
+    }
     return features;
 }
 
@@ -318,16 +321,25 @@ std::string gameId() {
 
 void onRoster(const nlohmann::json& allClientState) {
     sRelayCosmetics = false;
+    sRelayLooks = false;
     if (const auto features = allClientState.find("relayFeatures");
         features != allClientState.end() && features->is_array())
     {
         for (const auto& f : *features) {
             sRelayCosmetics |= f.is_string() && f.get<std::string>() == "cos.send";
+            sRelayLooks |= f.is_string() && f.get<std::string>() == "looks.send";
         }
     }
     if (!sRelayCosmetics) {
         TwiliLog.info("[cosmetics] the relay does not pass cosmetics on");
     }
+    if (!sRelayLooks) {
+        TwiliLog.info("[looks] the relay does not pass look mods on");
+    }
+}
+
+bool relayPassesLooks() {
+    return sRelayLooks;
 }
 
 bool handlePacket(const std::string& type, const nlohmann::json& packet) {
@@ -338,6 +350,8 @@ bool handlePacket(const std::string& type, const nlohmann::json& packet) {
     if (id == 0 || id == Session::instance().selfClientId()) {
         return true;
     }
+    const auto looks = packet.find("looks");
+    takePeerLooks(id, looks != packet.end() ? *looks : nlohmann::json::array());
     const auto cosmetics = packet.find("cosmetics");
     auto values = cosmetics != packet.end() ? parseCosmetics(*cosmetics) : std::nullopt;
     const auto it = sShared.find(id);
@@ -373,15 +387,17 @@ void tick() {
     }
     const ShareScope scope = shareScope();
     const std::optional<CosmeticsValues> values = wanted(scope);
+    const nlohmann::json looks = sRelayLooks ? manifestLooks(scope) : nlohmann::json::array();
     // Off goes out as a room-wide null, so everyone who had ours clears it.
-    const ShareScope sendScope = values ? scope : ShareScope::Room;
-    const bool same = values == sSentValues && sendScope == sSentScope;
+    const ShareScope sendScope = values || !looks.empty() ? scope : ShareScope::Room;
+    const bool same = values == sSentValues && sendScope == sSentScope && looks == sSentLooks;
     if (sSent && (same || now - sSentAt < kSendInterval)) {
         return;
     }
-    sendManifest(values, sendScope);
+    sendManifest(values, sendScope, looks);
     sSent = true;
     sSentValues = values;
+    sSentLooks = looks;
     sSentScope = sendScope;
     sSentAt = now;
 }
@@ -389,14 +405,18 @@ void tick() {
 void resetSession() {
     sShared.clear();
     sRelayCosmetics = false;
+    sRelayLooks = false;
     sSent = false;
     sSentValues.reset();
+    sSentLooks = nlohmann::json::array();
     sSentScope = ShareScope::Off;
+    resetLooksSession();
 }
 
 void shutdown() {
     resetSession();
     shutdownCosmeticsKeys();
+    shutdownLooks();
 }
 
 const CosmeticsValues* sharedCosmetics(uint32_t clientId) {
@@ -404,45 +424,25 @@ const CosmeticsValues* sharedCosmetics(uint32_t clientId) {
     return it == sShared.end() ? nullptr : &it->second;
 }
 
-const CosmeticsValues* shownCosmetics(uint32_t clientId) {
-    if (!sShow || !canShow() || lookChoice(clientId) != LookChoice::Theirs) {
+const CosmeticsValues* shownCosmetics(uint32_t clientId, LookType type) {
+    if (!sShow || !canShow() || effectiveChoice(clientId, type) != LookChoice::Theirs) {
         return nullptr;
     }
     return sharedCosmetics(clientId);
 }
 
 const CosmeticsValues* hairCosmetics(uint32_t clientId) {
-    if (lookChoice(clientId) == LookChoice::MyOwn) {
+    if (effectiveChoice(clientId, LookType::Midna) == LookChoice::MyOwn) {
         return sLocal ? &*sLocal : nullptr;
     }
-    return shownCosmetics(clientId);
+    return shownCosmetics(clientId, LookType::Midna);
 }
 
-bool blockOwnLooks(uint32_t clientId) {
-    return lookChoice(clientId) != LookChoice::MyOwn && ownTexturesActive();
-}
-
-LookChoice lookChoice(uint32_t clientId) {
-    const Client* c = clientOf(clientId);
-    if (c == nullptr) {
-        return LookChoice::Theirs;
+bool blockOwnLooks(uint32_t clientId, LookType type, bool allTextures) {
+    if (effectiveChoice(clientId, type) == LookChoice::MyOwn || !ownTexturesActive()) {
+        return false;
     }
-    const auto it = sChoices.find(c->name);
-    return it == sChoices.end() ? LookChoice::Theirs : it->second;
-}
-
-void setLookChoice(uint32_t clientId, LookChoice choice) {
-    const Client* c = clientOf(clientId);
-    if (c == nullptr || c->self) {
-        return;
-    }
-    if (choice == LookChoice::Theirs) {
-        sChoices.erase(c->name);
-    } else {
-        sChoices[c->name] = choice;
-    }
-    static constexpr const char* kNames[] = {"theirs", "game default", "my own"};
-    TwiliLog.info("[cosmetics] {}'s look: {}", c->name, kNames[static_cast<size_t>(choice)]);
+    return !allTextures || !config::getBool(config::Var::AllowMyTexturePacks);
 }
 
 const std::optional<CosmeticsValues>& localCosmetics() {
@@ -455,6 +455,10 @@ bool cosmeticsSent() {
 
 const std::optional<CosmeticsValues>& sentCosmetics() {
     return sSentValues;
+}
+
+const nlohmann::json& sentLooks() {
+    return sSentLooks;
 }
 
 bool cosmeticsApproximate(const CosmeticsValues& values) {
@@ -488,7 +492,7 @@ std::string cosmeticsStatusText() {
     } else {
         size_t shown = 0;
         for (const auto& [id, values] : sShared) {
-            shown += shownCosmetics(id) != nullptr ? 1 : 0;
+            shown += shownCosmetics(id, LookType::Link) != nullptr ? 1 : 0;
         }
         theirs = fmt::format("{} other player(s) share cosmetics, {} shown.", sShared.size(), shown);
     }
@@ -496,14 +500,14 @@ std::string cosmeticsStatusText() {
 }
 
 std::string cosmeticsPlayerTag(uint32_t clientId) {
-    if (const LookChoice choice = lookChoice(clientId); choice != LookChoice::Theirs) {
-        return choice == LookChoice::GameDefault ? "game default look" : "my own look";
+    if (lookChoice(clientId) != LookChoice::Theirs) {
+        return {};
     }
     const CosmeticsValues* values = sharedCosmetics(clientId);
     if (values == nullptr) {
         return {};
     }
-    if (shownCosmetics(clientId) == nullptr) {
+    if (shownCosmetics(clientId, LookType::Link) == nullptr) {
         return "cosmetics hidden";
     }
     return cosmeticsApproximate(*values) ? "cosmetics (approximate)" : "cosmetics";

@@ -3,16 +3,18 @@
 // A teammate's cosmetics on their puppets (CosmeticsRecolor.cpp): our own recolour of the
 // textures the cosmetics mod colours that still match the disc, registered as POINTER
 // replacements on each puppet's own copies, and pristine POINTER blockers that keep our
-// cosmetics and texture packs off them.
+// cosmetics, texture packs and mods' textures off them (every private texture of the puppet).
 
 #include "fx/PlayerRecolorMath.hpp"
 #include "looks/Cosmetics.hpp"
+#include "looks/Slots.hpp"
 
 #include <dolphin/gx.h>
 
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -51,9 +53,11 @@ enum class CosmeticsModel : uint8_t {
 enum class CosmeticsTexState : uint8_t { None, Recolor, Block };
 
 // What the autotest reads.
+inline constexpr uint8_t kNoCosmeticsVar = 0xFF;
 struct CosmeticsTexProbe {
     const char* texture = nullptr;
-    uint8_t var = 0;                // looks::CosmeticsVarId
+    uint8_t var = 0;                // looks::CosmeticsVarId, kNoCosmeticsVar for the other textures
+    looks::LookType type = looks::LookType::Link;
     CosmeticsTexState state = CosmeticsTexState::None;
     int8_t vanilla = -1;            // 1 the disc's bytes, 0 changed or uncheckable, -1 not yet
     uint32_t color = 0;             // Recolor: 0xRRGGBB
@@ -72,6 +76,20 @@ struct CosmeticsProbe {
     std::vector<CosmeticsTexProbe> tex;
 };
 
+// Per look type of one puppet: the cosmetics its owner's puppets wear (null: nothing of theirs),
+// and bits per type for pristine blockers on its cosmetics textures and on all its others.
+struct PuppetLookState {
+    std::array<const looks::CosmeticsValues*, looks::kLookTypeCount> shown{};
+    uint8_t block = 0;
+    uint8_t blockAll = 0;
+};
+
+// A model of the puppet's private archives, for the blockers on all its textures.
+struct PrivateModel {
+    J3DModelData* data = nullptr;
+    looks::LookType type = looks::LookType::Link;
+};
+
 class PuppetCosmetics {
 public:
     using Models = std::array<J3DModelData*, static_cast<size_t>(CosmeticsModel::Count)>;
@@ -79,19 +97,20 @@ public:
     using TintedFn = std::function<bool(const uint8_t* image)>;
 
     // In createHeap, while every texture is still as loaded.
-    void bind(const Models& models, uint32_t clientId);
+    void bind(const Models& models, uint32_t clientId, std::span<const PrivateModel> others = {});
     // Before the archives holding the textures go away.
     void release();
-    // Once per tick with what the owner's puppets wear (null: nothing of theirs), and whether the
-    // rest gets pristine blockers.
-    void update(const looks::CosmeticsValues* shown, bool block, const TintedFn& tinted);
+    // Once per tick.
+    void update(const PuppetLookState& state, const TintedFn& tinted);
     void probe(CosmeticsProbe& out) const;
     bool bound() const { return !mEntries.empty(); }
 
 private:
     struct Entry {
-        uint8_t target = 0;
+        uint8_t target = 0;  // kNoCosmeticsVar for the other textures
         uint8_t var = 0;
+        looks::LookType type = looks::LookType::Link;
+        const char* name = nullptr;
         J3DTexture* tex = nullptr;
         uint16_t texNo = 0;
         const uint8_t* image = nullptr;

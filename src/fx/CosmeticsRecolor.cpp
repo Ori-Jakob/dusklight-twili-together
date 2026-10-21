@@ -76,8 +76,19 @@ constexpr CosmeticsTarget kTargets[] = {
 };
 constexpr size_t kTargetCount = std::size(kTargets);
 
-// A puppet changes in one tick: aurora rebuilds its texture cache once a frame, however many land.
+// A puppet changes in a few ticks: aurora rebuilds its texture cache once a frame, however many land.
 constexpr int kEntriesPerTick = 64;
+
+looks::LookType modelType(CosmeticsModel model) {
+    switch (model) {
+    case CosmeticsModel::Wolf:
+        return looks::LookType::Wolf;
+    case CosmeticsModel::Horse:
+        return looks::LookType::Epona;
+    default:
+        return looks::LookType::Link;
+    }
+}
 constexpr size_t kMaxArchiveBytes = 64u << 20;
 constexpr size_t kMaxFileBytes = 16u << 20;
 
@@ -543,7 +554,8 @@ MidnaHairColours midnaHairColours(uint32_t base, uint32_t tips) {
     };
 }
 
-void PuppetCosmetics::bind(const Models& models, uint32_t clientId) {
+void PuppetCosmetics::bind(const Models& models, uint32_t clientId,
+    std::span<const PrivateModel> others) {
     release();
     mClientId = clientId;
     for (size_t t = 0; t < kTargetCount; t++) {
@@ -567,6 +579,8 @@ void PuppetCosmetics::bind(const Models& models, uint32_t clientId) {
             Entry e;
             e.target = static_cast<uint8_t>(t);
             e.var = target.var;
+            e.type = modelType(target.model);
+            e.name = target.texture;
             e.tex = tex;
             e.texNo = i;
             e.image = image;
@@ -577,6 +591,39 @@ void PuppetCosmetics::bind(const Models& models, uint32_t clientId) {
             e.palette = timg->indexTexture != 0;
             e.bytes = looks::gxImageBytes(e.format, e.width, e.height, e.mips);
             e.hash = e.bytes != 0 ? looks::hashBytes(image, e.bytes) : 0;
+            mEntries.push_back(e);
+        }
+    }
+    // Every other texture: only ever pristine or left alone.
+    for (const PrivateModel& model : others) {
+        J3DTexture* tex = model.data != nullptr ? model.data->getTexture() : nullptr;
+        JUTNameTab* names = model.data != nullptr ? model.data->getTextureName() : nullptr;
+        if (tex == nullptr) {
+            continue;
+        }
+        for (u16 i = 0; i < tex->getNum(); i++) {
+            const uint8_t* image = tex->getImgDataPtr(i);
+            if (image == nullptr || std::any_of(mEntries.begin(), mEntries.end(),
+                                        [image](const Entry& e) { return e.image == image; }))
+            {
+                continue;
+            }
+            const ResTIMG* timg = tex->getResTIMG(i);
+            const char* name = names != nullptr ? names->getName(i) : nullptr;
+            Entry e;
+            e.target = kNoCosmeticsVar;
+            e.var = kNoCosmeticsVar;
+            e.type = model.type;
+            e.name = name != nullptr ? name : "?";
+            e.tex = tex;
+            e.texNo = i;
+            e.image = image;
+            e.format = timg->format;
+            e.width = timg->width;
+            e.height = timg->height;
+            e.mips = std::max<uint8_t>(timg->mipmapCount, 1);
+            e.palette = timg->indexTexture != 0;
+            e.bytes = looks::gxImageBytes(e.format, e.width, e.height, e.mips);
             mEntries.push_back(e);
         }
     }
@@ -637,22 +684,28 @@ bool PuppetCosmetics::registerEntry(Entry& e, CosmeticsTexState state, uint32_t 
     return true;
 }
 
-void PuppetCosmetics::update(
-    const looks::CosmeticsValues* shown, bool block, const TintedFn& tinted) {
+void PuppetCosmetics::update(const PuppetLookState& state, const TintedFn& tinted) {
     if (mEntries.empty() || svc_texture == nullptr) {
         return;
     }
     int budget = kEntriesPerTick;
     bool changed = false;
     for (Entry& e : mEntries) {
-        if (e.vanilla < 0) {
-            e.vanilla = vanillaMatch(e.target, e.texNo, e.format, e.width, e.height, e.mips, e.hash);
-        }
-        CosmeticsTexState want = block ? CosmeticsTexState::Block : CosmeticsTexState::None;
+        const uint8_t bit = static_cast<uint8_t>(1u << static_cast<uint32_t>(e.type));
+        CosmeticsTexState want = CosmeticsTexState::None;
         uint32_t color = 0;
-        if (shown != nullptr && shown->has(e.var) && e.vanilla == 1 && recolorable(e.format)) {
-            want = CosmeticsTexState::Recolor;
-            color = shown->value[e.var];
+        if (e.target == kNoCosmeticsVar) {
+            want = (state.blockAll & bit) != 0 ? CosmeticsTexState::Block : CosmeticsTexState::None;
+        } else {
+            if (e.vanilla < 0) {
+                e.vanilla = vanillaMatch(e.target, e.texNo, e.format, e.width, e.height, e.mips, e.hash);
+            }
+            const looks::CosmeticsValues* shown = state.shown[static_cast<size_t>(e.type)];
+            want = (state.block & bit) != 0 ? CosmeticsTexState::Block : CosmeticsTexState::None;
+            if (shown != nullptr && shown->has(e.var) && e.vanilla == 1 && recolorable(e.format)) {
+                want = CosmeticsTexState::Recolor;
+                color = shown->value[e.var];
+            }
         }
         // A pointer replacement would hide our tint, and the tinted bytes match no one's key.
         if (e.bytes == 0 || e.palette || (tinted && tinted(e.image))) {
@@ -666,7 +719,7 @@ void PuppetCosmetics::update(
         }
         if (!registerEntry(e, want, color)) {
             TwiliLog.warn("[cosmetics {}] {} {}: registering failed, left as it is", mClientId,
-                kTargets[e.target].texture, probeName(want));
+                e.name, probeName(want));
             e.bytes = 0;
         }
         changed = true;
@@ -697,8 +750,9 @@ void PuppetCosmetics::probe(CosmeticsProbe& out) const {
     out.keysFound = state == kKeysReady ? static_cast<uint16_t>(sKeysFound) : 0;
     for (const Entry& e : mEntries) {
         CosmeticsTexProbe t;
-        t.texture = kTargets[e.target].texture;
+        t.texture = e.name;
         t.var = e.var;
+        t.type = e.type;
         t.state = e.state;
         t.vanilla = e.vanilla;
         t.color = e.color;

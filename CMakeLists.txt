@@ -84,9 +84,15 @@ set(TWILI_SOURCES
     src/hooks/hooks_sync.cpp
     src/horse/HorsePuppet.cpp
     src/horse/HorseSync.cpp
+    src/looks/Alias.cpp
     src/looks/Archive.cpp
+    src/looks/Choices.cpp
     src/looks/Cosmetics.cpp
+    src/looks/Detect.cpp
     src/looks/Inventory.cpp
+    src/looks/Looks.cpp
+    src/looks/Sha256.cpp
+    src/looks/Slots.cpp
     src/net/Link.cpp
     src/net/TcpTransport.cpp
     src/net/WsTransport.cpp
