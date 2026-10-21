@@ -80,8 +80,8 @@ ResolvedLook resolveLook(uint32_t clientId, LookType type);
 bool puppetArcPath(uint32_t clientId, LookArc arc, const char*& out);
 // Bit per LookArc of `arcs`: mounted from its base copy. A puppet whose bits change respawns.
 uint32_t puppetSignature(uint32_t clientId, std::span<const LookArc> arcs);
-// A puppet (or its Epona's) asks before it respawns for a new look: our own choices go at once,
-// a player's new manifest at most every 10 s.
+// A puppet (or its Epona's) asks before it respawns for a new look: our own choices for that
+// player, a block or our fallback setting go at once, a player's new manifest at most every 10 s.
 bool mayRespawn(uint32_t clientId, bool horse);
 
 // Their shared look on their row: blocked by us or not.

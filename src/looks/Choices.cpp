@@ -52,7 +52,6 @@ fs::path sPath;
 bool sDirty = false;
 Clock::time_point sSaveAt{};
 std::thread sWriter;
-uint32_t sRevision = 0;
 
 int64_t unixMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -171,7 +170,6 @@ void saveNow() {
 }
 
 void changed() {
-    ++sRevision;
     if (!sDirty) {
         sDirty = true;
     }
@@ -383,10 +381,6 @@ void setShasBlocked(const std::vector<std::string>& shas, bool blocked) {
         changed();
         TwiliLog.info("[looks] {} {} look file(s)", blocked ? "blocked" : "unblocked", count);
     }
-}
-
-uint32_t choicesRevision() {
-    return sRevision;
 }
 
 std::string choicesPath() {

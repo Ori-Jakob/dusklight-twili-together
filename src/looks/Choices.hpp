@@ -40,8 +40,6 @@ void setTypeChoice(uint32_t clientId, LookType type, std::optional<LookChoice> c
 bool shaBlocked(const std::string& sha);
 void setShasBlocked(const std::vector<std::string>& shas, bool blocked);
 
-// Changes with every choice and block, so puppets can see a new one.
-uint32_t choicesRevision();
 // Where the file is (empty without a data directory).
 std::string choicesPath();
 

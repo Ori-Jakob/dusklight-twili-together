@@ -30,10 +30,13 @@ constexpr const char* kStateIds[] = {"vanilla", "shared", "unshared"};
 std::map<uint32_t, PeerLooks> sPeers;
 
 struct Respawn {
-    uint32_t revision = 0;
+    uint32_t own = 0;
+    uint32_t blocks = 0;
     Clock::time_point at{};
 };
 std::map<uint64_t, Respawn> sRespawns;
+// Per player: how often we blocked or unblocked their look.
+std::map<uint32_t, uint32_t> sBlockActions;
 
 bool sModListSent = false;
 nlohmann::json sSentModList = nlohmann::json::array();
@@ -156,6 +159,17 @@ bool slotBlocked(const PeerSlot& slot) {
 PuppetSource fallbackSource() {
     return config::getInt(config::Var::LooksFallback) == 1 ? PuppetSource::GameDefault :
                                                              PuppetSource::MyOwn;
+}
+
+// What we chose for a player's puppets: their choices, our fallback and Show Other Players' Looks.
+uint32_t ownSettings(uint32_t clientId) {
+    uint32_t bits = 0;
+    for (size_t t = 0; t < kLookTypeCount; t++) {
+        bits |= static_cast<uint32_t>(effectiveChoice(clientId, static_cast<LookType>(t))) << (t * 2);
+    }
+    bits |= (fallbackSource() == PuppetSource::GameDefault ? 1u : 0u) << 8;
+    bits |= (config::getBool(config::Var::ShowLooks) ? 1u : 0u) << 9;
+    return bits;
 }
 
 nlohmann::json wantedModList() {
@@ -423,11 +437,15 @@ uint32_t puppetSignature(uint32_t clientId, std::span<const LookArc> arcs) {
 bool mayRespawn(uint32_t clientId, bool horse) {
     const auto now = Clock::now();
     Respawn& r = sRespawns[static_cast<uint64_t>(clientId) << 1 | (horse ? 1 : 0)];
-    const bool ours = r.revision != choicesRevision();
+    const uint32_t own = ownSettings(clientId);
+    const auto blocks = sBlockActions.find(clientId);
+    const uint32_t blockCount = blocks != sBlockActions.end() ? blocks->second : 0;
+    const bool ours = own != r.own || blockCount != r.blocks;
     if (!ours && r.at != Clock::time_point{} && now - r.at < kRespawnGap) {
         return false;
     }
-    r.revision = choicesRevision();
+    r.own = own;
+    r.blocks = blockCount;
     r.at = now;
     return true;
 }
@@ -460,6 +478,7 @@ void setLookBlocked(uint32_t clientId, bool blocked) {
         }
     }
     setShasBlocked(shas, blocked);
+    sBlockActions[clientId]++;
 }
 
 void updateLooks() {
@@ -479,6 +498,7 @@ void updateLooks() {
 void resetLooksSession() {
     sPeers.clear();
     sRespawns.clear();
+    sBlockActions.clear();
     sModListSent = false;
     sSentModList = nlohmann::json::array();
 }
