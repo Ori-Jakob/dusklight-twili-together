@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # Standalone: fetch the Dusklight tree with the host services this mod needs.
     if (NOT DUSKLIGHT_VERSION)
-        set(DUSKLIGHT_VERSION "a6dcc2e726d9c94b033cd08634dfaebf62ba4468")
+        set(DUSKLIGHT_VERSION "95a61c5a565971fa089477abe885b18f4cbfe6b6")
     endif ()
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchDusklight.cmake")
     option(DUSK_MOD_USE_FULL_TREE "Use full build instead of the minimal mod SDK" OFF)
