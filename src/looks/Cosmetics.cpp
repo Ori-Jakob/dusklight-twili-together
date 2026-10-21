@@ -13,8 +13,10 @@
 
 #include <bit>
 #include <chrono>
+#include <compare>
 #include <filesystem>
 #include <map>
+#include <set>
 
 namespace twili::looks {
 namespace {
@@ -34,10 +36,20 @@ Clock::time_point sReadAt{};
 uint64_t sGeneration = ~0ull;
 std::string sVersion;
 
-// A mod's content-keyed texture (per generation), and texture packs (checked when turned on).
+// Every mod's content keys for non-palette textures (per generation), and texture packs (checked
+// when turned on).
+struct ContentKey {
+    uint64_t hash = 0;
+    uint32_t width = 0, height = 0, format = 0;
+    auto operator<=>(const ContentKey&) const = default;
+};
+std::set<ContentKey> sContentKeys;
 bool sModTextures = false;
 bool sPacksChecked = false;
 bool sPackFiles = false;
+bool sPacksOn = false;
+bool sKeysRead = false;
+uint32_t sKeysRevision = 0;
 
 bool sRelayCosmetics = false;
 bool sRelayLooks = false;
@@ -86,19 +98,28 @@ bool canShow() {
 }
 
 #if TWILI_HAS_MODS_SERVICE
-bool hasContentTexture(const std::string& modId) {
-    bool found = false;
+// Whether the mod has a content-keyed texture; adds those of non-palette textures to `keys`.
+bool collectContentKeys(const std::string& modId, std::set<ContentKey>& keys) {
+    struct Listing {
+        std::set<ContentKey>* keys;
+        bool found = false;
+    } listing{&keys};
     svc_mods->list_overrides(
         mod_ctx, modId.c_str(),
         [](void* user, const ModOverride* o) {
-            if (o->kind == MOD_OVR_TEXTURE && o->texture_key.kind == TEXTURE_KEY_SOURCE) {
-                *static_cast<bool*>(user) = true;
-                return false;
+            if (o->kind != MOD_OVR_TEXTURE || o->texture_key.kind != TEXTURE_KEY_SOURCE) {
+                return true;
+            }
+            auto* l = static_cast<Listing*>(user);
+            l->found = true;
+            if (!o->texture_key.has_tlut) {
+                l->keys->insert({o->texture_key.texture_hash, o->texture_key.width, o->texture_key.height,
+                    o->texture_key.gx_format});
             }
             return true;
         },
-        &found);
-    return found;
+        &listing);
+    return listing.found;
 }
 #endif
 
@@ -154,13 +175,23 @@ std::optional<CosmeticsValues> readLocal() {
         sGeneration = generation;
         sVersion.clear();
         sModTextures = false;
+        std::set<ContentKey> keys;
         for (const ModEntry& mod : listMods()) {
             if (mod.id == kCosmeticsModId) {
                 sVersion = mod.version.substr(0, kMaxVersionBytes);
             }
-            sModTextures = sModTextures || hasContentTexture(mod.id);
+            sModTextures = collectContentKeys(mod.id, keys) || sModTextures;
+        }
+        if (!sKeysRead || keys != sContentKeys) {
+            sContentKeys = std::move(keys);
+            sKeysRevision++;
         }
     }
+    if (const bool packs = texturePacksActive(); !sKeysRead || packs != sPacksOn) {
+        sPacksOn = packs;
+        sKeysRevision++;
+    }
+    sKeysRead = true;
     CosmeticsValues values;
     values.version = sVersion;
     bool active = false;
@@ -439,10 +470,23 @@ const CosmeticsValues* hairCosmetics(uint32_t clientId) {
 }
 
 bool blockOwnLooks(uint32_t clientId, LookType type, bool allTextures) {
-    if (effectiveChoice(clientId, type) == LookChoice::MyOwn || !ownTexturesActive()) {
-        return false;
+    if (allTextures) {
+        return resolveLook(clientId, type).source == PuppetSource::GameDefault &&
+               !config::getBool(config::Var::AllowMyTexturePacks);
     }
-    return !allTextures || !config::getBool(config::Var::AllowMyTexturePacks);
+    return effectiveChoice(clientId, type) != LookChoice::MyOwn && ownTexturesActive();
+}
+
+bool ownTextureMatches(uint64_t hash, uint16_t width, uint16_t height, uint8_t format) {
+    if (!canRead() || sPacksOn) {
+        return true;
+    }
+    return sContentKeys.contains({hash, width, height, format}) ||
+           sContentKeys.contains({TEXTURE_HASH_WILDCARD, width, height, format});
+}
+
+uint32_t ownTexturesRevision() {
+    return sKeysRevision;
 }
 
 const std::optional<CosmeticsValues>& localCosmetics() {

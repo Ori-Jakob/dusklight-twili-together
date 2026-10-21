@@ -364,4 +364,68 @@ uint64_t hashBytes(const uint8_t* data, size_t size) {
     return h;
 }
 
+namespace {
+
+constexpr uint64_t kP1 = 0x9E3779B185EBCA87ull, kP2 = 0xC2B2AE3D27D4EB4Full, kP3 = 0x165667B19E3779F9ull,
+                   kP4 = 0x85EBCA77C2B2AE63ull, kP5 = 0x27D4EB2F165667C5ull;
+
+uint64_t rotl(uint64_t x, int r) {
+    return (x << r) | (x >> (64 - r));
+}
+
+uint64_t le64(const uint8_t* p) {
+    uint64_t v = 0;
+    for (int i = 7; i >= 0; i--) {
+        v = v << 8 | p[i];
+    }
+    return v;
+}
+
+uint64_t xxRound(uint64_t acc, uint64_t input) {
+    return rotl(acc + input * kP2, 31) * kP1;
+}
+
+uint64_t xxMerge(uint64_t acc, uint64_t val) {
+    return (acc ^ xxRound(0, val)) * kP1 + kP4;
+}
+
+}  // namespace
+
+uint64_t xxh64(const uint8_t* p, size_t len) {
+    const uint8_t* end = p + len;
+    uint64_t h;
+    if (len >= 32) {
+        uint64_t v1 = kP1 + kP2, v2 = kP2, v3 = 0, v4 = 0 - kP1;
+        for (; p + 32 <= end; p += 32) {
+            v1 = xxRound(v1, le64(p));
+            v2 = xxRound(v2, le64(p + 8));
+            v3 = xxRound(v3, le64(p + 16));
+            v4 = xxRound(v4, le64(p + 24));
+        }
+        h = rotl(v1, 1) + rotl(v2, 7) + rotl(v3, 12) + rotl(v4, 18);
+        h = xxMerge(xxMerge(xxMerge(xxMerge(h, v1), v2), v3), v4);
+    } else {
+        h = kP5;
+    }
+    h += len;
+    for (; p + 8 <= end; p += 8) {
+        h = rotl(h ^ xxRound(0, le64(p)), 27) * kP1 + kP4;
+    }
+    if (p + 4 <= end) {
+        const uint64_t k = static_cast<uint64_t>(p[0]) | static_cast<uint64_t>(p[1]) << 8 |
+                           static_cast<uint64_t>(p[2]) << 16 | static_cast<uint64_t>(p[3]) << 24;
+        h = rotl(h ^ k * kP1, 23) * kP2 + kP3;
+        p += 4;
+    }
+    for (; p < end; p++) {
+        h = rotl(h ^ *p * kP5, 11) * kP1;
+    }
+    h ^= h >> 33;
+    h *= kP2;
+    h ^= h >> 29;
+    h *= kP3;
+    h ^= h >> 32;
+    return h;
+}
+
 }  // namespace twili::looks

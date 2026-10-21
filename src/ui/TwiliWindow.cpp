@@ -1194,8 +1194,8 @@ ModResult buildLooksTab(ModContext*, UiWindowHandle, UiElementHandle left, UiEle
     fallback.kind = UI_CONTROL_SELECT;
     fallback.label = "While a Look Is Unavailable, Show";
     fallback.help_rml = "<p>What a puppet wears while its player's look is downloading, too big, "
-                        "blocked, unshared or not shown: your own look mods (as before look "
-                        "sharing) or the game's look.</p>";
+                        "blocked, unshared or not shown: your own look mods and texture packs (as "
+                        "before look sharing) or the game's look.</p>";
     fallback.binding = UI_BINDING_CONFIG_VAR;
     fallback.config_var = config::handle(Var::LooksFallback);
     fallback.options = kFallbackOptions;
@@ -1215,8 +1215,8 @@ ModResult buildLooksTab(ModContext*, UiWindowHandle, UiElementHandle left, UiEle
     addControl(left, limit);
     addToggle(left, Var::AllowMyTexturePacks, "Allow My Texture Packs on Other Players",
         "<p>Your texture packs and look mods' textures also land on other players' puppets "
-        "showing their look or the game's. Off keeps them on your own Link and on puppets you "
-        "show in My Own.</p>");
+        "showing their look or the game's. Off keeps them to your own Link and to puppets "
+        "showing your own look (My Own, or while their look is unavailable).</p>");
 
     svc_ui->pane_add_section(mod_ctx, left, "Cosmetics");
     addToggle(left, Var::ShowCosmetics, "Show Other Players' Cosmetics",
@@ -1227,8 +1227,8 @@ ModResult buildLooksTab(ModContext*, UiWindowHandle, UiElementHandle left, UiEle
     s_live.lastLooksStatus = looksStatusRml();
     s_live.looksStatus = addRml(left, s_live.lastLooksStatus);
     addRml(left, "<p class=\"twili-player-detail\">Your texture packs are never shared, and they "
-                 "stay off other players' puppets unless you pick My Own for that player or "
-                 "allow them above.</p>");
+                 "stay off puppets showing another player's look or the game's unless you allow "
+                 "them above.</p>");
     return MOD_OK;
 }
 

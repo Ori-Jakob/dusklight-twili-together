@@ -80,9 +80,16 @@ const CosmeticsValues* shownCosmetics(uint32_t clientId, LookType type);
 const CosmeticsValues* hairCosmetics(uint32_t clientId);
 // Whether their puppets of one type keep our cosmetics off their cosmetics textures with pristine
 // blockers: not for My Own, and only while something of ours could land there. With
-// `allTextures`, whether every other texture of theirs gets one too (our texture packs and mods'
-// textures), unless Allow My Texture Packs on Other Players is on.
+// `allTextures`, whether their other textures get one too where ownTextureMatches says so: only
+// while the puppet shows the game's look (not our own, chosen or as the fallback), unless Allow My
+// Texture Packs on Other Players is on.
 bool blockOwnLooks(uint32_t clientId, LookType type, bool allTextures = false);
+// Whether a content-keyed texture of ours could replace a non-palette texture with this base mip
+// (XXH64, size, GX format): any texture while a texture pack is on (packs cannot be listed), else a
+// mod's SOURCE key for it. Our cosmetics are left out: their own blockers cover them.
+bool ownTextureMatches(uint64_t hash, uint16_t width, uint16_t height, uint8_t format);
+// Changes whenever ownTextureMatches may answer differently.
+uint32_t ownTexturesRevision();
 // What we read from the cosmetics mod (nullopt: not active or unreadable) and what we last sent.
 const std::optional<CosmeticsValues>& localCosmetics();
 bool cosmeticsSent();

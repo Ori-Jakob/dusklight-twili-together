@@ -624,6 +624,9 @@ void PuppetCosmetics::bind(const Models& models, uint32_t clientId,
             e.mips = std::max<uint8_t>(timg->mipmapCount, 1);
             e.palette = timg->indexTexture != 0;
             e.bytes = looks::gxImageBytes(e.format, e.width, e.height, e.mips);
+            if (e.bytes != 0 && !e.palette) {
+                e.key = looks::xxh64(image, looks::gxImageBytes(e.format, e.width, e.height, 1));
+            }
             mEntries.push_back(e);
         }
     }
@@ -695,7 +698,12 @@ void PuppetCosmetics::update(const PuppetLookState& state, const TintedFn& tinte
         CosmeticsTexState want = CosmeticsTexState::None;
         uint32_t color = 0;
         if (e.target == kNoCosmeticsVar) {
-            want = (state.blockAll & bit) != 0 ? CosmeticsTexState::Block : CosmeticsTexState::None;
+            if ((state.blockAll & bit) != 0 && e.keyRevision != looks::ownTexturesRevision()) {
+                e.keyRevision = looks::ownTexturesRevision();
+                e.matched = looks::ownTextureMatches(e.key, e.width, e.height, e.format);
+            }
+            const bool block = (state.blockAll & bit) != 0 && e.matched;
+            want = block ? CosmeticsTexState::Block : CosmeticsTexState::None;
         } else {
             if (e.vanilla < 0) {
                 e.vanilla = vanillaMatch(e.target, e.texNo, e.format, e.width, e.height, e.mips, e.hash);

@@ -3,7 +3,8 @@
 // A teammate's cosmetics on their puppets (CosmeticsRecolor.cpp): our own recolour of the
 // textures the cosmetics mod colours that still match the disc, registered as POINTER
 // replacements on each puppet's own copies, and pristine POINTER blockers that keep our
-// cosmetics, texture packs and mods' textures off them (every private texture of the puppet).
+// cosmetics, texture packs and mods' textures off them (the cosmetics textures, and every other
+// private texture of the puppet that a content key of ours matches).
 
 #include "fx/PlayerRecolorMath.hpp"
 #include "looks/Cosmetics.hpp"
@@ -77,7 +78,8 @@ struct CosmeticsProbe {
 };
 
 // Per look type of one puppet: the cosmetics its owner's puppets wear (null: nothing of theirs),
-// and bits per type for pristine blockers on its cosmetics textures and on all its others.
+// and bits per type for pristine blockers on its cosmetics textures and on those of its others
+// that a content key of ours matches (looks::ownTextureMatches).
 struct PuppetLookState {
     std::array<const looks::CosmeticsValues*, looks::kLookTypeCount> shown{};
     uint8_t block = 0;
@@ -120,6 +122,9 @@ private:
         bool palette = false;
         uint32_t bytes = 0;
         uint64_t hash = 0;  // at bind
+        uint64_t key = 0;   // the other textures: XXH64 of the base mip at bind
+        uint32_t keyRevision = ~0u;
+        bool matched = false;
         int8_t vanilla = -1;
         uint64_t handle = 0;
         CosmeticsTexState state = CosmeticsTexState::None;

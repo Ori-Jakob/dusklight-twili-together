@@ -57,5 +57,7 @@ std::optional<std::vector<Tex1Entry>> bmdTextures(std::span<const uint8_t> bmd);
 uint32_t gxImageBytes(uint8_t format, uint16_t width, uint16_t height, uint8_t mipCount);
 // A 64-bit content hash (not cryptographic): what a texture's bytes are compared by.
 uint64_t hashBytes(const uint8_t* data, size_t size);
+// XXH64 with seed 0: Aurora's content key of a texture's base mip.
+uint64_t xxh64(const uint8_t* data, size_t size);
 
 }  // namespace twili::looks
