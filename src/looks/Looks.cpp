@@ -25,9 +25,13 @@ constexpr auto kModListInterval = std::chrono::seconds(1);
 constexpr size_t kMaxText = 64;
 constexpr size_t kMaxSlotMods = 16;
 constexpr size_t kMaxModList = 64;
+// The relay drops a LOOK_MANIFEST over 16 KiB: this leaves room for the cosmetics and the rest.
+constexpr size_t kMaxManifestLooksBytes = 14 * 1024;
 constexpr const char* kStateIds[] = {"vanilla", "shared", "unshared"};
 
 std::map<uint32_t, PeerLooks> sPeers;
+// Bit per type the last manifest left unshared to fit.
+uint8_t sTrimmed = 0;
 
 struct Respawn {
     uint32_t own = 0;
@@ -325,12 +329,18 @@ void takePeerLooks(uint32_t clientId, const nlohmann::json& looks) {
 }
 
 OwnSlot ownSlot(LookType type, ShareScope scope) {
-    return ownSlots(scope)[static_cast<size_t>(type)];
+    OwnSlot slot = ownSlots(scope)[static_cast<size_t>(type)];
+    if (slot.state == SlotState::Shared && ((sTrimmed >> static_cast<uint32_t>(type)) & 1) != 0) {
+        slot.state = SlotState::Unshared;
+        slot.why = "too many mods and files for the relay to pass on";
+    }
+    return slot;
 }
 
 nlohmann::json manifestLooks(ShareScope scope) {
     nlohmann::json out = nlohmann::json::array();
     const LocalLooks& local = localLooks();
+    sTrimmed = 0;
     if (scope == ShareScope::Off || !canSendLooks() || !local.known) {
         return out;
     }
@@ -360,6 +370,23 @@ nlohmann::json manifestLooks(ShareScope scope) {
             entry["files"] = std::move(list);
         }
         out.push_back(std::move(entry));
+    }
+    if (out.dump().size() > kMaxManifestLooksBytes) {
+        for (auto& entry : out) {
+            if (const auto mods = entry.find("mods"); mods != entry.end()) {
+                for (auto& mod : *mods) {
+                    mod.erase("version");
+                    mod.erase("author");
+                }
+            }
+        }
+    }
+    for (size_t t = kLookTypeCount; t-- > 0 && out.dump().size() > kMaxManifestLooksBytes;) {
+        if (slots[t].state == SlotState::Shared) {
+            out[t] = {{"slot", lookTypeId(static_cast<LookType>(t))},
+                {"state", slotStateId(SlotState::Unshared)}};
+            sTrimmed |= static_cast<uint8_t>(1u << t);
+        }
     }
     return out;
 }
@@ -600,9 +627,8 @@ std::vector<std::string> localLooksLines() {
             mod.shareable ? "" : " (does not allow sharing)"));
     }
     const ShareScope scope = shareScope();
-    const auto slots = ownSlots(scope);
     for (size_t t = 0; t < kLookTypeCount; t++) {
-        const OwnSlot& slot = slots[t];
+        const OwnSlot slot = ownSlot(static_cast<LookType>(t), scope);
         const char* name = lookTypeName(static_cast<LookType>(t));
         if (slot.state == SlotState::Vanilla) {
             lines.push_back(fmt::format("{}: the game's look.", name));

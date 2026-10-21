@@ -54,7 +54,8 @@ const PeerLooks* peerLooks(uint32_t clientId);
 // The `looks` of their LOOK_MANIFEST; a bad entry drops all of them.
 void takePeerLooks(uint32_t clientId, const nlohmann::json& looks);
 
-// One look type of ours as the manifest lists it at `scope`, and why it is not shared.
+// One look type of ours as the manifest lists it at `scope`, and why it is not shared (a type
+// the last manifest could not fit under the relay's size limit included).
 struct OwnSlot {
     SlotState state = SlotState::Vanilla;
     std::string why;
@@ -63,6 +64,8 @@ struct OwnSlot {
 };
 OwnSlot ownSlot(LookType type, ShareScope scope);
 // Ours for LOOK_MANIFEST: an entry per type, none while sharing is Off or the scan is not done.
+// Too big for the relay, the mods lose their version and author, then the last shared types go
+// out unshared.
 nlohmann::json manifestLooks(ShareScope scope);
 std::string manifestLooksSummary(const nlohmann::json& looks);
 
