@@ -50,9 +50,11 @@ The client's first packet is the handshake:
   clients with the same layout, since the world state is sent as raw save bytes.
 - `sessionKey` is random per game process. It lets a reconnect replace the old connection and
   keeps the relay from replaying a player's own packets back to them.
-- `installId` (32 lowercase hex digits, optional) is random once per install and kept in the mod's
-  data directory. Receivers file their per-player look choices under it; it is unauthenticated,
-  a convenience and no identity. The relay drops a malformed one and passes it on in the client
+- `installId` (32 lowercase hex digits, optional) is stable per install and relay: the first half of
+  SHA-256 of a random id kept in the mod's data directory, a newline and the relay's host, so it
+  links nothing across relays. Everyone in the room and the relay's operator see it, whatever Share
+  My Looks says. Receivers file their per-player look choices under it; it is unauthenticated, a
+  convenience and no identity. The relay drops a malformed one and passes it on in the client
   state.
 - `game` says what the player runs; see [Team games](#team-games).
 - `features` (optional) says what the client can do with [looks](#looks): `cos.send` (it reads

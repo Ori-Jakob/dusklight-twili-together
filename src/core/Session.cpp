@@ -353,7 +353,7 @@ void Session::sendHandshake() {
         {"teamId", mParams.team},
         {"roomId", trimAsciiWhitespace(mParams.room)},
         {"sessionKey", mSessionKey},
-        {"installId", looks::installId()},
+        {"installId", looks::relayInstallId(mLink.url())},
         {"color", {{"r", color[0]}, {"g", color[1]}, {"b", color[2]}}},
         {"game", game_identity::handshakeJson()},
         {"features", looks::handshakeFeatures()},

@@ -2,8 +2,9 @@
 
 // Per player, how their puppets look to us: Their Look (one choice for all their puppets) with an
 // optional choice per look type, and the looks we blocked. Saved in data_dir/looks.json under
-// the player's install id (their name while the relay passes none), next to our own install id,
-// which the handshake sends. The id is unauthenticated: a convenience, not an identity.
+// the player's install id (their name while the relay passes none), next to our own install id.
+// The handshake sends an id derived from ours and the relay's host, so it stays the same on one
+// relay and links nothing across relays. Unauthenticated: a convenience, not an identity.
 
 #include "looks/Slots.hpp"
 
@@ -28,6 +29,9 @@ void flushChoices();
 // Every tick: writes changes a moment after the last one, off the game thread.
 void tickChoices();
 const std::string& installId();
+// What the handshake sends to the relay at `relayUrl`: 32 hex digits of SHA-256 of our install id
+// and the relay's host.
+std::string relayInstallId(std::string_view relayUrl);
 bool validInstallId(std::string_view id);
 
 LookChoice lookChoice(uint32_t clientId);

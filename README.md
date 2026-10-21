@@ -221,7 +221,8 @@ Fetching shared files is not built yet, so a puppet shows its player's look only
 is the game's own (from the disc's own archives, whatever look mods you have on); for a shared
 look it shows what **While a Look Is Unavailable, Show** says. **Game Default** shows the game's
 look on a player's puppets, **My Own** your own look mods. Choices are kept per player across
-restarts, by a random id each install sends (their name when the relay is older). Puppets showing
+restarts, by an id each install sends (derived per relay from a random one, so it links nothing
+across relays; their name when the relay is older). Puppets showing
 their own look or the game's keep your texture packs and mods' textures off unless you allow them.
 
 ## The players widget

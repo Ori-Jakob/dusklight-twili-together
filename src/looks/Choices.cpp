@@ -2,6 +2,7 @@
 
 #include "core/Log.hpp"
 #include "core/Session.hpp"
+#include "looks/Sha256.hpp"
 
 #include <mods/svc/host.h>
 
@@ -318,6 +319,27 @@ void tickChoices() {
 const std::string& installId() {
     loadChoices();
     return sInstallId;
+}
+
+std::string relayInstallId(std::string_view relayUrl) {
+    std::string_view host = relayUrl;
+    if (const size_t scheme = host.find("://"); scheme != std::string_view::npos) {
+        host.remove_prefix(scheme + 3);
+    }
+    host = host.substr(0, host.find_first_of("/?#"));
+    if (const size_t at = host.rfind('@'); at != std::string_view::npos) {
+        host.remove_prefix(at + 1);
+    }
+    std::string input = installId() + "\n";
+    for (const char c : host) {
+        input += c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+    }
+    const auto sha = sha256({reinterpret_cast<const uint8_t*>(input.data()), input.size()});
+    std::string out;
+    for (size_t i = 0; i < 16; i++) {
+        out += fmt::format("{:02x}", sha[i]);
+    }
+    return out;
 }
 
 LookChoice lookChoice(uint32_t clientId) {
