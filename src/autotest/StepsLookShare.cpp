@@ -9,6 +9,7 @@
 #include "core/Log.hpp"
 #include "core/Session.hpp"
 #include "fx/CosmeticsRecolor.hpp"
+#include "looks/Alias.hpp"
 #include "looks/Archive.hpp"
 #include "looks/Choices.hpp"
 #include "looks/Cosmetics.hpp"
@@ -20,6 +21,7 @@
 #include <mods/svc/overlay.h>
 #include <mods/svc/texture.h>
 
+#include <dolphin/dvd.h>
 #include <dolphin/gx.h>
 #include <fmt/format.h>
 
@@ -74,68 +76,6 @@ bool holdMatch(StepContext& ctx, const std::string& op, const std::string& why, 
     return false;
 }
 
-// --- XXH64 (seed 0): the content key Aurora gives a texture's base mip
-
-constexpr uint64_t kP1 = 0x9E3779B185EBCA87ull, kP2 = 0xC2B2AE3D27D4EB4Full, kP3 = 0x165667B19E3779F9ull,
-                   kP4 = 0x85EBCA77C2B2AE63ull, kP5 = 0x27D4EB2F165667C5ull;
-
-uint64_t rotl(uint64_t x, int r) {
-    return (x << r) | (x >> (64 - r));
-}
-
-uint64_t read64(const uint8_t* p) {
-    uint64_t v = 0;
-    for (int i = 7; i >= 0; i--) {
-        v = v << 8 | p[i];
-    }
-    return v;
-}
-
-uint64_t xxRound(uint64_t acc, uint64_t input) {
-    return rotl(acc + input * kP2, 31) * kP1;
-}
-
-uint64_t xxMerge(uint64_t acc, uint64_t val) {
-    return (acc ^ xxRound(0, val)) * kP1 + kP4;
-}
-
-uint64_t xxh64(const uint8_t* p, size_t len) {
-    const uint8_t* end = p + len;
-    uint64_t h;
-    if (len >= 32) {
-        uint64_t v1 = kP1 + kP2, v2 = kP2, v3 = 0, v4 = 0 - kP1;
-        for (; p + 32 <= end; p += 32) {
-            v1 = xxRound(v1, read64(p));
-            v2 = xxRound(v2, read64(p + 8));
-            v3 = xxRound(v3, read64(p + 16));
-            v4 = xxRound(v4, read64(p + 24));
-        }
-        h = rotl(v1, 1) + rotl(v2, 7) + rotl(v3, 12) + rotl(v4, 18);
-        h = xxMerge(xxMerge(xxMerge(xxMerge(h, v1), v2), v3), v4);
-    } else {
-        h = kP5;
-    }
-    h += len;
-    for (; p + 8 <= end; p += 8) {
-        h = rotl(h ^ xxRound(0, read64(p)), 27) * kP1 + kP4;
-    }
-    if (p + 4 <= end) {
-        const uint64_t k = static_cast<uint64_t>(p[0]) | static_cast<uint64_t>(p[1]) << 8 |
-                           static_cast<uint64_t>(p[2]) << 16 | static_cast<uint64_t>(p[3]) << 24;
-        h = rotl(h ^ k * kP1, 23) * kP2 + kP3;
-        p += 4;
-    }
-    for (; p < end; p++) {
-        h = rotl(h ^ *p * kP5, 11) * kP1;
-    }
-    h ^= h >> 33;
-    h *= kP2;
-    h ^= h >> 29;
-    h *= kP3;
-    h ^= h >> 32;
-    return h;
-}
-
 // --- the disc's own archives
 
 std::optional<std::vector<uint8_t>> discArchive(LookArc arc) {
@@ -175,16 +115,25 @@ std::string selfTest() {
     }
     uint8_t texels[64];
     std::memset(texels, 0x3C, sizeof(texels));
-    if (xxh64(texels, sizeof(texels)) != 0xF2FA84DAA598697Aull) {
-        return "xxh64 of 64 bytes of 0x3C";
+    if (looks::xxh64(texels, sizeof(texels)) != 0xF2FA84DAA598697Aull ||
+        looks::xxh64(reinterpret_cast<const uint8_t*>("abc"), 3) != 0x44BC2CF5AD770999ull)
+    {
+        return "xxh64 test vectors";
     }
     if (looks::entryType(LookArc::Kmdl, "AL_HEAD.BMD") != LookType::Link ||
         looks::entryType(LookArc::Wmdl, "md.bmd") != LookType::Midna ||
         looks::entryType(LookArc::Wmdl, "wl.bmd") != LookType::Wolf ||
+        looks::entryType(LookArc::Alink, "CROD_BALL.btk") != LookType::Link ||
         looks::entryType(LookArc::Kmdl, "al_unlisted.bin") || looks::entryType(LookArc::Horse, "al.bmd") ||
         looks::arcByPath("/res/object/KMDL.arc") != LookArc::Kmdl || looks::arcByPath("/res/Object/Kmdl/al.bmd"))
     {
         return "the allowlist";
+    }
+    if (!looks::shareAllowed("{}") || !looks::shareAllowed("not json") ||
+        !looks::shareAllowed(R"({"multiplayer": {"share": true}})") ||
+        looks::shareAllowed(R"({"multiplayer": {"share": false}})"))
+    {
+        return "the mod.json share flag";
     }
     if (!looks::canReceiveLooks()) {
         return {};
@@ -321,6 +270,62 @@ bool archiveOverride(StepContext& ctx) {
     }
     TwiliLog.info("[autotest] looks: {} replaced whole, {} texture {} changed, sha256 {}", looks::arcDefaultPath(*arc),
         bmd, tex->name, looks::hex(looks::sha256(changed)));
+    return true;
+}
+
+// --- entry overlays of ours at the paths the archives read them from, one texel changed
+
+std::vector<OverlayHandle> sEntryOverrides;
+
+bool entryOverride(StepContext& ctx) {
+    if (ctx.step.value("remove", false)) {
+        for (const OverlayHandle handle : sEntryOverrides) {
+            if (svc_overlay != nullptr) {
+                svc_overlay->remove(mod_ctx, handle);
+            }
+        }
+        sEntryOverrides.clear();
+        return true;
+    }
+    const auto arc = arcOf(ctx.step);
+    const std::string bmd = ctx.step.value("bmd", std::string{});
+    const auto bytes = arc ? discArchive(*arc) : std::nullopt;
+    const auto files = bytes ? looks::rarcPaths(*bytes) : std::nullopt;
+    if (svc_overlay == nullptr || !files) {
+        ctx.fail("looksEntryOverride: no OverlayService or the archive is unreadable");
+        return true;
+    }
+    const auto file = std::ranges::find_if(*files, [&](const looks::RarcPath& f) {
+        const size_t slash = f.path.find_last_of('/');
+        return looks::iequals(slash == std::string::npos ? f.path : f.path.substr(slash + 1), bmd);
+    });
+    if (file == files->end() || (file->file.flags & 0x84) != 0) {
+        ctx.fail(fmt::format("looksEntryOverride: {} missing or compressed", bmd));
+        return true;
+    }
+    std::vector<uint8_t> model(bytes->begin() + file->file.offset,
+        bytes->begin() + file->file.offset + file->file.size);
+    const auto textures = looks::bmdTextures(model);
+    const looks::Tex1Entry* tex = textures ? firstPlainTexture(*textures) : nullptr;
+    // Without a plain texture, a byte of the J3D header's padding the loader skips.
+    const size_t changed = tex != nullptr ? tex->imageOffset : 0x1F;
+    if (model.size() <= changed) {
+        ctx.fail(fmt::format("looksEntryOverride: {} is too short", bmd));
+        return true;
+    }
+    model[changed] ^= tex != nullptr ? 0xFF : 0x01;
+    std::string path = looks::arcDefaultPath(*arc);
+    path.resize(path.size() - 4);
+    path += "/" + file->path;
+    OverlayHandle handle = 0;
+    if (svc_overlay->add_buffer(mod_ctx, path.c_str(), model.data(), model.size(), &handle) != MOD_OK) {
+        ctx.fail("looksEntryOverride: add_buffer refused it");
+        return true;
+    }
+    sEntryOverrides.push_back(handle);
+    TwiliLog.info("[autotest] looks: entry overlay {} ({}), sha256 {}", path,
+        tex != nullptr ? "texture " + tex->name + " changed" : std::string("header padding changed"),
+        looks::hex(looks::sha256(model)));
     return true;
 }
 
@@ -589,7 +594,7 @@ bool registerSourceTexture(StepContext& ctx) {
     std::vector<uint8_t> texels(bmd->begin() + tex->imageOffset, bmd->begin() + tex->imageOffset + base);
     TextureKey key = TEXTURE_KEY_INIT;
     key.kind = TEXTURE_KEY_SOURCE;
-    key.texture_hash = xxh64(texels.data(), texels.size());
+    key.texture_hash = looks::xxh64(texels.data(), texels.size());
     key.width = tex->width;
     key.height = tex->height;
     key.gx_format = tex->format;
@@ -672,6 +677,68 @@ std::string sourceMismatch(const json& step, std::string& detail) {
     return {};
 }
 
+// --- base copies
+
+// The base copy's bytes as a puppet opens them, against the disc's file read past every overlay.
+std::string baseCopyMismatch(LookArc arc) {
+    const auto disc = looks::readBaseDiscFile(looks::arcDefaultPath(arc));
+    DVDFileInfo info{};
+    if (!disc || !DVDOpen(looks::arcAliasPath(arc), &info)) {
+        return "the disc file or the copy does not open";
+    }
+    const uint32_t length = info.length;
+    const uint32_t readSize = (length + 31) & ~31u;
+    std::vector<uint8_t> storage(readSize + 32);
+    auto* buffer = reinterpret_cast<uint8_t*>((reinterpret_cast<uintptr_t>(storage.data()) + 31) & ~uintptr_t{31});
+    const s32 read = readSize != 0 ? DVDReadPrio(&info, buffer, static_cast<s32>(readSize), 0, 2) : 0;
+    DVDClose(&info);
+    if (read < static_cast<s32>(length) || length != disc->size() || std::memcmp(buffer, disc->data(), length) != 0) {
+        return fmt::format("the copy ({} B, read {}) differs from the disc's {} B", length, read, disc->size());
+    }
+    return {};
+}
+
+bool baseCopy(StepContext& ctx) {
+    const json& step = ctx.step;
+    if (step.contains("stopgap")) {
+        looks::forceStopgapAliases(step.value("stopgap", true));
+        return true;
+    }
+    const auto arc = arcOf(step);
+    if (!arc) {
+        ctx.fail("looksBaseCopy: unknown archive");
+        return true;
+    }
+    const looks::AliasState state = looks::baseAlias(*arc);
+    if (state != looks::AliasState::Ready && state != looks::AliasState::Failed) {
+        if (ctx.seconds > ctx.timeout(10.0)) {
+            ctx.fail(fmt::format("looksBaseCopy: no base copy of {} in time", looks::arcName(*arc)));
+            return true;
+        }
+        return false;
+    }
+    const char* problem = looks::aliasProblem(*arc);
+    std::string why;
+    if (step.value("failed", false)) {
+        why = state == looks::AliasState::Failed ? "" : "made, not refused";
+    } else if (state == looks::AliasState::Failed) {
+        why = fmt::format("refused: {}", problem != nullptr ? problem : "?");
+    } else if (step.contains("fromDisc") && step.value("fromDisc", false) != looks::aliasFromDisc(*arc)) {
+        why = looks::aliasFromDisc(*arc) ? "read from the disc" : "a base alias";
+    } else {
+        why = baseCopyMismatch(*arc);
+    }
+    if (!why.empty()) {
+        ctx.fail(fmt::format("looksBaseCopy {}: {}", looks::arcName(*arc), why));
+    } else {
+        TwiliLog.info("[autotest] looks: base copy of {} {}", looks::arcName(*arc),
+            state == looks::AliasState::Failed ? fmt::format("refused ({})", problem != nullptr ? problem : "?") :
+            looks::aliasFromDisc(*arc)         ? std::string("read from the disc, same bytes as the disc") :
+                                                 std::string("a base alias, same bytes as the disc"));
+    }
+    return true;
+}
+
 // --- looks.json
 
 std::string fileMismatch(const json& step, std::string& detail) {
@@ -732,6 +799,12 @@ std::optional<bool> lookShareSteps(const std::string& op, StepContext& ctx) {
     }
     if (op == "looksArchiveOverride") {
         return archiveOverride(ctx);
+    }
+    if (op == "looksEntryOverride") {
+        return entryOverride(ctx);
+    }
+    if (op == "looksBaseCopy") {
+        return baseCopy(ctx);
     }
     if (op == "expectLocalLooks") {
         looks::refreshLocalLooks();

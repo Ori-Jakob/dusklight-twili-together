@@ -15,8 +15,12 @@ const RUNTIME_BYTES = "twili runtime overlay\n";
 const faron = STAGES.southFaron;
 const C = MODS.looksFixtureC;
 const D = MODS.looksFixtureD;
-// What fixture C changes (entries under a root no archive has, so nothing loads them).
+// Fixtures C and D put entries under a root no archive has: nothing reads them, so they are no look.
 const C_ARCHIVES = ["Kmdl", "Alink", "CWShd", "Wmdl", "Midna"];
+// Our own entry overlays at the paths those archives read, one texel changed.
+const ENTRIES = [["Kmdl", "al_head.bmd"], ["Alink", "al_swa.bmd"], ["CWShd", "al_shb.bmd"], ["Wmdl", "wl.bmd"],
+    ["Midna", "s_md.bmd"]];
+const entryOverrides = ENTRIES.map(([arc, bmd]) => ({ op: "looksEntryOverride", arc, bmd }));
 
 module.exports = [
     {
@@ -89,13 +93,14 @@ module.exports = [
     },
     {
         name: "looks-detect",
-        description: "A has fixture C (Link's head, the Ordon Sword and Shield, the wolf and Midna, plus an unlisted "
-            + "Kmdl entry) and fixture D (an Epona entry, its mod.json forbids sharing), and replaces SWShd whole with "
-            + "the disc's archive with one texel changed: A's scan lists Link 4 files, wolf 1, Midna 1 (shared, Share My "
-            + "Looks being Everyone in Room) and Epona 1 (unshared), skips the unlisted entry and knows which archives "
-            + "are its own; B gets A's install id and manifest with those states, files and mods, tags A's row with A's "
-            + "look and the unshared Epona, keeps its own default archives for A's puppet, blocks A's look (6 files in "
-            + "looks.json), sees A's mod list once A shows it, and no looks once A turns sharing off",
+        description: "A overlays Link's head, the Ordon Sword and Shield, the wolf and Midna at the paths their "
+            + "archives read (one texel changed), replaces SWShd whole with the disc's archive with one texel changed, "
+            + "and has fixtures C and D (the same names under a root no archive has; D's mod.json forbids sharing): "
+            + "A's scan lists Link 4 files, wolf 1 and Midna 1 (shared, Share My Looks being Everyone in Room), Epona "
+            + "as the game's, neither fixture as a look mod, and knows which archives are its own; B gets A's install "
+            + "id and manifest with those states, files and mods, tags A's row with A's look, keeps its own default "
+            + "archives for A's puppet, blocks A's look (6 files in looks.json), sees A's mod list once A shows it, "
+            + "and no looks once A turns sharing off",
         timeoutSec: 300,
         cvars: COMMON_CVARS,
         instances: [
@@ -107,21 +112,20 @@ module.exports = [
                 steps: [
                     { op: "looksSelfTest" },
                     waitStage(faron),
+                    ...entryOverrides,
                     { op: "looksArchiveOverride", arc: "SWShd", bmd: "al_shc.bmd" },
                     { op: "expectLocalLooks", types: {
                         link: { state: "shared", files: [["Kmdl", "al_head.bmd"], ["Alink", "al_swa.bmd"],
                             ["CWShd", "al_shb.bmd"], ["SWShd", "al_shc.bmd"]] },
                         wolf: { state: "shared", files: [["Wmdl", "wl.bmd"]] },
                         midna: { state: "shared", files: [["Midna", "s_md.bmd"]] },
-                        epona: { state: "unshared", files: [["Horse", "hs_eye.btp"]] },
+                        epona: { state: "vanilla", files: [] },
                     }, mods: {
-                        [C]: { types: ["link", "wolf", "midna"], shareable: true },
-                        [D]: { types: ["epona"], shareable: false },
-                        [MOD_ID]: { types: ["link"] },
-                    }, notMods: [MODS.cosmetics], dirty: [...C_ARCHIVES, "SWShd", "Horse"], timeoutSec: 20 },
+                        [MOD_ID]: { types: ["link", "wolf", "midna"], shareable: true },
+                    }, notMods: [C, D, MODS.cosmetics], dirty: [...C_ARCHIVES, "SWShd", "Horse"], timeoutSec: 20 },
                     ...connect,
                     ...meetIn(faron, "B"),
-                    { op: "expectLocalLooks", sent: { link: "shared", wolf: "shared", midna: "shared", epona: "unshared" },
+                    { op: "expectLocalLooks", sent: { link: "shared", wolf: "shared", midna: "shared", epona: "vanilla" },
                       timeoutSec: 20 },
                     ...barrier("sent", "B"),
                     { op: "lookOption", modList: true },
@@ -139,18 +143,18 @@ module.exports = [
                     ...connect,
                     ...meetIn(faron, "A"),
                     { op: "expectPeerLooks", name: "A", installId: true, types: {
-                        link: { state: "shared", files: 4, mods: [C, MOD_ID] },
-                        wolf: { state: "shared", files: 1, mods: [C] },
-                        midna: { state: "shared", files: 1, mods: [C] },
-                        epona: { state: "unshared" },
-                    }, tag: "look: Twili-Together test: looks C", timeoutSec: 20 },
+                        link: { state: "shared", files: 4, mods: [MOD_ID] },
+                        wolf: { state: "shared", files: 1, mods: [MOD_ID] },
+                        midna: { state: "shared", files: 1, mods: [MOD_ID] },
+                        epona: { state: "vanilla" },
+                    }, tag: "look: Twili-Together", noTag: "unshared", timeoutSec: 20 },
                     { op: "expectDummyArcPath", name: "A", base: [], frames: 15, timeoutSec: 10 },
                     { op: "showWindow", tab: 2 },
-                    { op: "expectPlayersTab", rows: [{ name: "A", text: "Epona look unshared", actions: true }],
+                    { op: "expectPlayersTab", rows: [{ name: "A", text: "look: Twili-Together", actions: true }],
                       timeoutSec: 5 },
                     { op: "hideWindow" },
                     { op: "lookOption", player: "A", block: true },
-                    { op: "expectPeerLooks", name: "A", tag: "look blocked: Twili-Together test: looks C", timeoutSec: 5 },
+                    { op: "expectPeerLooks", name: "A", tag: "look blocked: Twili-Together", timeoutSec: 5 },
                     { op: "expectLooksFile", player: "A", none: true, blocked: 6, timeoutSec: 5 },
                     ...barrier("sent", "A"),
                     { op: "expectPeerLooks", name: "A", modList: [C, D, MOD_ID], timeoutSec: 10 },
@@ -164,22 +168,23 @@ module.exports = [
     },
     {
         name: "looks-default",
-        description: "A has fixture C (Kmdl, Alink, CWShd, Wmdl and Midna entries) and a content-keyed texture of its "
-            + "own on the Hylian Shield; B uses no look mod and shares with the room, so it lists the game's look for "
-            + "every type. A's puppet of B mounts the disc's own copies (/res/Object/tt/base) of exactly the archives "
-            + "A's mods touch, and no texture of it renders from a content replacement (the shield's is blocked); My "
-            + "Own respawns it on the default paths with A's texture showing; Theirs with Wolf: My Own keeps Wmdl on "
-            + "its default path; looks.json keeps the choices under B's install id; once B stops sharing, the fallback "
-            + "setting decides (My Own, then Game Default); Game Default for all at the end",
+        description: "A overlays Kmdl, Alink, CWShd, Wmdl and Midna entries at their real paths and has a "
+            + "content-keyed texture of its own on the Hylian Shield; B uses no look mod and shares with the room, so "
+            + "it lists the game's look for every type. A's puppet of B mounts the disc's own copies "
+            + "(/res/Object/tt/base) of exactly the archives A's mods touch, and no texture of it renders from a "
+            + "content replacement (the shield's is blocked); My Own respawns it on the default paths with A's "
+            + "texture showing; Theirs with Wolf: My Own keeps Wmdl on its default path; looks.json keeps the choices "
+            + "under B's install id; once B stops sharing, the fallback setting decides (My Own, with A's texture "
+            + "showing, then Game Default); Game Default for all at the end",
         timeoutSec: 360,
         cvars: COMMON_CVARS,
         instances: [
             {
                 name: "A",
                 start: faron,
-                enableMods: [C],
                 steps: [
                     waitStage(faron),
+                    ...entryOverrides,
                     { op: "looksSourceTexture", register: { arc: "HyShd", bmd: "al_sha.bmd" } },
                     ...connect,
                     ...meetIn(faron, "B"),
@@ -207,6 +212,7 @@ module.exports = [
                     { op: "expectPeerLooks", name: "B", none: true, timeoutSec: 10 },
                     // Nothing listed: the fallback (My Own by default); a manifest's respawn waits up to 10 s.
                     { op: "expectDummyArcPath", name: "B", base: [], frames: 15, timeoutSec: 30 },
+                    { op: "looksSourceTexture", name: "B", source: "source", frames: 5, timeoutSec: 20 },
                     { op: "lookOption", fallback: "default" },
                     { op: "expectDummyArcPath", name: "B", base: ["Kmdl", "Alink", "CWShd", "Midna"], frames: 15,
                       timeoutSec: 30 },
@@ -238,6 +244,47 @@ module.exports = [
                     { op: "expectLocalLooks", sent: [], timeoutSec: 10 },
                     ...barrier("b-off", "A"),
                     ...barrier("done", "A", 240),
+                    { op: "quit" },
+                ],
+            },
+        ],
+    },
+    {
+        name: "looks-stopgap",
+        description: "A makes base copies the way a host without add_base_alias does (reading the archive from "
+            + "the disc and overlaying it as a buffer), overlays a Kmdl entry at its real path and replaces SWShd "
+            + "whole; B shares the game's look: A's puppet of B mounts Kmdl from a copy read from the disc with "
+            + "exactly the disc's bytes, and SWShd from its default path, as the stopgap cannot read under a "
+            + "whole-archive override of ours",
+        timeoutSec: 240,
+        cvars: COMMON_CVARS,
+        instances: [
+            {
+                name: "A",
+                start: faron,
+                steps: [
+                    { op: "looksBaseCopy", stopgap: true },
+                    waitStage(faron),
+                    { op: "looksEntryOverride", arc: "Kmdl", bmd: "al_head.bmd" },
+                    { op: "looksArchiveOverride", arc: "SWShd", bmd: "al_shc.bmd" },
+                    ...connect,
+                    ...meetIn(faron, "B"),
+                    { op: "expectPeerLooks", name: "B", types: { link: { state: "vanilla" } }, timeoutSec: 20 },
+                    { op: "expectDummyArcPath", name: "B", base: ["Kmdl"], frames: 15, timeoutSec: 30 },
+                    { op: "looksBaseCopy", arc: "Kmdl", fromDisc: true, timeoutSec: 10 },
+                    { op: "looksBaseCopy", arc: "SWShd", failed: true, timeoutSec: 10 },
+                    ...barrier("done", "B"),
+                    { op: "quit" },
+                ],
+            },
+            {
+                name: "B",
+                start: faron,
+                cvars: [tt("share_looks", 2)],
+                steps: [
+                    ...connect,
+                    ...meetIn(faron, "A"),
+                    ...barrier("done", "A", 180),
                     { op: "quit" },
                 ],
             },

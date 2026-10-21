@@ -18,6 +18,10 @@ enum class AliasState : uint8_t { None, Pending, Ready, Failed };
 AliasState baseAlias(LookArc arc);
 // What the stopgap read could not give (for the log and the Looks tab), or null.
 const char* aliasProblem(LookArc arc);
+// Whether the archive's base copy came from the stopgap's read.
+bool aliasFromDisc(LookArc arc);
+// For tests: base copies made from now on take the stopgap's read even where add_base_alias exists.
+void forceStopgapAliases(bool on);
 // Every tick: registers what was asked for (all in one frame) and finishes stopgap reads.
 void tickAliases();
 void shutdownAliases();

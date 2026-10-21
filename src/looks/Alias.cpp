@@ -25,6 +25,7 @@ struct Alias {
     OverlayHandle handle = 0;
     uint32_t registeredAt = 0;
     const char* problem = nullptr;
+    bool fromDisc = false;
     // The stopgap's read of the default path.
     DVDFileInfo info{};
     bool open = false;
@@ -38,6 +39,7 @@ struct Alias {
 std::array<Alias, kLookArcCount> sAliases;
 uint32_t sTick = 0;
 bool sLogged = false;
+bool sForceStopgap = false;
 
 void onRead(s32 result, DVDFileInfo* info) {
     for (Alias& a : sAliases) {
@@ -68,7 +70,7 @@ void fail(LookArc arc, Alias& a, const char* problem) {
 
 bool hasBaseAlias() {
 #if OVERLAY_SERVICE_MINOR >= 1
-    return svc_overlay != nullptr && SERVICE_HAS(svc_overlay, OverlayService, add_base_alias);
+    return !sForceStopgap && svc_overlay != nullptr && SERVICE_HAS(svc_overlay, OverlayService, add_base_alias);
 #else
     return false;
 #endif
@@ -120,6 +122,7 @@ void finishRead(LookArc arc, Alias& a) {
         return;
     }
     closeRead(a);
+    a.fromDisc = true;
     registered(arc, a, handle, "read from the disc");
 }
 
@@ -142,6 +145,14 @@ AliasState baseAlias(LookArc arc) {
 
 const char* aliasProblem(LookArc arc) {
     return sAliases[static_cast<size_t>(arc)].problem;
+}
+
+bool aliasFromDisc(LookArc arc) {
+    return sAliases[static_cast<size_t>(arc)].fromDisc;
+}
+
+void forceStopgapAliases(bool on) {
+    sForceStopgap = on;
 }
 
 void tickAliases() {
@@ -194,9 +205,11 @@ void shutdownAliases() {
         a.phase = Phase::None;
         a.handle = 0;
         a.problem = nullptr;
+        a.fromDisc = false;
     }
     sTick = 0;
     sLogged = false;
+    sForceStopgap = false;
 }
 
 }  // namespace twili::looks
