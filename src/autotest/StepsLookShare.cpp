@@ -642,9 +642,11 @@ std::string sourceMismatch(const json& step, std::string& detail) {
             return "no dummy";
         }
     }
+    // Another model may have a texture of the same name: "source" needs one of them to show our
+    // replacement, "pointer" and "none" need all of them so.
     const std::string want = step.value("source", std::string{});
-    size_t seen = 0, blocked = 0, sources = 0;
-    std::string why;
+    size_t seen = 0, matching = 0, blocked = 0, sources = 0;
+    std::string have;
     for (const CosmeticsTexProbe& t : probe.tex) {
         blocked += t.state == CosmeticsTexState::Block ? 1 : 0;
         sources += t.source == 2 ? 1 : 0;
@@ -652,17 +654,19 @@ std::string sourceMismatch(const json& step, std::string& detail) {
             continue;
         }
         seen++;
-        const char* have = t.source == 1 ? "pointer" : t.source == 2 ? "source" : t.source == 0 ? "none" : "unknown";
-        if (want != have && why.empty()) {
-            why = fmt::format("{} renders from {}", sSource.name, have);
-        }
+        const char* source = t.source == 1 ? "pointer" : t.source == 2 ? "source" : t.source == 0 ? "none" : "unknown";
+        matching += want == source ? 1 : 0;
+        have += fmt::format("{}{}", have.empty() ? "" : "/", source);
     }
-    detail = fmt::format("{} textures, {} blocked, {} from SOURCE, {} named {}", probe.tex.size(), blocked, sources,
-        seen, sSource.name);
+    detail = fmt::format("{} textures, {} blocked, {} from SOURCE, {} named {} ({})", probe.tex.size(), blocked,
+        sources, seen, sSource.name, have);
     if (seen == 0) {
         return sSource.name + " not on the puppet";
     }
-    return why;
+    if (want == "source" ? matching == 0 : matching != seen) {
+        return fmt::format("{} renders from {}", sSource.name, have);
+    }
+    return {};
 }
 
 // --- looks.json
