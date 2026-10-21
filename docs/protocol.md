@@ -38,9 +38,10 @@ The client's first packet is the handshake:
   "teamId": "red",
   "roomId": "friday",
   "sessionKey": "k3j2...",
+  "installId": "5f0c2e9a41b7d3c86e1f0a2b4c6d8e90",
   "color": {"r": 255, "g": 64, "b": 64},
   "game": {"inGame": true, "kind": "vanilla", "key": "vanilla", "display": {"name": "", "mode": ""}},
-  "features": ["cos.send", "cos.recv"],
+  "features": ["cos.send", "cos.recv", "looks.send", "looks.recv"],
   "gameId": "GZ2E01"
 }
 ```
@@ -49,11 +50,16 @@ The client's first packet is the handshake:
   clients with the same layout, since the world state is sent as raw save bytes.
 - `sessionKey` is random per game process. It lets a reconnect replace the old connection and
   keeps the relay from replaying a player's own packets back to them.
+- `installId` (32 lowercase hex digits, optional) is random once per install and kept in the mod's
+  data directory. Receivers file their per-player look choices under it; it is unauthenticated,
+  a convenience and no identity. The relay drops a malformed one and passes it on in the client
+  state.
 - `game` says what the player runs; see [Team games](#team-games).
 - `features` (optional) says what the client can do with [looks](#looks): `cos.send` (it reads
   its cosmetics settings, which needs the host's ModsService), `cos.recv` (it shows other
-  players' cosmetics, which needs TextureService and ModsService), and later `looks.send` and
-  `looks.recv`.
+  players' cosmetics, which needs TextureService and ModsService), `looks.send` (it lists its look
+  mods, which needs ModsService) and `looks.recv` (it takes others' look lists, which needs
+  ModsService and OverlayService).
   Unknown names are dropped. `gameId` is the disc's game id (4 to 8 of `A-Z0-9`), empty when the
   client cannot tell.
 
@@ -65,7 +71,7 @@ On success the relay answers with `ALL_CLIENT_STATE`:
 
 ```json
 {"type": "ALL_CLIENT_STATE", "clients": [ ...client states... ], "roomState": { ... },
- "relayFeatures": ["cos.send", "cos.recv"]}
+ "relayFeatures": ["cos.send", "cos.recv", "looks.send", "looks.recv"]}
 ```
 
 then one `TEAM_STATE` per team in the room, then the newest `LOOK_MANIFEST` of every player the
@@ -76,7 +82,9 @@ and clients then share nothing.
 A client state holds `clientId`, `name`, `teamId`, `color` (the player's own), `displayColor`
 (what everyone shows them in: the team colour on a named team, otherwise their own), `modVersion`,
 `layout`, `protocolVersion`, `online`, `isSaveLoaded`, `stageName`, `layerNo`, `roomNo`,
-`saveTblNo`, `horseName`, `horsePlace` and `self` (true in your own entry).
+`saveTblNo`, `horseName`, `horsePlace`, `installId` (empty when none), `modList` and `self` (true
+in your own entry). `modList` is what the player's Show My Mod List shares, empty while it is off:
+at most 64 `{id, name, version}`, each value cut to 64 characters; nothing else of their mods.
 
 ## Rooms and owners
 
@@ -145,7 +153,7 @@ The relay stamps every relayed packet with the sender's `clientId`.
 
 | Packet | Sent by | Notes |
 | --- | --- | --- |
-| `UPDATE_CLIENT_STATE` | client | stage, layer, room, save table and whether a save is loaded; or only `color`; or only `horseName` / `horsePlace`. The relay stores it and forwards its own view |
+| `UPDATE_CLIENT_STATE` | client | stage, layer, room, save table and whether a save is loaded; or only `color`; or only `horseName` / `horsePlace`; or only `modList` (Show My Mod List; `[]` takes it back). The relay stores it and forwards its own view |
 | `UPDATE_ROOM_STATE` | owner | see above |
 | `AUTOTEST_SIGNAL` | client | test barrier between instances |
 | `TEAR_COUNT` | client | `teamId`, `area` (0 Faron, 1 Eldin, 2 Lanayru; -1 none), `count`: the sender's own tears of light while an area's vessel is held and not full, sent on a change and to a teammate who comes online; teammates show it in the Players tab |
@@ -185,12 +193,19 @@ repairs the stream.
 
 ### Looks
 
-How a player looks to the others: for now, the colours of the cosmetics mod
-(`dev.twilitrealm.cosmetics`), which teammates' games show on that player's puppets with their
-own recolour.
+How a player looks to the others: the look mods they have on (models and animations of the
+archives the puppets load) and the colours of the cosmetics mod (`dev.twilitrealm.cosmetics`),
+which teammates' games show on that player's puppets with their own recolour.
 
 ```json
-{"type": "LOOK_MANIFEST", "quiet": true, "rev": 4, "scope": "room", "looks": [],
+{"type": "LOOK_MANIFEST", "quiet": true, "rev": 4, "scope": "room",
+ "looks": [
+   {"slot": "link", "state": "shared",
+    "mods": [{"id": "dev.example.shadow", "name": "Shadow Link", "version": "3.0", "author": "Ex"}],
+    "files": [{"arc": "Kmdl", "name": "al.bmd", "sha": "9f86d0...(64 hex)", "size": 412032}]},
+   {"slot": "wolf", "state": "vanilla"},
+   {"slot": "midna", "state": "unshared"},
+   {"slot": "epona", "state": "vanilla"}],
  "cosmetics": {"ver": "1.0.0", "vars": {"herosTunicTorsoColor": "1e88e5", "midnaHairBaseColor": 3}}}
 ```
 
@@ -201,12 +216,29 @@ own recolour.
   mod's settings, the same list Dusklight's ModsService hands out.
 - `scope` is `room` (everyone in the room) or `team` (teammates only), from Share My Looks. A
   player who turns sharing off sends a null `cosmetics` with scope `room`.
-- `looks` stays empty until look mods are shared.
+- `looks` has one entry per look type (`slot`: `link`, `wolf`, `midna`, `epona`), or none while
+  Share My Looks is Off or the client is still looking at its mods. `state` is `vanilla` (the
+  game's own look: nothing of that type differs from the disc), `shared` (with `mods`, the look
+  mods it comes from, and `files`) or `unshared` (changed, but not shared: a mod's `mod.json` says
+  `"multiplayer": {"share": false}`, a file could not be read, or it is over the limits). A file
+  is one entry of an archive the puppets load, by the archive's name (`Kmdl`, `Mmdl`, `Zmdl`,
+  `Bmdl`, `Alink`, `HyShd`, `CWShd`, `SWShd`, `Wmdl`, `Midna`, `Horse`) and the entry's lowercase
+  name, which has to be one a look of that type is made of (Link: the four outfits' bodies,
+  heads, faces, hands, boots, wooden sword, lantern and Magic Armor glow, the swords, sheaths,
+  boomerang, spinner, bombs, arrows and the three shields; wolf: `wl`, `wl_kusari`; Midna: the
+  `md*` models and colours in Wmdl and `s_md*` in Midna; Epona: `hs.bmd`, `hs_eye.btp`,
+  `tazuna.bti`), its SHA-256 and its size (at most 8 MiB). At most 64 files and 24 MiB per
+  player. Receivers show a `vanilla` type from the disc's own archives; files are not fetched yet,
+  so for a `shared` type they show what their fallback setting says.
 
 The relay rebuilds the packet from these fields (unknown vars and values are dropped, colours
-lowercased), stamps `clientId` and `gameId` (from the sender's handshake), and drops one over 16
-KiB. It sends it to the others in scope that listed `cos.recv` (`cosmetics` stays null for a
-sender without `cos.send`). It keeps each player's newest manifest while they are connected and
+lowercased; look entries of unknown types, files outside the list or over 8 MiB are dropped, and a
+`shared` type left without files becomes `unshared`), stamps `clientId` and `gameId` (from the
+sender's handshake), and drops one over 16 KiB, one with a file not named by a SHA-256 and one over
+64 files or 24 MiB. It sends it to the others in scope that listed `cos.recv` or `looks.recv`
+(`cosmetics` stays null for a sender without `cos.send` and for a receiver without `cos.recv`;
+`looks` stays empty for a sender without `looks.send` and for a receiver without `looks.recv` or
+with another `gameId`). It keeps each player's newest manifest while they are connected and
 gives it to everyone who joins later. When a newer manifest no longer reaches someone who got an
 earlier one (its scope narrowed to the team), they get one copy with `cosmetics` null and `looks`
 empty. A player's manifests go out at most once every 2 s: one sent sooner waits, a newer one

@@ -66,8 +66,12 @@ const PERMALINK_RE = /^[A-Za-z0-9+/=_-]{1,512}$/;
 const UNVERIFIED_KEY_PREFIX = "rando-probe/";
 // What a client says it can do in its handshake, and what this relay forwards.
 const CLIENT_FEATURES = new Set(["cos.send", "cos.recv", "looks.send", "looks.recv"]);
-const RELAY_FEATURES = ["cos.send", "cos.recv"];
+const RELAY_FEATURES = ["cos.send", "cos.recv", "looks.send", "looks.recv"];
 const GAME_ID_RE = /^[A-Z0-9]{4,8}$/;
+// Persistent per install, unauthenticated: receivers only key their own choices by it.
+const INSTALL_ID_RE = /^[0-9a-f]{32}$/;
+// Show My Mod List: id, name and version of at most this many mods.
+const MAX_MOD_LIST = 64;
 // A player's LOOK_MANIFEST goes out at most this often; a newer one waits and is never dropped.
 const LOOK_MANIFEST_INTERVAL_MS = envNumber("TT_LOOK_MANIFEST_INTERVAL_MS", 2000);
 const MAX_LOOK_MANIFEST_BYTES = 16384;
@@ -79,6 +83,35 @@ const COSMETICS_COLOR_VARS = new Set(["herosTunicCapColor", "herosTunicTorsoColo
     "ironBootsColor", "spinnerColor", "midnaChargeRingColor", "linkHairColor", "wolfLinkColor", "eponaColor"]);
 const COSMETICS_INDEX_VARS = new Set(["midnaHairBaseColor", "midnaHairTipsColor"]);
 const COSMETICS_COLOR_RE = /^[0-9a-f]{6}$/;
+// Look mods: per look type, files of the archives the puppets load, only the entries a look is
+// made of (the client's allowlist, src/looks/Slots.cpp), each named by its SHA-256.
+const LOOK_SLOTS = ["link", "wolf", "midna", "epona"];
+const LOOK_STATES = new Set(["vanilla", "shared", "unshared"]);
+const OUTFIT = ["al_kantera.bmd", "ef_ktglow.bmd", "ef_ktglow.btk", "al_bootsh.bmd", "al_swb.bmd"];
+const LOOK_ARCS = new Map([
+    ["Kmdl", { link: ["al.bmd", "al_face.bmd", "al_head.bmd", "al_hands.bmd", ...OUTFIT] }],
+    ["Mmdl", { link: ["ml.bmd", "al_face.bmd", "ml_head.bmd", "al_hands.bmd", ...OUTFIT,
+        "ml_body_power_down.brk", "ml_body_power_up_a.brk", "ml_body_power_up_b.brk",
+        "ml_head_power_down.brk", "ml_head_power_up_a.brk", "ml_head_power_up_b.brk"] }],
+    ["Zmdl", { link: ["zl.bmd", "zl_face.bmd", "zl_head.bmd", "al_hands.bmd", ...OUTFIT] }],
+    ["Bmdl", { link: ["bl.bmd", "al_face.bmd", "bl_head.bmd", "bl_hands.bmd", ...OUTFIT] }],
+    ["Alink", { link: ["al_swa.bmd", "al_poda.bmd", "al_swa.btk", "al_swm.bmd", "al_podm.bmd", "al_swm.btk",
+        "al_swm.brk", "al_boom.bmd", "al_sp.bmd", "al_bomb.bmd", "al_arrow.bmd", "al_arrowb.bmd"] }],
+    ["HyShd", { link: ["al_sha.bmd"] }],
+    ["CWShd", { link: ["al_shb.bmd"] }],
+    ["SWShd", { link: ["al_shc.bmd"] }],
+    ["Wmdl", { wolf: ["wl.bmd", "wl_kusari.bmd"], midna: ["md.bmd", "md_mask.bmd", "md_hands.bmd",
+        "md_hair_hand.bmd", "md_d_color.brk", "md_mask_d_color.brk", "md_hands_d_color.brk",
+        "md_hair_hand_d_color.brk"] }],
+    ["Midna", { midna: ["s_md.bmd", "s_md_mask.bmd", "s_md_hands.bmd", "s_md_hair_hand.bmd"] }],
+    ["Horse", { epona: ["hs.bmd", "hs_eye.btp", "tazuna.bti"] }],
+]);
+const LOOK_ARC_NAMES = new Map([...LOOK_ARCS.keys()].map((name) => [name.toLowerCase(), name]));
+const SHA256_RE = /^[0-9a-f]{64}$/;
+const MAX_LOOK_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_LOOK_PLAYER_BYTES = 24 * 1024 * 1024;
+const MAX_LOOK_FILES = 64;
+const MAX_LOOK_MODS = 16;
 
 function envNumber(name, fallback) {
     const v = Number(process.env[name]);
@@ -111,6 +144,10 @@ function packetSummary(packet) {
             // Colour-only update from the picker.
             if (!("stageName" in packet) && packet.color && typeof packet.color === "object") {
                 return `${packet.type} color=${text(packet.color.r)},${text(packet.color.g)},${text(packet.color.b)}`;
+            }
+            // Show My Mod List.
+            if (!("stageName" in packet) && "modList" in packet) {
+                return `${packet.type} modList=${Array.isArray(packet.modList) ? packet.modList.length : "?"}`;
             }
             // Horse name and parking spot.
             if (!("stageName" in packet) && ("horseName" in packet || "horsePlace" in packet)) {
@@ -203,7 +240,8 @@ let nextClientId = 1;
  *             awaitingResults: Map<string, number>, game: GameIdentity,
  *             gateLogged: Set<string>, features: string[], gameId: string,
  *             lookManifest: object|null, lookSentAt: number, lookPending: boolean,
- *             lookTimer: NodeJS.Timeout|null, lookSentTo: Set<number> }} Client
+ *             lookTimer: NodeJS.Timeout|null, lookSentTo: Set<number>, installId: string,
+ *             modList: object[] }} Client
  * @typedef {{ inGame: boolean, kind: string, key: string, display: { name: string, mode: string },
  *             share: object|null, allowUnverified: boolean }} GameIdentity
  * @typedef {{ id: string, ownerClientId: number|null, game: object|null, color: object|null,
@@ -301,6 +339,8 @@ function clientStateOf(room, client, forClientId) {
         saveTblNo: client.saveTblNo,
         horseName: client.horseName,
         horsePlace: client.horsePlace,
+        installId: client.installId,
+        modList: client.modList,
         self: client.clientId === forClientId,
     };
 }
@@ -464,8 +504,68 @@ function asCosmetics(v) {
     return Object.keys(vars).length === 0 ? null : { ver: asString(v.ver, "", 32), vars };
 }
 
-// Rebuilt from known fields only. Look entries are not defined yet: always empty.
+// What Show My Mod List sends: id, name and version only.
+function asModList(v) {
+    if (!Array.isArray(v)) return [];
+    return v.filter((m) => m && typeof m === "object" && typeof m.id === "string" && m.id !== "")
+        .slice(0, MAX_MOD_LIST)
+        .map((m) => ({ id: asString(m.id, ""), name: asString(m.name, ""), version: asString(m.version, "") }));
+}
+
+function asLookMod(m) {
+    return { id: asString(m.id, ""), name: asString(m.name, ""), version: asString(m.version, ""),
+             author: asString(m.author, "") };
+}
+
+// One shared look type's files: allowlisted entries of that type, each at most once.
+function asLookFiles(slot, files) {
+    const out = [];
+    for (const f of Array.isArray(files) ? files : []) {
+        if (!f || typeof f !== "object") continue;
+        if (typeof f.sha !== "string" || !SHA256_RE.test(f.sha)) return null;
+        const arc = typeof f.arc === "string" ? LOOK_ARC_NAMES.get(f.arc.toLowerCase()) : undefined;
+        const name = typeof f.name === "string" ? f.name.toLowerCase() : "";
+        if (!arc || !(LOOK_ARCS.get(arc)[slot] ?? []).includes(name)) continue;
+        if (!Number.isInteger(f.size) || f.size < 1 || f.size > MAX_LOOK_FILE_BYTES) continue;
+        if (out.some((x) => x.arc === arc && x.name === name)) continue;
+        out.push({ arc, name, sha: f.sha, size: f.size });
+    }
+    return out;
+}
+
+// The sender's look entries, one per look type; null when a file is not named by a SHA-256 or
+// the files are over the limits, which rejects the whole manifest.
+function asLooks(v) {
+    if (!Array.isArray(v)) return [];
+    const out = [];
+    let files = 0;
+    let bytes = 0;
+    for (const e of v) {
+        if (!e || typeof e !== "object" || !LOOK_SLOTS.includes(e.slot) || !LOOK_STATES.has(e.state)) continue;
+        if (out.some((x) => x.slot === e.slot)) continue;
+        if (e.state !== "shared") {
+            out.push({ slot: e.slot, state: e.state });
+            continue;
+        }
+        const list = asLookFiles(e.slot, e.files);
+        if (list === null) return null;
+        if (list.length === 0) {
+            out.push({ slot: e.slot, state: "unshared" });
+            continue;
+        }
+        files += list.length;
+        bytes += list.reduce((sum, f) => sum + f.size, 0);
+        const mods = (Array.isArray(e.mods) ? e.mods : []).filter((m) => m && typeof m === "object")
+            .slice(0, MAX_LOOK_MODS).map(asLookMod);
+        out.push({ slot: e.slot, state: "shared", mods, files: list });
+    }
+    return files > MAX_LOOK_FILES || bytes > MAX_LOOK_PLAYER_BYTES ? null : out;
+}
+
+// Rebuilt from known fields only; null when its looks are malformed (see asLooks).
 function asLookManifest(client, packet) {
+    const looks = client.features.includes("looks.send") ? asLooks(packet.looks) : [];
+    if (looks === null) return null;
     return {
         type: "LOOK_MANIFEST",
         quiet: true,
@@ -473,7 +573,7 @@ function asLookManifest(client, packet) {
         rev: asInt(packet.rev, 0, 0, 0x7fffffff),
         gameId: client.gameId,
         scope: packet.scope === "team" ? "team" : "room",
-        looks: [],
+        looks,
         cosmetics: client.features.includes("cos.send") ? asCosmetics(packet.cosmetics) : null,
     };
 }
@@ -511,10 +611,16 @@ function handleLookManifest(room, client, packet) {
         log(`[${client.name}] rejected LOOK_MANIFEST (${bytes} bytes)`);
         return;
     }
-    client.lookManifest = asLookManifest(client, packet);
-    const cosmetics = client.lookManifest.cosmetics;
-    log(`[${client.name}] LOOK_MANIFEST rev=${client.lookManifest.rev} scope=${client.lookManifest.scope} ` +
-        `cosmetics=${cosmetics ? Object.keys(cosmetics.vars).length : "none"}`);
+    const manifest = asLookManifest(client, packet);
+    if (manifest === null) {
+        log(`[${client.name}] rejected LOOK_MANIFEST (bad look files)`);
+        return;
+    }
+    client.lookManifest = manifest;
+    const cosmetics = manifest.cosmetics;
+    const looks = manifest.looks.map((l) => `${l.slot}:${l.state}${l.files ? `/${l.files.length}` : ""}`).join(",");
+    log(`[${client.name}] LOOK_MANIFEST rev=${manifest.rev} scope=${manifest.scope} ` +
+        `cosmetics=${cosmetics ? Object.keys(cosmetics.vars).length : "none"} looks=${looks || "none"}`);
     const wait = client.lookSentAt + LOOK_MANIFEST_INTERVAL_MS - Date.now();
     if (wait <= 0 && client.lookTimer === null) {
         forwardLookManifest(room, client);
@@ -544,7 +650,8 @@ function updateCachedClientState(client, packet) {
     if ("saveTblNo" in packet) client.saveTblNo = asInt(packet.saveTblNo, -1, -128, 127);
     if ("horseName" in packet) client.horseName = asString(packet.horseName, client.horseName, 32);
     if ("horsePlace" in packet) client.horsePlace = asHorsePlace(packet.horsePlace);
-    // teamId is fixed at handshake.
+    if ("modList" in packet) client.modList = asModList(packet.modList);
+    // teamId and installId are fixed at handshake.
 }
 
 // Unknown keys and wrong types are ignored; numbers are clamped.
@@ -970,6 +1077,8 @@ function handleHandshake(conn, packet) {
         gateLogged: new Set(),
         features: asFeatures(packet.features),
         gameId: typeof packet.gameId === "string" && GAME_ID_RE.test(packet.gameId) ? packet.gameId : "",
+        installId: typeof packet.installId === "string" && INSTALL_ID_RE.test(packet.installId) ? packet.installId : "",
+        modList: [],
         lookManifest: null,
         lookSentAt: 0,
         lookPending: false,

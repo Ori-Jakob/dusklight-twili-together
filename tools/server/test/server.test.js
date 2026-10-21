@@ -2807,7 +2807,7 @@ const manifest = (rev, vars, extra = {}) => ({
 test("ALL_CLIENT_STATE names the relay's features", () => withServer(async (mk) => {
     const a = mk();
     const all = await a.join({ name: "A" });
-    assert.deepEqual(all.relayFeatures, ["cos.send", "cos.recv"]);
+    assert.deepEqual(all.relayFeatures, ["cos.send", "cos.recv", "looks.send", "looks.recv"]);
 }));
 
 test("LOOK_MANIFEST is rebuilt from known fields and reaches only cosmetics receivers in the room", () => withServer(async (mk, server) => {
@@ -2939,4 +2939,97 @@ test("an oversized LOOK_MANIFEST is dropped and the last good one stays", () => 
     const late = mk();
     await late.join({ name: "L", features: ["cos.recv"] });
     assert.equal((await late.waitType("LOOK_MANIFEST")).rev, 1);
+}));
+
+const LOOKS = ["looks.send", "looks.recv", "cos.send", "cos.recv"];
+const sha = (c) => c.repeat(64);
+const lookFile = (arc, name, size, c = "a") => ({ arc, name, sha: sha(c), size });
+
+test("the install id from the handshake is in every client state, a malformed one is dropped", () => withServer(async (mk) => {
+    const a = mk();
+    const b = mk();
+    const id = "0123456789abcdef0123456789abcdef";
+    await a.join({ name: "A", installId: id });
+    const all = await b.join({ name: "B", installId: "../" + id });
+    assert.equal(all.clients.find((c) => c.clientId === a.id).installId, id);
+    assert.equal(b.self.installId, "");
+    const joined = await a.waitType("UPDATE_CLIENT_STATE", (p) => p.clientId === b.id);
+    assert.equal(joined.installId, "");
+    // Fixed at handshake.
+    a.send({ type: "UPDATE_CLIENT_STATE", installId: "f".repeat(32), color: { r: 1, g: 2, b: 3 } });
+    assert.equal((await b.waitType("UPDATE_CLIENT_STATE", (p) => p.clientId === a.id)).installId, id);
+}));
+
+test("Show My Mod List reaches the room and joiners as id, name and version only", () => withServer(async (mk) => {
+    const a = mk();
+    const b = mk();
+    await a.join({ name: "A" });
+    await b.join({ name: "B" });
+    const many = Array.from({ length: 70 }, (_, i) => ({ id: `mod.${i}`, name: `Mod ${i}`, version: "1.0" }));
+    a.send({ type: "UPDATE_CLIENT_STATE", modList: [
+        { id: "dev.twilitrealm.randomizer", name: "Randomizer", version: "1.4.2", author: "x", manifest: "{}" },
+        { id: "", name: "no id" }, "bogus", { id: 5 }, ...many,
+    ] });
+    const got = await b.waitType("UPDATE_CLIENT_STATE", (p) => p.clientId === a.id && p.modList.length > 0);
+    assert.equal(got.modList.length, 64);
+    assert.deepEqual(got.modList[0], { id: "dev.twilitrealm.randomizer", name: "Randomizer", version: "1.4.2" });
+    const late = mk();
+    const all = await late.join({ name: "L" });
+    assert.equal(all.clients.find((c) => c.clientId === a.id).modList.length, 64);
+    a.send({ type: "UPDATE_CLIENT_STATE", modList: [] });
+    assert.deepEqual((await late.waitType("UPDATE_CLIENT_STATE", (p) => p.clientId === a.id)).modList, []);
+}));
+
+test("LOOK_MANIFEST look entries are rebuilt and reach looks receivers of the same game only", () => withServer(async (mk, server) => {
+    const a = mk();
+    const b = mk();
+    const pal = mk();
+    const cos = mk();
+    await a.join({ name: "A", features: LOOKS, gameId: "GZ2E01" });
+    await b.join({ name: "B", features: ["looks.recv"], gameId: "GZ2E01" });
+    await pal.join({ name: "P", features: ["looks.recv"], gameId: "GZ2P01" });
+    await cos.join({ name: "C", features: ["cos.recv"], gameId: "GZ2E01" });
+    a.send(manifest(1, null, { looks: [
+        { slot: "link", state: "shared", mods: [{ id: "dev.x.shadow", name: "Shadow Link", version: "3", author: "y", extra: 1 }],
+          files: [lookFile("Kmdl", "AL.BMD", 1000), lookFile("kmdl", "al_head.bmd", 2000, "b"), lookFile("Kmdl", "al.bmd", 5),
+              lookFile("Kmdl", "../al_face.bmd", 10), lookFile("Wmdl", "wl.bmd", 10), lookFile("AlAnm", "x.bck", 10),
+              lookFile("SWShd", "al_shc.bmd", 9 * 1024 * 1024), lookFile("Alink", "al_swa.bmd", 0)] },
+        { slot: "link", state: "vanilla" },
+        { slot: "wolf", state: "vanilla" },
+        { slot: "midna", state: "unshared", files: [lookFile("Midna", "s_md.bmd", 10)] },
+        { slot: "epona", state: "shared", files: [lookFile("Horse", "al.bmd", 10)] },
+        { slot: "zelda", state: "shared" },
+    ] }));
+    const got = await b.waitType("LOOK_MANIFEST");
+    assert.deepEqual(got.looks, [
+        { slot: "link", state: "shared", mods: [{ id: "dev.x.shadow", name: "Shadow Link", version: "3", author: "y" }],
+          files: [{ arc: "Kmdl", name: "al.bmd", sha: sha("a"), size: 1000 }, { arc: "Kmdl", name: "al_head.bmd", sha: sha("b"), size: 2000 }] },
+        { slot: "wolf", state: "vanilla" },
+        { slot: "midna", state: "unshared" },
+        { slot: "epona", state: "unshared" },
+    ]);
+    await pal.expectNone((p) => p.type === "LOOK_MANIFEST", "looks to another game");
+    assert.deepEqual((await cos.waitType("LOOK_MANIFEST")).looks, [], "looks to a client without looks.recv");
+    await waitForLog(server, /\[A\] LOOK_MANIFEST rev=1 scope=room cosmetics=none looks=link:shared\/2,wolf:vanilla,midna:unshared,epona:unshared/);
+}));
+
+test("a LOOK_MANIFEST with a file not named by a SHA-256, or over the limits, is rejected", () => withServer(async (mk, server) => {
+    const a = mk();
+    const b = mk();
+    await a.join({ name: "A", features: LOOKS, gameId: "GZ2E01" });
+    await b.join({ name: "B", features: LOOKS, gameId: "GZ2E01" });
+    a.send(manifest(1, { linkHairColor: "abcdef" }, { looks: [{ slot: "wolf", state: "vanilla" }] }));
+    await b.waitType("LOOK_MANIFEST", (p) => p.rev === 1);
+    a.send(manifest(2, null, { looks: [{ slot: "link", state: "shared",
+        files: [{ arc: "Kmdl", name: "al.bmd", sha: "../../../etc/passwd", size: 10 }] }] }));
+    await waitForLog(server, /\[A\] rejected LOOK_MANIFEST \(bad look files\)/);
+    const big = 8 * 1024 * 1024;
+    a.send(manifest(3, null, { looks: [{ slot: "link", state: "shared", files: [lookFile("Kmdl", "al.bmd", big),
+        lookFile("Kmdl", "al_face.bmd", big), lookFile("Kmdl", "al_head.bmd", big), lookFile("Kmdl", "al_hands.bmd", 1)] }] }));
+    await waitForLog(server, /\[A\] LOOK_MANIFEST rev=3/).then(() => assert.fail("an over-limit manifest was taken"), () => {});
+    const late = mk();
+    await late.join({ name: "L", features: LOOKS, gameId: "GZ2E01" });
+    const replay = await late.waitType("LOOK_MANIFEST");
+    assert.equal(replay.rev, 1);
+    assert.deepEqual(replay.looks, [{ slot: "wolf", state: "vanilla" }]);
 }));
