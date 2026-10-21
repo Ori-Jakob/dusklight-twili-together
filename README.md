@@ -223,7 +223,11 @@ look it shows what **While a Look Is Unavailable, Show** says. **Game Default** 
 look on a player's puppets, **My Own** your own look mods. Choices are kept per player across
 restarts, by an id each install sends (derived per relay from a random one, so it links nothing
 across relays; their name when the relay is older). Puppets showing
-their own look or the game's keep your texture packs and mods' textures off unless you allow them.
+their own look or the game's keep your texture packs and mods' textures off unless you allow them;
+a puppet showing your own look (My Own, or the fallback) wears them as before look sharing.
+Receiving looks needs ModsService as well: on a Dusklight without it, other players' puppets show
+what **While a Look Is Unavailable, Show** says, and Game Default leaves out look mods that replace
+archive entries but not one that replaces a whole archive.
 
 ## The players widget
 
