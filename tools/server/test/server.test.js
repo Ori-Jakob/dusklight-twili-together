@@ -2993,7 +2993,8 @@ test("LOOK_MANIFEST look entries are rebuilt and reach looks receivers of the sa
         { slot: "link", state: "shared", mods: [{ id: "dev.x.shadow", name: "Shadow Link", version: "3", author: "y", extra: 1 }],
           files: [lookFile("Kmdl", "AL.BMD", 1000), lookFile("kmdl", "al_head.bmd", 2000, "b"), lookFile("Kmdl", "al.bmd", 5),
               lookFile("Kmdl", "../al_face.bmd", 10), lookFile("Wmdl", "wl.bmd", 10), lookFile("AlAnm", "x.bck", 10),
-              lookFile("SWShd", "al_shc.bmd", 9 * 1024 * 1024), lookFile("Alink", "al_swa.bmd", 0)] },
+              lookFile("SWShd", "al_shc.bmd", 9 * 1024 * 1024), lookFile("Alink", "al_swa.bmd", 0),
+              lookFile("Alink", "CROD_BALL.btk", 30, "c")] },
         { slot: "link", state: "vanilla" },
         { slot: "wolf", state: "vanilla" },
         { slot: "midna", state: "unshared", files: [lookFile("Midna", "s_md.bmd", 10)] },
@@ -3003,14 +3004,15 @@ test("LOOK_MANIFEST look entries are rebuilt and reach looks receivers of the sa
     const got = await b.waitType("LOOK_MANIFEST");
     assert.deepEqual(got.looks, [
         { slot: "link", state: "shared", mods: [{ id: "dev.x.shadow", name: "Shadow Link", version: "3", author: "y" }],
-          files: [{ arc: "Kmdl", name: "al.bmd", sha: sha("a"), size: 1000 }, { arc: "Kmdl", name: "al_head.bmd", sha: sha("b"), size: 2000 }] },
+          files: [{ arc: "Kmdl", name: "al.bmd", sha: sha("a"), size: 1000 }, { arc: "Kmdl", name: "al_head.bmd", sha: sha("b"), size: 2000 },
+              { arc: "Alink", name: "crod_ball.btk", sha: sha("c"), size: 30 }] },
         { slot: "wolf", state: "vanilla" },
         { slot: "midna", state: "unshared" },
         { slot: "epona", state: "unshared" },
     ]);
     await pal.expectNone((p) => p.type === "LOOK_MANIFEST", "looks to another game");
     assert.deepEqual((await cos.waitType("LOOK_MANIFEST")).looks, [], "looks to a client without looks.recv");
-    await waitForLog(server, /\[A\] LOOK_MANIFEST rev=1 scope=room cosmetics=none looks=link:shared\/2,wolf:vanilla,midna:unshared,epona:unshared/);
+    await waitForLog(server, /\[A\] LOOK_MANIFEST rev=1 scope=room cosmetics=none looks=link:shared\/3,wolf:vanilla,midna:unshared,epona:unshared/);
 }));
 
 test("a LOOK_MANIFEST with a file not named by a SHA-256, or over the limits, is rejected", () => withServer(async (mk, server) => {

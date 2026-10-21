@@ -212,10 +212,11 @@ and a relay that knows cosmetics; the Looks tab says when one of them is too old
 ## Look mods
 
 The Looks tab lists the look mods you have on: mods that change Link's four outfits and his gear
-(swords, sheaths, shields, boomerang, spinner, bombs, arrows, lantern), the wolf, Midna or Epona,
-with what each changes and its size. With **Share My Looks** on, the others learn which of your
-looks are the game's own and which are shared (with their files' SHA-256 and sizes); a mod whose
-`mod.json` says `"multiplayer": {"share": false}` is never shared, and texture packs never are.
+(swords, sheaths, shields, boomerang, spinner, bombs, arrows, slingshot ammo, Ball and Chain,
+fishing rod, lantern), the wolf, Midna or Epona, with what each changes and its size. With
+**Share My Looks** on, the others learn which of your looks are the game's own and which are shared
+(with their files' SHA-256 and sizes); a mod whose `mod.json` says `"multiplayer": {"share": false}`
+is never shared, and texture packs never are.
 Fetching shared files is not built yet, so a puppet shows its player's look only while that look
 is the game's own (from the disc's own archives, whatever look mods you have on); for a shared
 look it shows what **While a Look Is Unavailable, Show** says. **Game Default** shows the game's

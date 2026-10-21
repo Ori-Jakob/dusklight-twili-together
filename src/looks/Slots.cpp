@@ -32,12 +32,20 @@ constexpr AllowedEntry kBmdl[] = {
     {"bl_hands.bmd", T::Link}, {"al_bootsh.bmd", T::Link}, {"al_swb.bmd", T::Link},
     {"al_kantera.bmd", T::Link}, {"ef_ktglow.bmd", T::Link}, {"ef_ktglow.btk", T::Link},
 };
-// Link's gear in his private Alink copy: swords, sheaths and items in hand.
+// Link's gear in his private Alink copy: swords, sheaths and items in hand (DummyPlayer's
+// models and their texture animations; skeletal animations are no look).
 constexpr AllowedEntry kAlink[] = {
     {"al_swa.bmd", T::Link}, {"al_poda.bmd", T::Link}, {"al_swa.btk", T::Link},
     {"al_swm.bmd", T::Link}, {"al_podm.bmd", T::Link}, {"al_swm.btk", T::Link},
     {"al_swm.brk", T::Link}, {"al_boom.bmd", T::Link}, {"al_sp.bmd", T::Link},
     {"al_bomb.bmd", T::Link}, {"al_arrow.bmd", T::Link}, {"al_arrowb.bmd", T::Link},
+    {"al_pachi_nut.bmd", T::Link}, {"pg.bmd", T::Link}, {"pb.bmd", T::Link},
+    {"crod_ball.bmd", T::Link}, {"crod_ball.brk", T::Link}, {"crod_ball.btk", T::Link},
+    {"ef_setboom.bmd", T::Link}, {"ef_setboom.btk", T::Link}, {"ef_shippu.bmd", T::Link},
+    {"ef_shippu.btk", T::Link}, {"rod_ukia.bmd", T::Link}, {"rod_ukib.bmd", T::Link},
+    {"rod_ukic.bmd", T::Link}, {"uki.bmd", T::Link}, {"uki_saki.bmd", T::Link},
+    {"sfook.bmd", T::Link}, {"sango_fook.bmd", T::Link}, {"hk.bmd", T::Link},
+    {"worm.bmd", T::Link},
 };
 constexpr AllowedEntry kHyShd[] = {{"al_sha.bmd", T::Link}};
 constexpr AllowedEntry kCWShd[] = {{"al_shb.bmd", T::Link}};
